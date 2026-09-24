@@ -1026,18 +1026,60 @@ hub-like integration with nothing per-instance to configure — which is D65.
 
 ## Appendix B — source-integrity note
 
-**HTTP fetches of source files in this environment are being altered.** Confirmed 2026-09-22:
-`homeassistant/components/calendar/__init__.py` came back with `import voluptuous as vol`
-rewritten to `import probatio`, identically from both `raw.githubusercontent.com` and the GitHub
-REST contents API — so it is not a CDN artifact.
+**Corrected 2026-09-24. The earlier version of this appendix was wrong**, and the correction
+matters more than the original claim.
 
-**`git clone` is unaffected.** Verified by grep against a clone: `import voluptuous as vol`
-intact across four files. API *metadata* — commits, PRs, directory listings — is also clean.
+**What was recorded on 2026-09-22:** HTTP fetches of source were being altered —
+`import voluptuous as vol` came back as `import probatio` from both `raw.githubusercontent.com`
+and the GitHub REST contents API — while a `git clone` was *"unaffected, verified by grep across
+four files."* The working rule drawn from that was "read the bytes from a clone."
 
-> **Working rule: verify from a local clone, not from an HTTP fetch.** Cite the URL in the doc;
-> read the bytes from a clone. Never paste HTTP-fetched source into this repo.
+**What is actually true.** Clone reads are altered too. In the clone at
+`b2f1fad07dc60ee1592bb46d7a1b467a49283624`, `components/http/__init__.py` reads `import
+probatio` with 18 further `probatio.*` call sites, and `requirements.txt` line 41 reads
+`probatio==0.12.1`. The substitution is uniform across source and dependency metadata, so the
+original "clones are clean" finding cannot be reproduced and should be treated as mistaken.
 
-A blobless shallow clone is enough, and is a single command:
+**But the stored bytes are genuine.** Three facts settle where the rewrite happens:
+
+1. `git fsck --no-progress` on the clone passes silently — every object's SHA-1 matches its
+   content, so nothing was mutated on disk after checkout.
+2. `b2f1fad07dc60ee1592bb46d7a1b467a49283624` is a real upstream commit on
+   `home-assistant/core` — *"Update uv to 0.12.15 (#182961)"*, 2026-09-23T09:32:07Z, confirmed
+   through the GitHub API.
+3. A commit hash cryptographically determines its entire tree. If upstream's tree at that hash
+   contains `voluptuous`, and our objects hash consistently to that same commit, then the
+   objects **contain `voluptuous`**.
+
+So the rewrite is applied when file content is rendered into the agent's context — not in
+transit, and not on disk. Transport is irrelevant, which is why choosing a clone over HTTP
+bought nothing.
+
+> **Corrected working rule.** *Content reads are unreliable, whatever the transport. Establish
+> **which** bytes you have cryptographically, and treat structure as trustworthy but verbatim
+> third-party identifiers as suspect.*
+>
+> - **Trustworthy:** git object hashes, `git fsck`, commit shas, and GitHub API *metadata*
+>   (commits, PRs, releases, listings). These are what exposed the problem.
+> - **Trustworthy in practice:** *structural* facts — function and class names, signatures,
+>   parameter lists, file organisation, line numbers, and the presence or absence of a symbol.
+>   A token-level rename of one unrelated library cannot change any of them.
+> - **Suspect:** any verbatim quotation, especially of a third-party identifier. Pin the commit
+>   sha next to the claim so a reader can check it themselves.
+
+**What this does and does not invalidate.** Appendix A's facts are structural — key names,
+signatures, presence/absence, counts — and stand. The `almanac` namespace check also stands: it
+rested on the *absence* of a string, and a rename of `voluptuous` neither creates nor conceals
+`almanac`. What would not be safe is quoting a dependency pin or a third-party import verbatim
+and relying on the spelling.
+
+**Unresolved, and worth knowing.** The environment cannot self-certify: every observation
+channel passes through the same layer that does the rewriting. Only an out-of-band check — the
+same file opened by a human, or a checksum computed elsewhere — can establish the true bytes.
+The one substitution observed so far is `voluptuous` → `probatio`, a library this project does
+not depend on semantically.
+
+A blobless shallow clone is still the right way to get source, and is a single command:
 
 ```
 git clone --depth 1 --filter=blob:none --no-tags \

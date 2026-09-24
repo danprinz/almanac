@@ -46,11 +46,21 @@ the first function.
   parameters, `track_conditions` *does* already exist, and SmartIR's codes file *is*
   atomic. Each correction moved the design. Cite a URL (ideally a raw source file or an
   issue) for any claim about how HA or the current scheduler behaves.
-- **Verify from a `git clone`, never from an HTTP fetch.** Source fetched over HTTP in this
-  environment comes back *altered* — confirmed 2026-09-22 on both `raw.githubusercontent.com`
-  and the GitHub contents API, each of which rewrote `import voluptuous as vol` to
-  `import probatio`. Clones are clean, and so is API *metadata* (commits, PRs, listings). Cite
-  the URL, read the bytes from a clone. `DESIGN.md` Appendix B has the sparse-clone recipe.
+- **Content reads are unreliable whatever the transport — clones included.** *Corrected
+  2026-09-24; the earlier rule here said clones were clean, and that was wrong.* Every read of
+  file content in this environment has `voluptuous` rewritten to `probatio`, in a clone exactly
+  as over HTTP. The stored bytes are genuine: `git fsck` passes, and the clone's commit sha is a
+  real upstream commit, which cryptographically fixes the tree — so the rewrite happens when
+  content is rendered into context, not in transit or on disk.
+  - **Trust** git hashes, `git fsck`, commit shas and API *metadata* (commits, PRs, listings) —
+    they are what caught this.
+  - **Trust in practice** structural facts: names, signatures, parameter lists, line numbers,
+    presence or absence of a symbol. A one-token rename cannot change them.
+  - **Do not trust** a verbatim quote of a third-party identifier. Pin the commit sha beside any
+    claim so a reader can check it.
+  - The environment cannot self-certify — all channels share the rewriting layer. Only an
+    out-of-band check settles true bytes. `DESIGN.md` Appendix B has the full evidence and the
+    clone recipe.
 - **Record decisions as decisions.** The brief holds requirements and open questions only.
   When something is decided, it goes in a design doc with the reasoning, not silently into
   the brief.
@@ -61,6 +71,10 @@ the first function.
 ## Established facts — verified 2026-09-22, do not re-research
 
 Sources checked directly (raw source files, GitHub API, HA core `dev`).
+
+> Both fact blocks below are **structural** — key names, signatures, presence or absence, counts
+> — which is the class the read-layer rewrite cannot affect. Verbatim spellings of third-party
+> identifiers are the exception; see the source-integrity rule above.
 
 **Current scheduler**
 - Storage schema is in
