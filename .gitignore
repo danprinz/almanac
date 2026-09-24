@@ -21,11 +21,11 @@ npm-debug.log*
 .vite/
 *.tsbuildinfo
 
-# Built frontend bundle — see DESIGN.md on whether this is committed or shipped
-# via a release artifact. Uncomment the ignore only if the decision is "release
-# artifact"; a committed bundle must NOT be ignored.
-# custom_components/almanac/frontend/*.js
-# custom_components/almanac/frontend/*.js.map
+# Built frontend bundle. D71: not committed — the release zip is the only install
+# path, so the built files exist on a dev machine and in CI, never in history.
+# (The bare `dist/` above already matches this; spelled out so the intent is not
+# an accident of a Python rule.)
+custom_components/almanac/frontend/dist/
 
 # Home Assistant dev instance
 config/

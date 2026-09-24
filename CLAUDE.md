@@ -7,10 +7,10 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 `scheduler-card`): a schedule engine and UI whose rule model is **enumerable**, so that
 "what will happen between now and Friday night" is a view you can actually render.
 
-## Status — 2026-09-23
+## Status — 2026-09-24
 
 **Design settled. No code yet.** The brief's five open questions are answered, and the model
-is recorded in `DESIGN.md` as numbered decisions D1–D66.
+is recorded in `DESIGN.md` as numbered decisions D1–D71.
 
 | File | Contains |
 | --- | --- |
@@ -19,6 +19,7 @@ is recorded in `DESIGN.md` as numbered decisions D1–D66.
 | `DESIGN.md` | the decisions, with reasoning; build order; verified-facts appendix |
 | `README.md` | public-facing — what it is and why, pointers to the above |
 | `LICENSE` | MIT |
+| `hacs.json` | distribution — `zip_release`, `hide_default_branch` (D71) |
 
 **Decision numbers are identifiers, not an ordering.** D1–D63 were assigned in reading order at
 the first commit; anything added since takes the next free number and lives in the section it
@@ -29,10 +30,15 @@ belongs to. Do **not** renumber to tidy the sequence — see the convention note
 config flow. The `almanac` namespace check is **done** — clear in core, in the HACS default
 list, and in a GitHub manifest-domain search (`DESIGN.md` "Remaining checks").
 
-**Open before step 1:** the frontend toolchain (§16) — how the card and panel are written,
-built, packaged and registered. It must be **one** HACS installation, not two as the current
-scheduler is. Under research; `hacs.json` is deliberately not written yet because `zip_release`
-and `filename` depend on the answer.
+**Frontend toolchain: decided** — §17, D67–D71. One repository, HACS category `integration`,
+TypeScript + Lit built by Rollup into `custom_components/almanac/frontend/dist/`, panel via
+`panel_custom` and card via `add_extra_js_url`, `dist/` gitignored and shipped only as a
+`zip_release` asset. The single-installation requirement is met with **no** manual Resource step.
+`hacs.json` is written. A.12 has the verification; read D70 before writing any card code, because
+the always-loaded-stub constraint cannot be retrofitted.
+
+**Next after that:** the UX thread. §16's three decisions (D61–D63) plus §17's constraints are
+what gets handed over — constraints, not a layout.
 
 **Standing constraint, decided:** D64 — nothing below the top-level scheduler tick reads a
 clock. `now` is threaded as a parameter. This is what makes the dry run and the timeline the

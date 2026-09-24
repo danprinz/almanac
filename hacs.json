@@ -1,0 +1,8 @@
+{
+  "name": "almanac",
+  "zip_release": true,
+  "filename": "almanac.zip",
+  "hide_default_branch": true,
+  "homeassistant": "2024.7.0",
+  "render_readme": true
+}

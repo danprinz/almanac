@@ -878,8 +878,11 @@ to — a template helper entity is evaluated, never enumerated, so it never touc
 6. Observability — D48–D52
 7. `hdate` resolver — validates the contract against a second implementation
 8. Timeline and dry run — D12, D44, D63
-9. UI — D61, D62
+9. UI — D61, D62, and §17's toolchain
 10. **Import from `scheduler-component`, last** — D60
+
+The packaging decisions D67–D71 are settled ahead of step 1, not at step 9: the repository layout
+and the panel/card URL constants they fix are part of the integration's own setup code.
 
 Step 7 is placed deliberately: a contract is not proven by the implementation it was designed
 around. Writing `hdate` before any UI depends on the resolver list is what surfaces a wrong
@@ -919,6 +922,126 @@ looking for.
 
 Detailed design goes to the UX designer once the feature list is complete; these three decisions
 are the constraints handed over, not a layout.
+
+---
+
+## 17. Frontend toolchain and packaging
+
+D61 says *one frontend bundle*; this section says how it is written, built, delivered and
+shipped. It is settled before step 1 rather than at step 9 because the panel and card URLs are
+string constants in the integration's own setup code, and because the repository layout it
+implies is expensive to move later.
+
+**D67 — one repository, one HACS install, category `integration`.** Frontend source and build
+output live under `custom_components/almanac/frontend/`, inside the integration directory. No
+second repository, and no `plugin`-category registration.
+
+*Why this works:* HACS's integration download extracts **every** file under
+`custom_components/<domain>/` with no extension filter. `download_repository_zip()` matches on
+`content.path.remote`, which `repositories/integration.py` sets to `f"custom_components/{name}"`;
+neither that path nor the per-file fallback tree-walk looks at extensions. The one
+extension-aware branch in the entire download path is guarded by `if category == "plugin"` —
+the *card-only* category, which is an option for card-only repos, not an obligation on repos
+that ship a frontend. Verified A.12.
+
+*Why it needs saying:* the existing scheduler's two-repo split is widely assumed to be something
+HACS forces. It is not. `thomasloven/hass-browser_mod` ships real dashboard cards
+(`browser-mod-tile-card`, `browser-mod-badge`, `popup-card`, each with an editor) from a
+repository registered only as an integration.
+
+**D68 — TypeScript and Lit, bundled with Rollup.**
+
+*Lit:* HA's own frontend is Lit, so the `ha-*` elements, the design tokens and the `hass` object
+idioms are usable directly rather than through an adapter. Both single-repo precedents use it.
+
+*Rollup, not Vite:* the build must produce a small, fixed set of ESM files at **predictable
+URLs**, because those URLs are baked into Python constants and handed to `module_url` and
+`add_extra_js_url`. Vite's real value is its dev server, and that is worth close to nothing here
+— the card and panel do nothing except inside HA's shell with a live `hass` object and an open
+websocket, so the loop is "rebuild, reload HA", never "rebuild, refresh a standalone page".
+Vite's production build is Rollup underneath, so picking Rollup directly gives up only the part
+that does not apply. Two code searches for a Vite-based HA integration+frontend precedent
+returned nothing against a control query that worked — weak evidence, pointing the same way.
+
+**D69 — the panel goes through `panel_custom`; the card is delivered by `add_extra_js_url`;
+Lovelace resources are not touched.**
+
+| Surface | Mechanism |
+| --- | --- |
+| Panel | `StaticPathConfig` for the panel bundle, then `panel_custom.async_register_panel(module_url=…)` |
+| Card | `StaticPathConfig` for the card bundle, then `frontend.add_extra_js_url(hass, url)` |
+
+`add_extra_js_url` is the only mechanism that gets a card working with **zero manual steps** in
+both storage and YAML dashboard modes, and that is what the single-installation requirement has
+to mean to be worth anything: one install that still needs a hand-added Resource entry has moved
+the second step, not removed it. Both URLs carry `?v={version}&m={mtime}` so a rebuilt bundle is
+never served from cache.
+
+*Given up deliberately:* the card does not appear in Settings → Resources, so a user auditing
+their resources will not find it; and it is unavailable to Cast, which does not receive
+`extra_js_url`. `browser_mod` solves the Cast case by reaching into
+`hass.data["lovelace"].resources` — private internals, with a YAML-mode fallback its own source
+comments as *"not the best solution, but what else can we do"*. For an admin surface that is not
+a trade worth making.
+
+**D70 — the card entry point is a thin stub, and everything else is behind a dynamic import.**
+`add_extra_js_url` injects into the shared `index.html`, so the card bundle is fetched and
+executed on **every** frontend page, including every page with no almanac card on it. The entry
+therefore holds only the `customElements.define` of a placeholder and the `window.customCards`
+registration for the picker; the rule editor, the timeline and everything they drag in load on
+first `setConfig`.
+
+*Also:* `add_extra_js_url` is frozenset-backed, so ordering across extra JS URLs is not
+guaranteed. A self-contained stub makes that irrelevant rather than something to reason about.
+
+This is D64's shape applied to the frontend — a constraint on every signature, imposed up front
+because it cannot be retrofitted. A card whose entry point already imports the editor cannot be
+split later without unpicking the import graph.
+
+**D71 — the built bundle is not committed; the release zip is the only install path.**
+
+```json
+{
+  "name": "almanac",
+  "zip_release": true,
+  "filename": "almanac.zip",
+  "hide_default_branch": true,
+  "homeassistant": "2024.7.0",
+  "render_readme": true
+}
+```
+
+`frontend/dist/` is gitignored. The release workflow runs the build and zips from **inside**
+`custom_components/almanac/`, because the `zip_release` extraction calls `extractall()` with no
+prefix stripping — the archive's internal paths must already be exactly what belongs directly
+under `custom_components/almanac/`. `hide_default_branch` then makes the release asset the only
+thing a user can install.
+
+*Why this deviates from both precedents:* Alarmo commits `dist/` *and* ships a zip; browser_mod
+commits `dist/` and needs a dedicated CI workflow (`prevent-build-artifacts-in-pr.yaml`) to stop
+humans editing it. Both are defending the same failure — committed build output drifting from
+its source, and HACS shipping stale frontend code because nothing in the install path rebuilds.
+With `hide_default_branch` set, a committed `dist/` serves no user at all; it serves only the
+contributor who would rather not run the build, who is precisely the person most likely to leave
+it stale. Not committing it deletes the failure class instead of guarding it.
+
+*The risk taken on:* no fallback install path if the release workflow breaks. Acceptable, because
+that failure is loud — a failed build produces no release asset, so HACS offers nothing new,
+rather than silently shipping last month's bundle.
+
+*Dev loop:* `rollup -c --watch` writing into `custom_components/almanac/frontend/dist/`, that
+directory symlinked into a dev HA instance, and a browser refresh. None of the three precedents
+has HMR. Note that the `?m={mtime}` bust is computed at integration setup, so a rebuild inside a
+running session needs an integration reload, not only a refresh.
+
+*Minimum HA version:* `2024.7.0` is the floor set by `async_register_static_paths`, which
+replaced the singular `register_static_path`. It must be re-checked against `single_config_entry`
+(D65) and the entity-registry `created_at` / `modified_at` fields (A.9) before the first release;
+both are newer, and whichever is newest sets the real floor.
+
+**Manifest dependencies:** `["http", "frontend", "panel_custom", "websocket_api"]` — hard
+`dependencies`, not `after_dependencies`, because a setup that cannot register its panel has not
+succeeded. Both single-repo precedents do the same.
 
 ---
 
@@ -1021,6 +1144,52 @@ core integrations declare `"single_config_entry": true` in `manifest.json`, incl
 `jewish_calendar`, `moon`, `backup`, `analytics`, `mqtt` and `knx`. Confirmed by grep over
 `homeassistant/components/**/manifest.json` in the `b2f1fad` clone. The precedent shape is a
 hub-like integration with nothing per-instance to configure — which is D65.
+
+**A.12 — HACS ships whatever sits under `custom_components/<domain>/`, frontend included.
+Verified 2026-09-24** against clones of `hacs/integration`, `hacs/documentation`, `hacs/default`,
+`nielsfaber/alarmo`, `thomasloven/hass-browser_mod` and `AlexxIT/WebRTC`. This is the whole
+foundation of D67, so it was re-verified directly rather than taken from a researcher's report.
+
+- **`hacs.json` schema** — `HACS_MANIFEST_JSON_SCHEMA` in `utils/validate.py:46-60` accepts
+  exactly `content_in_root`, `country`, `filename`, `hacs`, `hide_default_branch`,
+  `homeassistant`, `persistent_directory`, `render_readme`, `zip_release`, and requires `name`,
+  with `extra=vol.PREVENT_EXTRA`. `validate/hacsjson.py:43-44` raises if `zip_release` is set
+  without `filename`.
+- **Default download path** — `download_content()` (`repositories/base.py:616-627`) calls
+  `download_repository_zip()` whenever there is no `zip_release`; that method
+  (`base.py:653-697`) pulls GitHub's own source tarball, keeps only entries under
+  `content.path.remote`, strips the leading segment and `extractall()`s. For an integration,
+  `repositories/integration.py:91,131` sets `content.path.remote = f"custom_components/{name}"`.
+  **No extension filter anywhere in this path.**
+- **The one extension-aware branch** is `if category == "plugin":` in
+  `gather_files_to_download()` (`base.py:1205-1222`), which special-cases `dist/` and `.js` for
+  card-only repos. Integration category falls through to the generic tree-walk
+  (`base.py:1229-1234`), which again takes every non-directory file under `content.path.remote`.
+- **`zip_release` path** — `should_try_releases` (`base.py:446-459`) is true only once
+  `zip_release` is set, `filename` ends in `.zip`, *and* the ref is not the default branch. Then
+  `async_download_zip_file` `extractall()`s the release **asset** straight into
+  `content.path.local` with **no prefix stripping** (`base.py:594-598`), which is why Alarmo's
+  release job zips from inside `custom_components/alarmo/`.
+- **No two-repo requirement exists.** `docs/publish/integration.md` states only that there must
+  be one integration per repository and that everything required to run it must live under
+  `custom_components/INTEGRATION_NAME/`. Nothing about frontend assets, no file-type exclusion.
+- **Worked precedent for D69/D70**, `browser_mod/mod_view.py`: `StaticPathConfig` +
+  `add_extra_js_url(hass, FRONTEND_SCRIPT_URL + "?" + version)` for the card bundle,
+  `StaticPathConfig` + `async_register_built_in_panel(component_name="custom",
+  config={"_panel_custom": {...}})` for each panel, and `remove_extra_js_url` on unload. It
+  additionally registers a Lovelace resource via `hass.data["lovelace"].resources` under the
+  comment *"so it's accessible to Cast"*, with a YAML-mode fallback its own source calls *"not
+  the best solution"* — the part D69 declines.
+- **Alarmo's cache-bust**, `alarmo/panel.py`: `module_url=f"{PANEL_URL}?v={VERSION}&m={cache_bust}"`
+  where `cache_bust = int(os.path.getmtime(view_url))`. Adopted in D69.
+- **`async_register_static_paths` floor** — `WebRTC/custom_components/webrtc/utils.py:113-121`
+  gates on `(MAJOR_VERSION, MINOR_VERSION) >= (2024, 7)`, falling back to the singular
+  `register_static_path` below that. The singular form is gone from current `dev`.
+
+One caveat, per Appendix B: the *structure* above — which branch is guarded by what, which
+parameter names exist, which paths have no filter — is what these citations establish. Where a
+precedent's string literals matter (`"almanac"`, a URL) they are this project's own, not quoted
+from third-party source.
 
 ---
 
