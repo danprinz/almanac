@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Frontend
+node_modules/
+npm-debug.log*
+.parcel-cache/
+.vite/
+*.tsbuildinfo
+
+# Built frontend bundle — see DESIGN.md on whether this is committed or shipped
+# via a release artifact. Uncomment the ignore only if the decision is "release
+# artifact"; a committed bundle must NOT be ignored.
+# custom_components/almanac/frontend/*.js
+# custom_components/almanac/frontend/*.js.map
+
+# Home Assistant dev instance
+config/
+.storage/
+home-assistant.log*
+home-assistant_v2.db*
+*.db-shm
+*.db-wal
+
+# Editors and OS
+.vscode/
+.idea/
+*.swp
+.DS_Store

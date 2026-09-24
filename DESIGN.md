@@ -7,6 +7,12 @@ open questions stay in [`PRODUCT_BRIEF.md`](PRODUCT_BRIEF.md); verified facts ab
 behaviour stay in [`CLAUDE.md`](CLAUDE.md). Decisions are numbered `D1…` so they can be cited
 and revisited individually.
 
+> **Numbering convention.** Decision numbers are **identifiers, not an ordering.** D1–D63 were
+> assigned in reading order at the first commit; every decision added after that takes the next
+> free number and lives in the section it belongs to. So a later section may contain a lower
+> number than the one above it. Renumbering to restore reading order would invalidate every
+> citation from code, commits and reviews, which costs more than the tidiness is worth.
+
 Where a decision rests on a verified fact, the fact is cited in
 [Appendix A](#appendix-a--verified-facts-used-by-this-design). **Read the source-integrity
 note in [Appendix B](#appendix-b--source-integrity-note) before verifying anything in this
@@ -563,6 +569,38 @@ makes the first migration guesswork.
 
 ## 10. Engine semantics
 
+### 10.0 The engine does not read the clock
+
+**D64 — `now` is a parameter, not an ambient value. Nothing below the top-level scheduler tick
+calls `dt_util.now()`, `utcnow()` or any other clock.** One component — the tick — reads the
+real clock and passes the instant down. Everything beneath it (anchor resolution, interval
+pairing, condition evaluation, completion counting, recovery) is a pure function of
+`(now, config, known entity state)`.
+
+*Why this is load-bearing rather than hygiene:* it is the precondition for a feature the brief
+already commits to. **Dry run** (Add #5 — *"show me this Friday without waiting for Friday"*) is
+exactly "evaluate the whole pipeline at a hypothetical `now`". If any layer reads the wall clock
+internally, dry run cannot be built on top of the engine — it has to be a second,
+parallel implementation of the same logic, which then disagrees with the real one. A timeline
+that disagrees with what fires is worse than no timeline.
+
+The second reason is testability, and it applies to precisely the decisions most likely to be
+wrong: the DST rules (D40), at-or-after pairing across midnight (D38), and the shape-dependent
+recovery asymmetry (D41). None of them can be tested without controlling the clock, and all
+three fail visibly in front of people when wrong.
+
+*Why it has to be decided before any code:* this constrains every signature in the engine.
+Threading an injected instant through afterwards is a rewrite, not a refactor — which is why it
+sits at the head of §10 rather than in a testing appendix.
+
+Two corollaries:
+
+- **The timeline, the dry run and the live engine are one code path** evaluated at three
+  different instants. They cannot drift, because there is nothing to drift.
+- **Resolvers already obey this** — D58 requires `forecast` to be a pure function of
+  `(offering, window, known state)`. D64 extends the same rule inward to the engine, so the
+  property holds end to end rather than stopping at the contract boundary.
+
 ### 10.1 Interval pairing
 
 **D38 — an interval's end anchor resolves to its first occurrence at or after the resolved
@@ -744,14 +782,43 @@ fork of someone else's project.
 will not surface the domain. HACS searches repository name and description, so the mitigation
 belongs there rather than in the domain.
 
-> **Check before the first commit:** confirm `almanac` is unused in core's integration list and
-> on HACS. Per the project's own rule this has not been verified, and it is not asserted here.
+*Verified free* — core, the HACS default list, and a GitHub manifest-domain search, 2026-09-23.
+Evidence and residual risk are under "Remaining checks".
+
+**D65 — the integration is single-instance: `"single_config_entry": true` in the manifest.**
+
+*Why:* there is nothing per-instance to configure. Schedules and day sets are collection items,
+not config entries, so a second entry would create a second empty store and two sets of services
+with no way to tell them apart. Core uses this key for exactly this shape of integration — `sun`
+and `jewish_calendar` both declare it, among roughly seventy others (A.11).
 
 **D54 — one `switch` per schedule, with a slugged entity_id derived from the name.**
 
 *Why:* today's `switch.schedule_<6 hex>` is the core of the "entities you cannot find"
 complaint. A slug is not cosmetic — it is what makes a schedule referenceable from an
 automation someone else wrote.
+
+**D66 — the slug is a *suggestion*, editable at creation, and never re-derived afterwards.**
+
+- **At creation** the editor pre-fills the entity_id from the name and lets the user overwrite
+  it. The only constraint is collision: it must not already be taken by another entity.
+  Validation is live, in the form, before save.
+- **After creation** renaming the schedule changes the friendly name only. The entity_id is
+  never recomputed, and changing it is a deliberate, separate act through HA's own entity
+  settings.
+
+*Why a suggestion rather than a derivation:* the name a schedule wants to display and the
+identifier it wants to be referenced by are different strings with different audiences.
+*"Shabbat — sanctuary lights & PA"* is a good display name and a terrible entity_id;
+`switch.shabbat_sanctuary` is a good entity_id and a poor display name. Deriving one from the
+other forces the user to compromise one to get the other, and the slug generated from a name
+with punctuation in it is rarely what anyone wanted.
+
+*Why never re-derived:* this is the more important half. Re-slugging on rename would silently
+break every automation, script, dashboard card and template referencing the old entity_id — the
+exact discoverability failure D54 exists to fix, inverted and made worse, because it arrives
+later and without warning. Renaming for clarity is a thing users do freely and expect to be
+safe. It must stay safe.
 
 **D55 — one `sensor` per schedule with `device_class: timestamp`** for next trigger, so
 templates, dashboards and automations do not have to dig through attributes. Day sets get their
@@ -803,7 +870,7 @@ to — a template helper entity is evaluated, never enumerated, so it never touc
 
 ## 15. Build order
 
-1. Schema, storage collection, entity model, config flow — D33–D37, D53–D56
+1. Schema, storage collection, entity model, config flow — D33–D37, D53–D56, D65, D66
 2. Resolver contract + `clock` / `entity_time` / `sun` — D6–D17, D42–D43
 3. Rule engine: `At` and `During`, pairing, DST, restart — D2–D5, D38–D41
 4. Conditions and day sets — D18–D26, D57
@@ -948,6 +1015,12 @@ fact behind D21's caveat and D50.
 - Script entities expose `ATTR_MODE` (`mode`), `ATTR_CUR` (`current`), `ATTR_MAX` (`max`),
   `last_triggered` and `last_action` as state attributes, which is what makes D31's pre-flight
   check possible.
+
+**A.11 — `single_config_entry` is a real manifest key, verified 2026-09-24.** Roughly seventy
+core integrations declare `"single_config_entry": true` in `manifest.json`, including `sun`,
+`jewish_calendar`, `moon`, `backup`, `analytics`, `mqtt` and `knx`. Confirmed by grep over
+`homeassistant/components/**/manifest.json` in the `b2f1fad` clone. The precedent shape is a
+hub-like integration with nothing per-instance to configure — which is D65.
 
 ---
 

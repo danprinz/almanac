@@ -10,17 +10,34 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 ## Status — 2026-09-23
 
 **Design settled. No code yet.** The brief's five open questions are answered, and the model
-is recorded in `DESIGN.md` as numbered decisions D1–D63. Three files exist:
+is recorded in `DESIGN.md` as numbered decisions D1–D66.
 
 | File | Contains |
 | --- | --- |
 | `CLAUDE.md` | this — orientation and working rules |
 | `PRODUCT_BRIEF.md` | requirements (keep / fix / add), non-goals; Q1–Q5, now answered |
 | `DESIGN.md` | the decisions, with reasoning; build order; verified-facts appendix |
+| `README.md` | public-facing — what it is and why, pointers to the above |
+| `LICENSE` | MIT |
+
+**Decision numbers are identifiers, not an ordering.** D1–D63 were assigned in reading order at
+the first commit; anything added since takes the next free number and lives in the section it
+belongs to. Do **not** renumber to tidy the sequence — see the convention note at the top of
+`DESIGN.md`.
 
 **Next step:** `DESIGN.md` §15 build order, step 1 — schema, storage collection, entity model,
 config flow. The `almanac` namespace check is **done** — clear in core, in the HACS default
 list, and in a GitHub manifest-domain search (`DESIGN.md` "Remaining checks").
+
+**Open before step 1:** the frontend toolchain (§16) — how the card and panel are written,
+built, packaged and registered. It must be **one** HACS installation, not two as the current
+scheduler is. Under research; `hacs.json` is deliberately not written yet because `zip_release`
+and `filename` depend on the answer.
+
+**Standing constraint, decided:** D64 — nothing below the top-level scheduler tick reads a
+clock. `now` is threaded as a parameter. This is what makes the dry run and the timeline the
+same code path as the live engine, and it constrains every engine signature, so honour it from
+the first function.
 
 ## Working rules
 
