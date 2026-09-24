@@ -20,6 +20,7 @@ is recorded in `DESIGN.md` as numbered decisions D1–D71.
 | `README.md` | public-facing — what it is and why, pointers to the above |
 | `LICENSE` | MIT |
 | `hacs.json` | distribution — `zip_release`, `hide_default_branch` (D71) |
+| `UX_BRIEF.md` | the task handed to the UX thread; outputs land in `ux/` |
 
 **Decision numbers are identifiers, not an ordering.** D1–D63 were assigned in reading order at
 the first commit; anything added since takes the next free number and lives in the section it
