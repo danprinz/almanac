@@ -1,0 +1,6 @@
+# D82 — the harness is pinned exactly, and the pin is what defines the supported
+# Home Assistant version: 0.13.367 declares `homeassistant==2026.9.4` as a hard
+# dependency and `requires_python >= 3.14`. D81 derives manifest.json and
+# hacs.json from this line rather than choosing a version beside it, so a version
+# bump is this line plus those two, and the test run is the evidence.
+pytest-homeassistant-custom-component==0.13.367

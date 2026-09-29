@@ -1,0 +1,15 @@
+{
+  "domain": "almanac",
+  "name": "almanac",
+  "codeowners": ["@danprinz"],
+  "config_flow": true,
+  "dependencies": ["websocket_api"],
+  "documentation": "https://github.com/danprinz/almanac",
+  "homeassistant": "2026.9.4",
+  "integration_type": "service",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/danprinz/almanac/issues",
+  "requirements": [],
+  "single_config_entry": true,
+  "version": "0.1.0"
+}
