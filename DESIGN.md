@@ -1145,6 +1145,38 @@ succeeded. Both single-repo precedents do the same.
 
 ---
 
+## 18. Python baseline and test harness
+
+**D81 — the supported Home Assistant version is the current release. There is no compatibility
+floor.** `manifest.json` declares `"homeassistant": "2026.9.4"`, `hacs.json` matches, and Python
+is 3.14. Older versions are not supported and no shim is written for them.
+
+*Why:* a floor is a promise to test against versions nobody runs, and every decision in §13 leans
+on recent core — D56 on the label and category registries, D65 on `single_config_entry`, D55 on
+a `device_class: timestamp` sensor, and Appendix A's attribution note on entity-registry
+`created_at` / `modified_at` at storage v1.15. Picking a floor would mean verifying four separate
+landing versions and then carrying the oldest of them forever, to serve users who are, by
+construction, not yet running this integration at all. There are none, because it does not exist.
+The cost of being wrong is one line in two files.
+
+**D82 — the test harness is `pytest-homeassistant-custom-component`, pinned exactly, and it is
+what defines the supported version.** `pytest-homeassistant-custom-component==0.13.367`, which
+declares `homeassistant==2026.9.4` as a hard dependency and `requires_python >= 3.14`.
+
+*Why:* the harness ships the whole of core's test fixture machinery — `hass`, the config-entry
+helpers, the storage mocks — and rebuilds itself against one exact core release. Pinning it
+loosely means the fixtures and the integration can drift apart silently. Because the pin is
+exact, the harness *is* the statement of what we support, and D81's version is derived from it
+rather than chosen beside it: a version bump is one line, and the test run is the evidence that
+it worked.
+
+*Verified 2026-09-29:* `home-assistant/core` latest non-prerelease is `2026.9.4` (GitHub releases
+API); `pytest-homeassistant-custom-component` latest is `0.13.367` with
+`requires_dist: homeassistant==2026.9.4` and `requires_python: >=3.14` (PyPI JSON API). Both are
+API metadata, which Appendix B's source-integrity note treats as trustworthy.
+
+---
+
 ## Appendix A — verified facts used by this design
 
 Verified 2026-09-22/23 against cloned source. **See Appendix B for how to verify.**
