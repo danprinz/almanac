@@ -26,6 +26,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import CONFIG_ENTRY_VERSION, PLATFORMS
+from .resolver import async_create_registry
 from .storage import AlmanacData, RuntimeStore, async_setup_collection
 
 type AlmanacConfigEntry = ConfigEntry[AlmanacData]
@@ -38,7 +39,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: AlmanacConfigEntry) -> b
     runtime = RuntimeStore(hass)
     await runtime.async_load()
 
-    entry.runtime_data = AlmanacData(schedules=schedules, runtime=runtime)
+    entry.runtime_data = AlmanacData(
+        schedules=schedules,
+        runtime=runtime,
+        # D14 keeps the registry internal for v1, which is why it is built here
+        # rather than discovered: the moment a third party can ship a resolver,
+        # the contract becomes a compatibility commitment, and it has not yet
+        # met its second implementation (step 7's `hdate`).
+        resolvers=async_create_registry(hass),
+    )
 
     # The collection is loaded before the platforms are forwarded, so each
     # platform sees the full set of schedules as existing items rather than as a

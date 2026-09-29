@@ -40,6 +40,7 @@ from .const import (
     STORAGE_KEY_SCHEDULES,
     WS_PREFIX_SCHEDULE,
 )
+from .resolver import ResolverRegistry
 from .schema import (
     CREATE_FIELDS,
     CREATE_SCHEMA,
@@ -272,6 +273,10 @@ class AlmanacData:
 
     schedules: ScheduleCollection
     runtime: RuntimeStore
+    # D14 — one internal registry per config entry, with no discovery hook. It
+    # lives here rather than in `hass.data` so that the thing which resolves a
+    # schedule's anchors has the same lifetime as the schedules themselves.
+    resolvers: ResolverRegistry
 
 
 __all__ = [

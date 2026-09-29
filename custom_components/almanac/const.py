@@ -114,6 +114,48 @@ EDGE_END: Final = "end"
 # an intent, and saying so costs nothing.
 OFFSET_WARN_SECONDS: Final = 24 * 60 * 60
 
+# --- resolvers (D9, D13, D14, D16) -----------------------------------------
+#
+# D9 makes a resolver domain and an offering key a permanent compatibility
+# surface: a stored schedule addresses them by these exact strings, so a rename
+# needs an alias table and never a silent substitution.
+#
+# `clock` and `entity_time` share their names with the anchor kinds above, and
+# that is the point rather than a coincidence — one concept, one spelling. They
+# are *parametric*: their key is a wall-clock time and an entity_id
+# respectively, so they publish no pick-list and D16's "users pick from a list"
+# does not apply to them. A `kind: resolver` anchor can therefore not address
+# them, which keeps the two spellings from diverging.
+
+RESOLVER_CLOCK: Final = ANCHOR_CLOCK
+RESOLVER_ENTITY_TIME: Final = ANCHOR_ENTITY_TIME
+RESOLVER_SUN: Final = "sun"
+
+# Named here, implemented in build step 7. D15 fixes the domain now so that no
+# schedule is ever written against a name we later have to alias away.
+RESOLVER_HDATE: Final = "hdate"
+
+# The six astral events `helpers/sun.py::get_astral_event_date` computes, which
+# are also the six `sensor.sun_next_*` entities (A.2). The keys are astral's own
+# function names because that helper dispatches with `getattr(astral.sun, event)`
+# — which is a second reason D16's fixed set is not merely a UI convenience.
+#
+# `dawn`, `dusk` and `noon` are here deliberately: today's scheduler whitelists
+# only sunrise and sunset despite `sun.sun` publishing all six (A.3), and that
+# gap is one of the things this project exists to close.
+SUN_DAWN: Final = "dawn"
+SUN_SUNRISE: Final = "sunrise"
+SUN_NOON: Final = "noon"
+SUN_SUNSET: Final = "sunset"
+SUN_DUSK: Final = "dusk"
+SUN_MIDNIGHT: Final = "midnight"
+
+# D17 — timeouts live in the contract, not in each implementation. Nothing
+# in-tree goes near this: `sun` is arithmetic and `entity_time` is a state read.
+# It is here for the resolver somebody writes later, so that the first slow one
+# degrades to *unresolved* rather than stalling every unrelated schedule.
+RESOLVER_TIMEOUT: Final = 5
+
 # --- recurrence fields (D1, D18) -------------------------------------------
 
 RECUR_DAY_SET: Final = "day_set"
