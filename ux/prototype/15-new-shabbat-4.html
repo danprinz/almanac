@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · New schedule 4/4</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* Requested set 3, step 4 of 4: check, then save.
+
+     THE REVIEW IS THE ENUMERATION, NOT A SUMMARY OF THE FORM. Reading the
+     fields back would only prove the form was filled in. What this screen
+     shows is the engine's own answer: run the rule forward and print the
+     moments it produces. D64 is what makes that honest — nothing below the
+     top-level tick reads a clock, `now` is threaded in, so the list below is
+     the same code path that will fire tonight rather than a preview written
+     separately and free to drift.
+
+     THE EVENING IS FOUR MOMENTS, AND TWO OF THEM ARE MINE. The strip tints
+     what almanac does and leaves what the day does neutral, so "my two stages"
+     stay separable from "candle lighting, havdalah" at a glance. Havdalah is
+     shown although nothing is scheduled at it — it is the end of the period
+     this schedule lives in, and its absence would be a question. On this run it
+     is two days out, because Yom Kippur ends on the Monday night; the strip
+     labels it rather than assuming the reader will infer the date.
+
+     THE DATES ARE NOT A FIXED CLOCK TIME. 17:23, then 17:17, then 17:07: the
+     offsets stay put and the wall-clock times walk, about ten minutes a week.
+     That is the case a weekday-and-time scheduler cannot state at all, so the
+     list states it — and the first run is a SUNDAY, because erev Yom Kippur
+     falls on Sun 20 Sep 2026 and the anchor's candidate_dates() yields festival
+     eves as well as Fridays. Step 1 claimed that; this is where it is paid off,
+     with a date rather than a sentence.
+
+     EVERY DATE AND TIME HERE IS COMPUTED, NOT INVENTED. `now` is Friday 18
+     September 2026, early evening. Hebrew dates come from the fixed arithmetic
+     calendar, sunsets from NOAA at an Israeli coastal latitude, candle lighting
+     at sunset minus 18 minutes and havdalah at plus 50.
+
+     THE HORIZON IS PRINTED. D13: a resolver declares UNBOUNDED, UNTIL(date) or
+     NEXT_ONLY. Candle lighting is pure hdate computation with no network, so
+     it is unbounded and the footer says so plainly rather than implying it by
+     silence — the blinds card in screen 17 has the opposite case, a list that
+     genuinely runs out, and the two footers have to be readable against each
+     other. */
+
+  .kicker { font-size: 12.5px; color: var(--al-text-2); }
+  .sumrow { display: flex; gap: 10px; align-items: baseline; font-size: 13.5px;
+            padding: 5px 0; }
+  .sumrow__t { flex: 0 0 84px; font-weight: 600; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+  <main class="ha-main">
+    <div class="lv-bar">
+      <div class="lv-bar__title only-wide">Home</div>
+      <div class="lv-tabs">
+        <a class="lv-tab" href="#"><svg class="ic"><use href="#i-home"></use></svg></a>
+        <a class="lv-tab" href="#" data-on>Sanctuary</a>
+        <a class="lv-tab" href="#">Social hall</a>
+        <a class="lv-tab" href="#">Climate</a>
+      </div>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-search"></use></svg></button>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-pencil"></use></svg></button>
+    </div>
+    <div class="lv-view">
+      <div class="lv-cols" style="grid-template-columns:repeat(auto-fill,minmax(300px,340px))">
+        <div class="lv-col">
+          <section class="card"><div class="card__header">
+            <svg class="ic"><use href="#i-timeline"></use></svg>Sanctuary schedules</div>
+            <div class="card__body"><span class="dim small">&hellip;</span></div></section>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="dlg-scrim">
+  <div class="dlg dlg--wide">
+
+    <div class="dlg__head">
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-close"></use></svg></button>
+      <span>New schedule &mdash; Sanctuary &mdash; candle lighting</span>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-code"></use></svg></button>
+    </div>
+
+    <div class="dlg__body dlg__body--flush">
+      <div class="wiz">
+
+        <div class="wiz__rail">
+          <div class="wstep" data-done>
+            <span class="wstep__n"><svg class="ic ic--sm"><use href="#i-check"></use></svg></span>
+            <span>Name and first stage<span class="wstep__s">60 min before, 17:23</span></span>
+          </div>
+          <div class="wstep" data-done>
+            <span class="wstep__n"><svg class="ic ic--sm"><use href="#i-check"></use></svg></span>
+            <span>What happens then<span class="wstep__s">2 units</span></span>
+          </div>
+          <div class="wstep" data-done>
+            <span class="wstep__n"><svg class="ic ic--sm"><use href="#i-check"></use></svg></span>
+            <span>A second stage<span class="wstep__s">4 lights, 2 units</span></span>
+          </div>
+          <div class="wstep" data-on>
+            <span class="wstep__n">4</span>
+            <span>Check and save<span class="wstep__s">the next few runs</span></span>
+          </div>
+        </div>
+
+        <div class="wiz__main">
+
+          <div class="sect-title">First run &mdash; Sunday 20 September</div>
+          <div class="evstrip" style="margin-bottom:16px">
+            <div class="ev ev--on"><b>17:23</b>Stage 1<br>
+              <span class="dim">2 units on, cool 24&deg;C</span></div>
+            <div class="ev ev--on"><b>18:18</b>Stage 2<br>
+              <span class="dim">4 lights on, 22&deg;C quiet</span></div>
+            <div class="ev ev--anchor"><b>18:23</b>Candle lighting<br>
+              <span class="dim">erev Yom Kippur</span></div>
+            <div class="ev ev--anchor"><b>Mon 19:30</b>Havdalah<br>
+              <span class="dim">nothing scheduled</span></div>
+          </div>
+
+          <div class="sect-title">Then</div>
+          <div class="stack stack--sm" style="margin-bottom:6px">
+            <div class="sumrow"><span class="sumrow__t">Fri 25 Sep</span>
+              <span>17:17 and 18:12 &mdash; candle lighting 18:17</span></div>
+            <div class="sumrow"><span class="sumrow__t">Fri 2 Oct</span>
+              <span>17:07 and 18:02 &mdash; candle lighting 18:07</span></div>
+            <div class="sumrow"><span class="sumrow__t">Fri 9 Oct</span>
+              <span>16:58 and 17:53 &mdash; candle lighting 17:58</span></div>
+          </div>
+          <div class="kicker" style="margin-bottom:16px">The times walk because the
+            offsets do not. Both stages keep their distance from candle lighting.</div>
+
+          <div class="hr"></div>
+
+          <div class="row row--wrap" style="margin-bottom:14px">
+            <span class="field__label" style="margin:0">Tag</span>
+            <span class="tag tag--on">sanctuary</span>
+            <button class="btn btn--text btn--sm">
+              <svg class="ic ic--sm"><use href="#i-plus"></use></svg>Add tag</button>
+            <span class="spacer"></span>
+            <span class="small dim">appears on the <b>Sanctuary schedules</b> card</span>
+          </div>
+
+          <div class="nudge">
+            <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+            <div><b>Candle lighting is known for any date.</b> It is computed on this
+              machine from the Hebrew calendar &mdash; no network, no list that runs out
+              &mdash; so this schedule has no end date and the list above can be extended
+              as far as you care to look.</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="dlg__foot">
+      <a class="btn btn--text btn--sm" href="15-new-shabbat-3.html">Back</a>
+      <a class="btn btn--text btn--sm" href="08-dry-run.html">Try it now</a>
+      <span class="spacer"></span>
+      <span class="small dim" style="margin-right:10px">Step 4 of 4</span>
+      <button class="btn btn--text btn--sm">Cancel</button>
+      <button class="btn btn--sm">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>15d &middot; New schedule 4/4 &mdash; check and save</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

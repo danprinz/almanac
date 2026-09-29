@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · New schedule 3/4</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* Requested set 3, step 3 of 4: the second stage — five minutes before
+     candle lighting, light switches on and the ACs moved to a different
+     temperature and fan speed.
+
+     THE SECOND STAGE IS A SECOND RULE, NOT A SECOND SCHEDULE. Same name, same
+     switch, same tag, one row on the card. D2's schedule-holds-rules shape is
+     what makes that possible, and it is the whole reason this request is one
+     wizard rather than two.
+
+     BOTH STAGES HANG OFF THE SAME ANCHOR. 17:23 and 18:18 are not two clock
+     times that happen to be near each other — they are candle lighting minus
+     60 and minus 5, and candle lighting moves by about ten minutes a week.
+     Writing them as offsets means the gap survives the year; writing them as
+     clock times means re-editing both every Friday. The offsets are what the
+     form stores, and the clock times beside them are derived for today only,
+     which is what the grey "for today" note says.
+
+     WHAT `At` DOES NOT DO. An `At` rule sets and leaves. If the point is that
+     the sanctuary stays at 22°C until havdalah, that is a `During` rule with a
+     desired state reconciled by async_reproduce_state (D28) and an on_exit —
+     a different shape, not a knob on this one. The offer at the foot of the
+     screen converts stage 2 into it, and is refusable, because "set it and let
+     people fiddle" is a legitimate choice in a room full of people. */
+
+  .kicker { font-size: 12.5px; color: var(--al-text-2); }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+  <main class="ha-main">
+    <div class="lv-bar">
+      <div class="lv-bar__title only-wide">Home</div>
+      <div class="lv-tabs">
+        <a class="lv-tab" href="#"><svg class="ic"><use href="#i-home"></use></svg></a>
+        <a class="lv-tab" href="#" data-on>Sanctuary</a>
+        <a class="lv-tab" href="#">Social hall</a>
+        <a class="lv-tab" href="#">Climate</a>
+      </div>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-search"></use></svg></button>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-pencil"></use></svg></button>
+    </div>
+    <div class="lv-view">
+      <div class="lv-cols" style="grid-template-columns:repeat(auto-fill,minmax(300px,340px))">
+        <div class="lv-col">
+          <section class="card"><div class="card__header">
+            <svg class="ic"><use href="#i-timeline"></use></svg>Sanctuary schedules</div>
+            <div class="card__body"><span class="dim small">&hellip;</span></div></section>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="dlg-scrim">
+  <div class="dlg dlg--wide">
+
+    <div class="dlg__head">
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-close"></use></svg></button>
+      <span>New schedule &mdash; Sanctuary &mdash; candle lighting</span>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-code"></use></svg></button>
+    </div>
+
+    <div class="dlg__body dlg__body--flush">
+      <div class="wiz">
+
+        <div class="wiz__rail">
+          <div class="wstep" data-done>
+            <span class="wstep__n"><svg class="ic ic--sm"><use href="#i-check"></use></svg></span>
+            <span>Name and first stage<span class="wstep__s">60 min before, 17:23</span></span>
+          </div>
+          <div class="wstep" data-done>
+            <span class="wstep__n"><svg class="ic ic--sm"><use href="#i-check"></use></svg></span>
+            <span>What happens then<span class="wstep__s">2 units</span></span>
+          </div>
+          <div class="wstep" data-on>
+            <span class="wstep__n">3</span>
+            <span>A second stage<span class="wstep__s">lights, and a change</span></span>
+          </div>
+          <div class="wstep">
+            <span class="wstep__n">4</span>
+            <span>Check and save<span class="wstep__s">the next few runs</span></span>
+          </div>
+        </div>
+
+        <div class="wiz__main">
+
+          <!-- stage 1, collapsed to a single settled line -->
+          <div class="tstage" style="margin-bottom:12px">
+            <div class="tstage__h">
+              <span class="tstage__t">Stage 1 &mdash; 17:23</span>
+              <span class="small dim">2 units on, cool 24&deg;C</span>
+              <span class="spacer"></span>
+              <button class="btn btn--text btn--sm">Edit</button>
+            </div>
+          </div>
+
+          <div class="tstage tstage--on" style="margin-bottom:14px">
+            <div class="tstage__h">
+              <span class="tstage__t">Stage 2</span>
+              <span class="spacer"></span>
+            </div>
+            <div class="tstage__b">
+              <div class="row row--wrap" style="margin-bottom:6px">
+                <span class="tf" style="width:74px">5</span>
+                <span class="sel">minutes before</span>
+                <span class="sel" style="min-width:186px">Candle lighting</span>
+                <span class="badge badge--neutral">18:18 on Sun 20 Sep</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="sect-title">Do this</div>
+          <div class="stack stack--sm" style="margin-bottom:12px">
+
+            <div class="arow">
+              <div class="arow__h">
+                <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-bulb"></use></svg></span>
+                <span>Sanctuary lights</span>
+                <span class="sel sel--inline">Turn on</span>
+                <span class="small dim">bimah &middot; ark &middot; north &middot; south</span>
+                <span class="spacer"></span>
+                <span class="arow__how">
+                  <span data-on>Set the device</span>
+                  <span>Run a script</span>
+                </span>
+                <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-trash"></use></svg></button>
+              </div>
+            </div>
+
+            <div class="arow">
+              <div class="arow__h">
+                <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg></span>
+                <span>Sanctuary AC &mdash; east</span>
+                <span class="spacer"></span>
+                <span class="arow__how">
+                  <span data-on>Set the device</span>
+                  <span>Run a script</span>
+                </span>
+                <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-trash"></use></svg></button>
+              </div>
+              <div class="arow__b">
+                <div class="row row--wrap">
+                  <span class="sel sel--inline">Cool</span>
+                  <span class="tf" style="width:96px">22&deg;C</span>
+                  <span class="sel sel--inline">Fan: quiet</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="arow">
+              <div class="arow__h">
+                <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-script"></use></svg></span>
+                <span>Sanctuary AC &mdash; west</span>
+                <span class="spacer"></span>
+                <span class="arow__how">
+                  <span>Set the device</span>
+                  <span data-on>Run a script</span>
+                </span>
+                <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-trash"></use></svg></button>
+              </div>
+              <div class="arow__b">
+                <div class="row row--wrap">
+                  <span class="sel" style="min-width:210px">script.ac_west_preset</span>
+                  <span class="sel sel--inline">preset: shabbat_service</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- the shape question, asked once, refusable -->
+          <div class="nudge">
+            <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+            <div><b>Stage 2 sets these and stops there.</b> Nothing puts them back if
+              somebody changes a unit during the service. Holding the room at 22&deg;C
+              until havdalah is a different kind of rule.
+              <div class="row" style="margin-top:8px">
+                <button class="btn btn--out btn--sm">Hold until havdalah instead</button>
+                <button class="btn btn--text btn--sm">Set once is fine</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="dlg__foot">
+      <a class="btn btn--text btn--sm" href="15-new-shabbat-2.html">Back</a>
+      <span class="spacer"></span>
+      <span class="small dim" style="margin-right:10px">Step 3 of 4</span>
+      <button class="btn btn--text btn--sm">Cancel</button>
+      <a class="btn btn--sm" href="15-new-shabbat-4.html">Next</a>
+    </div>
+  </div>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>15c &middot; New schedule 3/4 &mdash; the second stage</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,176 @@
+/* ==========================================================================
+   Home Assistant theme tokens — copied from source, not from memory.
+
+   Source:  home-assistant/frontend
+   Commit:  d8effd44b2bced4479112fef0ce5a60291d9cbd3
+   Dated:   2026-09-24T11:38:09+01:00
+            ("Wrap refresh token supporting text on narrow screens (#54338)")
+   Read:    2026-09-24
+
+   Every value below carries the path:line it came from. Per CLAUDE.md's
+   source-integrity rule, the *structure* (token names, which file defines
+   what, presence/absence) is the reliable part; the hex literals are pinned
+   to the sha above so a reader can check them independently.
+
+   HOW HA ACTUALLY DOES THIS, and why this file is a stand-in
+   ----------------------------------------------------------
+   Dark mode in HA is NOT a `prefers-color-scheme` media query. The dark
+   values are extracted into a JS object (`darkColorVariables`,
+   src/resources/theme/color/index.ts:13-16) and written onto the root with
+   `element.style.setProperty` by
+   src/common/dom/apply_themes_on_element.ts. A `:root[data-theme="dark"]`
+   block is a faithful *result* but not a faithful *mechanism*. Since the
+   real panel and card consume `hass.themes` and inherit whatever the user's
+   theme sets, this difference does not affect the design — only this
+   prototype's plumbing.
+
+   THREE TOKEN LAYERS, verified — target the first one
+   ---------------------------------------------------
+   1. Classic flat tokens (--primary-color, --card-background-color, ...)
+      in src/resources/theme/color/color.globals.ts. This is the real
+      theming API: it is what a user's theme YAML sets and what almost all
+      component CSS reads. almanac should consume these.
+   2. @material/web tokens (--md-sys-color-*) back a few newer components
+      (ha-md-list, ha-assist-chip, ha-filter-chip). Each component remaps
+      them locally from the classic tokens, so MD3's palette is not the
+      theme surface.
+   3. @home-assistant/webawesome tokens (--wa-*) back ha-dialog, ha-input
+      and others, remapped from the classic tokens in
+      src/resources/theme/wa.globals.ts.
+   ========================================================================== */
+
+:root,
+:root[data-theme="light"] {
+
+  /* --- text -------------------------------------------------------------
+     color.globals.ts:7-8 resolve through semantic.globals.ts:13-14 to the
+     neutral ramp in color/core.globals.ts:31,35 */
+  --primary-text-color:    #141414;          /* --ha-color-neutral-05 */
+  --secondary-text-color:  #5e5e5e;          /* --ha-color-neutral-40 */
+  --disabled-text-color:   #bdbdbd;          /* color.globals.ts:10 */
+  --text-primary-color:    #ffffff;          /* color.globals.ts:9 */
+
+  /* --- main interface ---------------------------------------------------- */
+  --primary-color:         #009ac7;          /* --ha-color-primary-40,
+                                                color/core.globals.ts:22 */
+  --accent-color:          #ff9800;          /* color.globals.ts:19 */
+  --divider-color:         rgba(0, 0, 0, 0.12);   /* color.globals.ts:20 */
+  --outline-color:         rgba(0, 0, 0, 0.12);   /* color.globals.ts:21 */
+  --shadow-color:          rgba(0, 0, 0, 0.16);   /* color.globals.ts:23 */
+
+  /* --- status ------------------------------------------------------------ */
+  --error-color:           #db4437;          /* color.globals.ts:39 */
+  --warning-color:         #ffa600;          /* color.globals.ts:40 */
+  --success-color:         #43a047;          /* color.globals.ts:41 */
+  --info-color:            #039be5;          /* color.globals.ts:42 */
+
+  /* --- backgrounds ------------------------------------------------------- */
+  --card-background-color:      #ffffff;     /* color.globals.ts:45 */
+  --primary-background-color:   #fafafa;     /* color.globals.ts:46 */
+  --secondary-background-color: #e5e5e5;     /* color.globals.ts:47 */
+  --clear-background-color:     #ffffff;     /* color.globals.ts:48 */
+
+  /* --- state icons -------------------------------------------------------
+     NOTE: --state-icon-active-color does NOT exist in this tree. It is a
+     legacy token. The live ones are --state-active-color (color.globals.ts
+     :175) and the per-domain --state-<domain>-<state>-color family. */
+  --state-icon-color:           #44739e;     /* color.globals.ts:55 */
+  --state-active-color:         #ffc107;     /* --amber-color, :84 / :175 */
+  --state-light-active-color:   #ffc107;     /* color.globals.ts:217 */
+  --state-climate-heat-color:   #ff6f22;     /* --deep-orange-color, :86 / :208 */
+
+  /* --- sidebar & header --------------------------------------------------
+     All four are derived, not literal — color.globals.ts:266-270,297-298. */
+  --sidebar-background-color:     #ffffff;         /* = --card-background-color */
+  --sidebar-text-color:           #141414;         /* = --primary-text-color */
+  --sidebar-selected-icon-color:  #009ac7;         /* = --primary-color */
+  --sidebar-icon-color:           rgba(33, 33, 33, 0.6);
+  /* ^ color.globals.ts:270 = rgba(var(--rgb-primary-text-color), 0.6), and
+     --rgb-primary-text-color is `33, 33, 33` at color.globals.ts:28.
+     Upstream inconsistency worth noting: the hex moved to #141414 = rgb(20,
+     20, 20) but the rgb companion still says 33,33,33. Harmless, but it
+     means the two are not interchangeable. */
+  --app-header-background-color:  #ffffff;         /* :298 = sidebar bg */
+  --app-header-text-color:        #141414;         /* :297 = sidebar text */
+
+  /* --- metrics -----------------------------------------------------------
+     Sidebar: 256px expanded / 56px collapsed —
+       src/layouts/home-assistant-main.ts:165,171
+       src/components/ha-sidebar.ts:693,704-708
+     Header height 56px — src/resources/theme/main.globals.ts:9
+     Card radius 12px — --ha-border-radius-lg, theme/core.globals.ts:12 */
+  --mdc-drawer-width:  256px;
+  --header-height:     56px;
+
+  /* --- ha-card defaults, src/components/ha-card.ts:10-37 -----------------
+     background: var(--ha-card-background, var(--card-background-color))
+     border-radius: var(--ha-card-border-radius, var(--ha-border-radius-lg))
+     border: 1px solid var(--ha-card-border-color, var(--divider-color))
+     box-shadow: NONE by default — only :host([raised]) gets one. */
+  --ha-card-border-radius: 12px;
+  --ha-card-border-width:  1px;
+  --ha-card-border-color:  rgba(0, 0, 0, 0.12);
+  --ha-card-box-shadow:    none;
+
+  /* --- type --------------------------------------------------------------
+     Roboto is self-hosted as woff2 (src/resources/roboto.ts), not pulled
+     from the Google Fonts CDN. This prototype therefore falls back to the
+     system sans rather than claiming a webfont it does not ship. */
+  --ha-font-family-body: Roboto, Noto, sans-serif;
+}
+
+/* ==========================================================================
+   Dark. Values from `darkColorStyles`,
+   src/resources/theme/color/color.globals.ts:341-403.
+   ========================================================================== */
+
+:root[data-theme="dark"] {
+  --primary-background-color:   #111111;     /* :343 */
+  --card-background-color:      #1c1c1c;     /* :344 */
+  --secondary-background-color: #282828;     /* :345 */
+  --clear-background-color:     #111111;     /* :346 */
+  --primary-text-color:         #e1e1e1;     /* :347 */
+  --secondary-text-color:       #9b9b9b;     /* :348 */
+  --disabled-text-color:        #6f6f6f;     /* :349 */
+  --divider-color:              rgba(225, 225, 225, 0.12);  /* :350 */
+  --outline-color:              rgba(225, 225, 225, 0.12);  /* :351 */
+  --shadow-color:               rgba(0, 0, 0, 0.48);        /* :353 */
+
+  /* Derived tokens follow their sources. --sidebar-icon-color is
+     rgba(var(--rgb-primary-text-color), 0.6); --rgb-primary-text-color has
+     no literal dark override, but apply_themes_on_element.ts:176-192 derives
+     an --rgb-<key> for every hex-valued key in the applied theme object, and
+     --primary-text-color: #e1e1e1 is such a key. So it becomes 225,225,225
+     at runtime. Reproduced here rather than inheriting the light value,
+     which would render near-black icons on a near-black sidebar. */
+  --sidebar-background-color:    #1c1c1c;
+  --sidebar-text-color:          #e1e1e1;
+  --sidebar-icon-color:          rgba(225, 225, 225, 0.6);
+  --app-header-background-color: #1c1c1c;
+  --app-header-text-color:       #e1e1e1;
+
+  --ha-card-border-color: rgba(225, 225, 225, 0.12);
+
+  /* Unchanged in dark — darkColorStyles overrides none of these:
+     --primary-color, --accent-color, --error/warning/success/info-color,
+     --state-icon-color, --state-active-color. Verified by their absence
+     from the :341-403 block. */
+}
+
+/* --------------------------------------------------------------------------
+   AMBIGUITY, recorded rather than smoothed over
+   --------------------------------------------------------------------------
+   Two sources set the dark text colour and they do not agree:
+
+     darkColorStyles           --primary-text-color: #e1e1e1   (:347)
+     darkSemanticColorStyles   --ha-color-text-primary: var(--white-color)
+                               = #ffffff  (semantic.globals.ts:185)
+
+   and --primary-text-color is itself defined as var(--ha-color-text-primary)
+   in the light block (:7), so it is also a *derived* var that would
+   re-resolve to #ffffff. Which wins depends on the merge order inside
+   `darkColorVariables` (color/index.ts:13-16) and on how extractDerivedVars
+   re-evaluates. This prototype uses #e1e1e1 — the direct, unambiguous
+   assignment to the token actually being consumed. The visual difference is
+   negligible; the point is that it was checked, not assumed.
+   -------------------------------------------------------------------------- */

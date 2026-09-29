@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Run it forward</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* D64 is what makes this screen possible at all: nothing under the tick
+     reads a clock, so `now` is just a parameter. The dry run is the live
+     engine with a different `now` and the writes discarded — not a second
+     implementation that can drift from it. That is worth saying on screen,
+     because it is the reason to trust the answer. */
+
+  .res { border-top: 1px solid var(--al-divider); display: flex; gap: 12px;
+         padding: 9px 16px; align-items: flex-start; }
+  .res:first-child { border-top: 0; }
+  .res__t { flex: 0 0 132px; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .res__t small { display: block; color: var(--al-text-2); font-size: 11.5px; }
+  .res__b { flex: 1 1 auto; min-width: 0; font-size: 13.5px; }
+  .res__s { font-size: 12.5px; color: var(--al-text-2); }
+
+  .empty { text-align: center; padding: 26px 16px; }
+  .empty__n { font-size: 42px; font-weight: 200; line-height: 1; color: var(--al-warn); }
+
+  /* The controls are a sentence, because there are only three of them and a
+     sentence says how they relate. Three labelled dropdowns would not. */
+  @media (max-width: 870px) { .cols { grid-template-columns: minmax(0,1fr); } }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <header class="ha-header">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="ha-header__title">Run it forward</div>
+      <span class="badge badge--neutral">nothing is switched on</span>
+      <div class="spacer"></div>
+      <a class="btn btn--text btn--sm" href="02-rule-editor.html">Back to the rule</a>
+    </header>
+
+    <div class="ha-content ha-content--wide">
+
+      <section class="card" style="margin-bottom:var(--al-gap)">
+        <div class="card__body">
+          <div class="sentence">
+            Take <span class="sel sel--inline">Shabbat &mdash; sanctuary</span>,
+            pretend it is <span class="sel sel--inline">Fri 25 Sep, 14:00</span>,
+            and run <span class="sel sel--inline">30 days</span> forward.
+            Treat conditions as <span class="sel sel--inline">whatever they are now</span>.
+          </div>
+          <div class="row" style="margin-top:6px">
+            <!-- The design is silent on how a dry run evaluates conditions.
+                 Three answers are defensible and they give different results,
+                 so the choice is exposed rather than guessed. Invented; see
+                 FINDINGS.md, "What I had to invent". -->
+            <span class="small dim">Conditions can be taken as they are now, assumed met, or
+              set by hand. Times are computed, never guessed.</span>
+            <span class="spacer"></span>
+            <button class="btn"><svg class="ic ic--sm"><use href="#i-play"></use></svg>Run</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="cols">
+
+        <!-- ============ the result ============ -->
+        <section class="card" style="border-left:3px solid var(--al-warn)">
+          <div class="card__header">
+            <svg class="ic ic--lg" style="color:var(--al-warn)"><use href="#i-alert"></use></svg>
+            Result
+            <span class="sub">25 Sep &rarr; 25 Oct</span>
+          </div>
+
+          <div class="empty">
+            <div class="empty__n">0</div>
+            <p style="margin:10px 0 4px;font-size:16px">This rule never runs.</p>
+            <p class="dim small" style="margin:0 auto;max-width:44ch">
+              Not once in 30 days. It came due 4 times and was thrown away every time.
+            </p>
+          </div>
+
+          <div class="card__body">
+            <div class="sect-title">Why each one was thrown away</div>
+            <div class="stack stack--sm">
+              <div class="row row--top">
+                <span class="glyph st-outside">&#8212;</span>
+                <span class="small"><b>Fri 25 Sep, 17:47</b> &mdash; not in <b>Shabbat</b>.
+                  The set begins at candle lighting, 18:32. The rule starts 45 minutes earlier.</span>
+              </div>
+              <div class="row row--top">
+                <span class="glyph st-outside">&#8212;</span>
+                <span class="small"><b>Fri 2 Oct, 17:35</b> &mdash; not in <b>Shabbat</b> (begins 18:20).</span>
+              </div>
+              <div class="row row--top">
+                <span class="glyph st-outside">&#8212;</span>
+                <span class="small"><b>Fri 9 Oct, 17:23</b> &mdash; not in <b>Shabbat</b> (begins 18:08).</span>
+              </div>
+              <div class="row row--top">
+                <span class="glyph st-outside">&#8212;</span>
+                <span class="small"><b>Fri 16 Oct, 17:11</b> &mdash; not in <b>Shabbat</b> (begins 17:56).</span>
+              </div>
+            </div>
+
+            <div class="nudge">
+              <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+              <div>The day set decides <b>whether</b>, the rule decides <b>when</b>, and here they
+                disagree by 45 minutes &mdash; every week, by exactly the amount of the shift.</div>
+            </div>
+          </div>
+
+          <div class="card__footer">
+            <button class="btn btn--sm">Let the shift reach back</button>
+            <button class="btn btn--out btn--sm">Use <b>Fridays</b> instead</button>
+            <span class="spacer"></span>
+            <button class="btn btn--text btn--sm">Copy this</button>
+          </div>
+        </section>
+
+        <!-- ============ the same run, after the fix ============ -->
+        <div class="stack">
+          <section class="card">
+            <div class="card__header">If you take the first fix
+              <span class="sub">the shift reaches back past the set's edge</span>
+            </div>
+            <div class="card__body--flush">
+              <div class="res">
+                <div class="res__t">Fri 25 Sep<small>17:47 &rarr; Sat 20:08</small></div>
+                <div class="res__b">runs for <b>26h 21m</b>
+                  <div class="res__s">lights on 80%, heat 22&deg;C &middot; 2 announcements</div>
+                </div>
+              </div>
+              <div class="res">
+                <div class="res__t">Fri 2 Oct<small>17:35 &rarr; Sat 19:56</small></div>
+                <div class="res__b">runs for <b>26h 21m</b>
+                  <div class="res__s">same</div>
+                </div>
+              </div>
+              <div class="res">
+                <div class="res__t">Fri 9 Oct<small>17:23 &rarr; Sat 19:44</small></div>
+                <div class="res__b">runs for <b>26h 21m</b><div class="res__s">same</div></div>
+              </div>
+              <div class="res">
+                <div class="res__t">Fri 16 Oct<small>17:11 &rarr; Sat 19:32</small></div>
+                <div class="res__b">runs for <b>26h 21m</b><div class="res__s">same</div></div>
+              </div>
+              <div class="res">
+                <div class="res__t">Fri 23 Oct<small>17:00 &rarr; Sat 19:21</small></div>
+                <div class="res__b">runs for <b>26h 21m</b><div class="res__s">same</div></div>
+              </div>
+            </div>
+            <div class="card__footer">
+              <span class="small dim">5 times in 30 days, every one on a Friday.</span>
+              <span class="spacer"></span>
+              <a class="btn btn--text btn--sm" href="01-timeline.html">See it on the timeline</a>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card__body">
+              <div class="row row--top">
+                <svg class="ic ic--sm dim"><use href="#i-info"></use></svg>
+                <span class="small dim">This is the scheduler itself, given a different
+                  clock and told to discard its writes. It is not a separate simulator, so
+                  it cannot disagree with what actually happens.</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>08 &middot; Dry run</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

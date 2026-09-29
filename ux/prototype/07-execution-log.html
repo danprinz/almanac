@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Log</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* Scenario E. Three failures that look the same from the outside and are
+     completely different underneath:
+       skipped  — the engine decided not to act, and knows why (D26, D49)
+       dropped  — the engine chose not to call a script already running (D31)
+       failed   — the call was made and the device did not do it
+     The screen's job is to never let them be confused. Colour alone will not
+     do it, so each carries its own glyph and its own verb. */
+
+  .ev { border-top: 1px solid var(--al-divider); }
+  .ev:first-child { border-top: 0; }
+  .ev__head { display: flex; align-items: center; gap: 12px; padding: 11px 16px; min-width: 0; }
+  .ev__t { flex: 0 0 60px; font-size: 13px; color: var(--al-text-2); font-variant-numeric: tabular-nums; }
+  .ev__n { flex: 1 1 auto; min-width: 0; }
+  .ev__title { font-size: 14px; }
+  .ev__sub { font-size: 12.5px; color: var(--al-text-2); }
+  .ev--open { background: var(--al-surface-2); }
+  .ev__body { padding: 2px 16px 16px 88px; }
+
+  /* The evaluation, step by step, in the order the engine took them.
+     This is the "why didn't it fire" answer: not a message, a trace. */
+  .trace { position: relative; padding-left: 26px; }
+  .trace::before { content: ""; position: absolute; left: 8px; top: 10px; bottom: 10px;
+                   width: 1px; background: var(--al-divider); }
+  .tstep { position: relative; padding: 6px 0; font-size: 13.5px; }
+  .tstep__m { position: absolute; left: -26px; top: 7px; width: 17px; height: 17px;
+              border-radius: 50%; display: flex; align-items: center; justify-content: center;
+              font-size: 9px; font-weight: 700; background: var(--al-surface);
+              border: 1px solid var(--al-divider); color: var(--al-text-3); }
+  .tstep--ok   .tstep__m { background: var(--al-tint-ok);  color: var(--al-ok);  border-color: transparent; }
+  .tstep--no   .tstep__m { background: var(--al-tint-warn);color: var(--al-warn);border-color: transparent; }
+  .tstep--err  .tstep__m { background: var(--al-tint-err); color: var(--al-err); border-color: transparent; }
+  .tstep__s { font-size: 12.5px; color: var(--al-text-2); }
+  .tstep--no  .tstep__t { color: var(--al-warn); font-weight: 500; }
+  .tstep--err .tstep__t { color: var(--al-err);  font-weight: 500; }
+
+  .notrun { border: 1px dashed var(--al-divider); border-radius: var(--al-radius-sm);
+            padding: 10px 12px; margin-top: 10px; font-size: 13px; }
+  .notrun .hd { font-size: 12px; color: var(--al-text-2); margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <header class="ha-header">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="ha-header__title">Almanac</div>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-search"></use></svg></button>
+    </header>
+
+    <div class="ha-tabs">
+      <a class="ha-tab" href="01-timeline.html">Timeline</a>
+      <a class="ha-tab" href="05-schedule-list.html">Schedules</a>
+      <a class="ha-tab" href="06-dayset-editor.html">Day sets</a>
+      <a class="ha-tab" href="07-execution-log.html" data-on>Log</a>
+    </div>
+
+    <div class="ha-content ha-content--wide">
+
+      <div class="row row--wrap" style="margin-bottom:var(--al-gap)">
+        <span class="chip" data-on>Everything</span>
+        <span class="chip">Didn't happen 3</span>
+        <span class="chip">Failed 1</span>
+        <span class="spacer"></span>
+        <span class="sel" style="height:30px;font-size:13px">Last 7 days</span>
+        <button class="btn btn--out btn--sm"><svg class="ic ic--sm"><use href="#i-copy"></use></svg>Copy for a bug report</button>
+      </div>
+
+      <!-- The log can only show occurrences that were GENERATED. A rule whose
+           days never cover its start produces none at all, so it is invisible
+           here — which is exactly when someone comes looking. Hence the line. -->
+      <div class="alert alert--info" style="margin-bottom:var(--al-gap)">
+        <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+        <div>Looking for a rule that isn't here at all? Nothing is logged for a rule
+          that never came due. <a href="08-dry-run.html">Run it forward</a> to see whether
+          it ever does.</div>
+      </div>
+
+      <section class="card">
+        <div class="card__header">Friday 18 September
+          <span class="sub">7 occurrences &middot; 3 did not do what was asked</span>
+        </div>
+        <div class="card__body--flush">
+
+          <!-- ============ 1. skipped: the engine decided not to ============ -->
+          <div class="ev ev--open">
+            <div class="ev__head">
+              <span class="ev__t">15:30</span>
+              <span class="glyph st-skipped">!</span>
+              <div class="ev__n">
+                <div class="ev__title"><b>Kiddush setup</b> &mdash; <span style="color:var(--al-warn)">skipped</span></div>
+                <div class="ev__sub">nothing ran, and nothing was wrong</div>
+              </div>
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-chevd"></use></svg></button>
+            </div>
+
+            <div class="ev__body">
+              <div class="trace">
+                <div class="tstep tstep--ok">
+                  <span class="tstep__m">&#10003;</span>
+                  <div class="tstep__t">Came due at 15:30</div>
+                  <div class="tstep__s">a time of day &middot; no shift</div>
+                </div>
+                <div class="tstep tstep--ok">
+                  <span class="tstep__m">&#10003;</span>
+                  <div class="tstep__t">18 September is in <b>Fridays</b></div>
+                </div>
+                <div class="tstep tstep--no">
+                  <span class="tstep__m">&times;</span>
+                  <!-- D49 requires the blocking condition's label in the payload.
+                       This line is why D24's label must never be empty: without
+                       it this reads "binary_sensor.cleaner_present was on". -->
+                  <div class="tstep__t">&ldquo;cleaning crew present&rdquo; was true</div>
+                  <div class="tstep__s">binary_sensor.cleaner_present was <b>on</b> from 14:58 to 17:20</div>
+                </div>
+                <div class="tstep tstep--no">
+                  <span class="tstep__m">&#8212;</span>
+                  <div class="tstep__t">Set to skip the day when that happens</div>
+                  <div class="tstep__s">the other choice is to wait for a deadline
+                    &middot; <a href="02-rule-editor.html">change it</a></div>
+                </div>
+              </div>
+
+              <div class="notrun">
+                <div class="hd">What would have run</div>
+                <div class="row row--top" style="padding:2px 0">
+                  <svg class="ic ic--sm dim"><use href="#i-bulb"></use></svg>
+                  <span>Social hall lights &rarr; on</span>
+                </div>
+                <div class="row row--top" style="padding:2px 0">
+                  <svg class="ic ic--sm dim"><use href="#i-script"></use></svg>
+                  <span>script.kiddush_prep</span>
+                </div>
+              </div>
+
+              <div class="row" style="margin-top:12px">
+                <button class="btn btn--out btn--sm"><svg class="ic ic--sm"><use href="#i-play"></use></svg>Run it now</button>
+                <button class="btn btn--text btn--sm">Show the raw event</button>
+                <span class="spacer"></span>
+                <span class="small dim">3rd Friday in a row</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============ 2. failed: the call was made ============ -->
+          <div class="ev">
+            <div class="ev__head">
+              <span class="ev__t">16:00</span>
+              <span class="glyph st-failed">&times;</span>
+              <div class="ev__n">
+                <div class="ev__title"><b>Boiler &mdash; Shabbat mode</b> &mdash;
+                  started, <span style="color:var(--al-err)">1 of 2 things failed</span></div>
+                <div class="ev__sub"><b>water_heater.kitchen</b> did not respond within 10s &middot;
+                  the other 1 was set</div>
+              </div>
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-chevr"></use></svg></button>
+            </div>
+          </div>
+
+          <!-- ============ 3. dropped: almanac chose not to call ============ -->
+          <div class="ev ev--open">
+            <div class="ev__head">
+              <span class="ev__t">17:47</span>
+              <span class="glyph st-fired">&#10003;</span>
+              <div class="ev__n">
+                <div class="ev__title"><b>Shabbat &mdash; sanctuary</b> &mdash; started</div>
+                <div class="ev__sub"><span style="color:var(--al-warn)">1 announcement was not made</span>
+                  &middot; everything else was set</div>
+              </div>
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-chevd"></use></svg></button>
+            </div>
+
+            <div class="ev__body">
+              <div class="trace">
+                <div class="tstep tstep--ok">
+                  <span class="tstep__m">&#10003;</span>
+                  <div class="tstep__t">Sanctuary lights &rarr; on, 80%</div>
+                </div>
+                <div class="tstep tstep--ok">
+                  <span class="tstep__m">&#10003;</span>
+                  <div class="tstep__t">Sanctuary climate &rarr; heat, 22&deg;C</div>
+                </div>
+                <div class="tstep tstep--no">
+                  <span class="tstep__m">&#8212;</span>
+                  <!-- D31: almanac pre-flights the script because a `single`
+                       script that is already running logs and returns without
+                       raising. Naming the holder is a proposal against D49 —
+                       without it this is a dead end. See FINDINGS.md. -->
+                  <div class="tstep__t">&ldquo;Shabbat begins&rdquo; was not announced</div>
+                  <div class="tstep__s"><b>script.pa_announce</b> was already running, started 17:46
+                    by <b>Evening PA &mdash; announcements</b>. It only runs one at a time, so almanac
+                    did not start a second one.</div>
+                  <div class="row" style="margin-top:6px">
+                    <button class="btn btn--out btn--sm">Announce it now</button>
+                    <button class="btn btn--text btn--sm">Let it queue instead</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ev">
+            <div class="ev__head">
+              <span class="ev__t">18:32</span>
+              <span class="glyph st-fired">&#10003;</span>
+              <div class="ev__n">
+                <div class="ev__title"><b>Ner tamid check</b> &mdash; notified</div>
+                <div class="ev__sub">at 20m before candle lighting</div>
+              </div>
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-chevr"></use></svg></button>
+            </div>
+          </div>
+
+          <div class="ev">
+            <div class="ev__head">
+              <span class="ev__t">19:32</span>
+              <span class="glyph st-outside">&#8212;</span>
+              <div class="ev__n">
+                <div class="ev__title"><b>Evening PA</b> &mdash; outside the days</div>
+                <div class="ev__sub">came due, but 18 September is not in <b>Weekdays after dark</b></div>
+              </div>
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-chevr"></use></svg></button>
+            </div>
+          </div>
+
+        </div>
+        <div class="card__footer">
+          <span class="small dim">Kept for 10 days, the same as everything else in your
+            recorder. <a href="#">Longer?</a></span>
+          <span class="spacer"></span>
+          <button class="btn btn--text btn--sm">Thursday 17 September</button>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>07 &middot; Execution log</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

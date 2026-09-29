@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · More info</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* D62 — the more-info entry point.
+     VERIFIED, and it changes what this screen can be. In
+     src/dialogs/more-info/state_more_info_control.ts the per-domain control
+     map is a closed object literal of core domains, and domainMoreInfoType()
+     returns "default" for anything else. There is no registration hook, so a
+     custom `almanac` domain gets the plain attributes-and-history dialog.
+
+     BUT more-info-content.ts checks the entity's attributes FIRST and, if one
+     of them names a custom element, renders that element instead of the
+     domain control. almanac already ships an always-loaded bundle (D70), so
+     it can register one. That attribute is the entry point — nothing else is.
+     Both files at sha d8effd44b2bced4479112fef0ce5a60291d9cbd3. The attribute
+     key is spelled out in FINDINGS.md with the same sha beside it, because
+     verbatim third-party identifiers are the one thing this environment's
+     read layer can alter.
+
+     Consequence for the design: almanac owns the BODY of this dialog and
+     nothing around it. The header, the cog, the history and logbook tabs and
+     the related tab are HA's, and the related tab cannot list almanac's
+     schedules because ItemType is a closed enum. */
+
+  .mi { max-width: 580px; }
+  .mi__state { text-align: center; padding: 12px 16px 4px; }
+  .mi__big { font-size: 26px; font-weight: 300; }
+  .mi__sub { font-size: 13.5px; color: var(--al-text-2); margin-top: 2px; }
+  .mi__ring { width: 64px; height: 64px; border-radius: 50%; margin: 0 auto 12px;
+              display: flex; align-items: center; justify-content: center;
+              background: var(--al-tint-accent); color: var(--al-accent); }
+  .mi__tabs { display: flex; gap: 0; border-bottom: 1px solid var(--al-divider);
+              padding: 0 8px; }
+  .mi__tab { padding: 11px 14px; font-size: 13.5px; color: var(--al-text-2);
+             border-bottom: 2px solid transparent; }
+  .mi__tab[data-on] { color: var(--al-accent); border-bottom-color: var(--al-accent); }
+  .mine { border: 1px dashed color-mix(in srgb, var(--al-accent) 45%, transparent);
+          border-radius: var(--al-radius-sm); }
+  .mine__tag { font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase;
+               color: var(--al-accent); padding: 6px 12px 0; }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+  <main class="ha-main">
+    <header class="ha-header">
+      <div class="ha-header__title">Home</div>
+    </header>
+    <div class="ha-content"><section class="card"><div class="card__body">
+      <div class="dim">a dashboard &mdash; the dialog opened from a tile</div></div></section></div>
+  </main>
+</div>
+
+<div class="dlg-scrim">
+  <div class="dlg mi">
+
+    <!-- HA's chrome. almanac does not control any of this. -->
+    <div class="dlg__head">
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-close"></use></svg></button>
+      <div class="spacer"></div>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-cog"></use></svg></button>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-dots"></use></svg></button>
+    </div>
+
+    <div class="dlg__body dlg__body--flush">
+
+      <div class="mi__state">
+        <div class="mi__ring"><svg class="ic" style="width:34px;height:34px"><use href="#i-flame"></use></svg></div>
+        <div class="mi__big">Shabbat &mdash; sanctuary</div>
+        <div class="mi__sub">Running &middot; ends 20:08 tomorrow</div>
+      </div>
+
+      <div class="mi__tabs">
+        <span class="mi__tab" data-on>Info</span>
+        <span class="mi__tab">History</span>
+        <span class="mi__tab">Logbook</span>
+        <span class="mi__tab">Related</span>
+      </div>
+
+      <div style="padding:14px 16px">
+
+        <!-- everything inside the dashed border is almanac's element -->
+        <div class="mine">
+          <div class="mine__tag">almanac</div>
+          <div style="padding:8px 12px 14px">
+
+            <div class="row" style="margin-bottom:10px">
+              <span class="sw" data-on></span>
+              <span class="small">On</span>
+              <span class="spacer"></span>
+              <button class="btn btn--out btn--sm"><svg class="ic ic--sm"><use href="#i-minus"></use></svg>15m</button>
+              <button class="btn btn--out btn--sm"><svg class="ic ic--sm"><use href="#i-plus"></use></svg>15m</button>
+            </div>
+
+            <div class="sect-title">Holding</div>
+            <div class="stack stack--sm">
+              <span class="entity"><span class="entity__ic" data-on><svg class="ic ic--sm"><use href="#i-bulb"></use></svg></span>
+                Sanctuary lights <span class="dim">&mdash; on, 80%</span></span>
+              <span class="entity"><span class="entity__ic" style="color:var(--state-climate-heat-color);background:color-mix(in srgb,var(--state-climate-heat-color) 22%,transparent)"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg></span>
+                Sanctuary climate <span class="dim">&mdash; heat, 22&deg;C</span></span>
+            </div>
+
+            <div class="hr"></div>
+
+            <div class="sect-title">Next</div>
+            <div class="stack stack--sm">
+              <span class="small"><b>Sat 20:08</b> <span class="dim">&mdash; ends, everything back how it was</span></span>
+              <span class="small"><b>Fri 2 Oct 17:35</b> <span class="dim">&mdash; starts again</span></span>
+            </div>
+
+            <div class="row" style="margin-top:14px">
+              <a class="btn btn--out btn--sm" href="01-timeline.html">Timeline</a>
+              <a class="btn btn--out btn--sm" href="02-rule-editor.html">Edit</a>
+              <span class="spacer"></span>
+              <a class="btn btn--text btn--sm" href="07-execution-log.html">Why?</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- HA's own sections, below. D51's logbook.py is what makes these
+             lines read as sentences instead of raw state changes. -->
+        <div class="hr"></div>
+        <div class="sect-title">Logbook</div>
+        <div class="stack stack--sm">
+          <span class="small"><span class="dim">17:47</span> &nbsp;started &mdash;
+            45 minutes before candle lighting</span>
+          <span class="small"><span class="dim">17:47</span> &nbsp;
+            <span style="color:var(--al-warn)">did not announce &ldquo;Shabbat begins&rdquo;</span>
+            &mdash; script.pa_announce was already running</span>
+        </div>
+
+        <div class="hr"></div>
+        <div class="row row--top">
+          <svg class="ic ic--sm dim"><use href="#i-info"></use></svg>
+          <span class="small dim">The <b>Related</b> tab will not list this schedule's entities:
+            HA's related-items graph is a closed set of core types with no way to register
+            another. almanac's own links live in this panel.</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>09 &middot; More-info entry point</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

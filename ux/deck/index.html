@@ -1,0 +1,1838 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Five Situations</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..500;1,6..72,400..500&family=Hanken+Grotesk:wght@400..700&family=DM+Mono:wght@400..500&display=swap" rel="stylesheet">
+
+<style>
+/* ===========================================
+   FIXED 16:9 STAGE: MANDATORY BASE STYLES
+   Slides are authored at 1920x1080 and scaled as a whole.
+   =========================================== */
+
+html, body {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+.deck-viewport {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: var(--stage-bg, #000);
+}
+
+.deck-stage {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    transform-origin: 0 0;
+    background: var(--slide-bg, #fff);
+}
+
+.slide {
+    position: absolute;
+    inset: 0;
+    width: 1920px;
+    height: 1080px;
+    overflow: hidden;
+    display: block;
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+    background: var(--slide-bg, #fff);
+}
+
+.slide.active,
+.slide.visible {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 1;
+}
+
+img, video, canvas, svg {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+.deck-controls {
+    position: fixed;
+    left: 50%;
+    bottom: 22px;
+    transform: translateX(-50%);
+    z-index: 1000;
+}
+
+@media print {
+    /* One slide per page at the authored size, landscape, no margin.
+       Backgrounds must be forced: the paper fill and the graph-paper
+       grid are content here, not decoration a printer may drop. */
+    @page { size: 1920px 1080px; margin: 0; }
+
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+    html, body { width: 1920px; height: auto; overflow: visible; background: #fff; }
+    .deck-viewport { position: static; overflow: visible; background: #fff; }
+    .deck-stage { position: static; width: auto; height: auto; transform: none !important; background: none; }
+    .slide {
+        position: relative;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        width: 1920px; height: 1080px;
+        break-after: page; page-break-after: always;
+    }
+    .slide:last-child { break-after: auto; page-break-after: auto; }
+    .deck-controls { display: none !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.2s !important;
+    }
+}
+
+/* === DESIGN TOKENS ===
+   Two-colour risograph system: warm cream paper, electric cobalt ink.
+   There is no third colour. Emphasis comes from size, face and opacity,
+   never from hue. Viewport-fluid values from the source system are
+   translated here into fixed 1920x1080 stage coordinates. */
+:root {
+  --paper:      #F0EBDE;
+  --paper-2:    #E6E0CE;
+  --ink:        #1F2BE0;
+  --ink-soft:   #5560E5;
+  --grid:       rgba(31, 43, 224, 0.10);
+  --ink-faint:  rgba(31, 43, 224, 0.18);
+  --ink-30:     rgba(31, 43, 224, 0.30);
+  --ink-55:     rgba(31, 43, 224, 0.55);
+
+  --font-display: "Newsreader", Georgia, serif;
+  --font-body:    "Hanken Grotesk", sans-serif;
+  --font-mono:    "DM Mono", ui-monospace, monospace;
+
+  /* stage-space spacing */
+  --edge:        72px;
+  --edge-inner:  154px;
+  --pad-top:     86px;
+  --pad-bottom:  108px;
+  --gap-lg:      56px;
+  --gap-md:      24px;
+  --gap-sm:      17px;
+  --gap-xs:      13px;
+
+  --stage-bg: #0B0C22;
+  --slide-bg: #F0EBDE;
+}
+
+/* === GLOBAL TYPE RESET === */
+* { box-sizing: border-box; }
+
+.slide {
+  color: var(--ink);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* === PERMANENT GRAPH-PAPER GRID ===
+   Not optional decoration. It is the canvas tone. Painted onto the
+   slide itself rather than the stage behind it, because the slide's
+   own paper fill would otherwise cover it. */
+.slide {
+  background-color: var(--paper);
+  background-image:
+    linear-gradient(to right, var(--grid) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+/* === UNIVERSAL CHROME FRAME ===
+   Two 1.5px cobalt hairlines frame every slide; page number bottom-right
+   and nav hint bottom-left sit clear above the lower hairline. */
+.slide::before,
+.slide::after {
+  content: "";
+  position: absolute;
+  left: var(--edge);
+  right: var(--edge);
+  height: 1.5px;
+  background: var(--ink);
+  z-index: 4;
+}
+.slide::before { top: 28px; }
+.slide::after  { bottom: 22px; }
+
+/* Both chrome marks carry a paper fill so they stay legible when a
+   glitch column runs past them. Same device as the QR patch: the fill
+   pushes the pattern away rather than implying a raised surface. */
+.pagenum {
+  position: absolute;
+  right: calc(var(--edge) - 7px);
+  bottom: 46px;
+  z-index: 5;
+  padding: 5px 7px;
+  background: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 17px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+}
+
+.navhint {
+  position: absolute;
+  left: calc(var(--edge) - 7px);
+  bottom: 46px;
+  z-index: 5;
+  padding: 5px 7px;
+  background: var(--paper);
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: var(--ink);
+  opacity: 0.55;
+}
+
+/* === CONTENT FRAME === */
+.frame {
+  position: absolute;
+  inset: var(--pad-top) var(--edge) var(--pad-bottom);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+}
+
+/* === TYPE ROLES ===
+   Newsreader at weight 400 only, always cobalt. Size, never weight,
+   asserts hierarchy. */
+.d-hero {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 194px;
+  line-height: 0.92;
+  letter-spacing: -0.008em;
+}
+.d-closing {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 151px;
+  line-height: 0.96;
+  letter-spacing: -0.005em;
+}
+.d-chapter {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 108px;
+  line-height: 1;
+  letter-spacing: -0.005em;
+}
+.d-manifesto {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 104px;
+  line-height: 1.05;
+  letter-spacing: -0.005em;
+}
+.d-quote {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 92px;
+  line-height: 1.05;
+  letter-spacing: -0.005em;
+}
+.headline {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 84px;
+  line-height: 0.95;
+}
+.headline--sm {
+  font-size: 66px;
+}
+.vbig {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 170px;
+  line-height: 0.92;
+  letter-spacing: -0.015em;
+}
+.ed-callout {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 50px;
+  line-height: 1.1;
+}
+.row-head {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 38px;
+  line-height: 1.05;
+}
+.tbl-name {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 30px;
+  line-height: 1.15;
+}
+
+/* Hanken carries body and every uppercase label. Caps always tracked
+   at 0.16em or more; untracked caps read as untreated. */
+.body {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 24px;
+  line-height: 1.5;
+}
+.body--sm { font-size: 21px; }
+.lede {
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: 28px;
+  line-height: 1.5;
+}
+.micro {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 19px;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.micro-strong {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 22px;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.micro-sm {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* DM Mono carries all chrome: tags, ticks, page numbers, deltas. */
+.mono {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+.mono-sm {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 17px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+}
+.mono-tick {
+  font-family: var(--font-mono);
+  font-weight: 400;
+  font-size: 19px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+
+.dim   { opacity: 0.62; }
+.dimmer{ opacity: 0.42; }
+
+/* === TOPBAR: the standard section header === */
+.topbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--gap-lg);
+  border-bottom: 1.5px solid var(--ink);
+  padding-bottom: 20px;
+  flex: 0 0 auto;
+}
+
+/* === DECORATION: pixel-glitch column ===
+   Stair-stepped vertical scanlines, cobalt on cream. Decorative only. */
+.glitch {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.glitch--right { right: 0; width: 560px; }
+.glitch--left  { left: 0;  width: 420px; }
+.glitch--slim  { width: 300px; opacity: 0.55; }
+
+/* === DECORATION: QR-style 8x8 mosaic ===
+   The paper fill and 1.5px paper outset are functional: they push the
+   grid away so the mosaic stays legible. It is the only shadow-like
+   effect in the system and never signals elevation. */
+.qr {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  grid-template-rows: repeat(8, 1fr);
+  gap: 1.5px;
+  background: var(--paper);
+  padding: 4px;
+  box-shadow: 0 0 0 1.5px var(--paper);
+  z-index: 4;
+}
+.qr i { background: transparent; display: block; }
+.qr i.on { background: var(--ink); }
+
+/* === INDEX LIST === */
+.index {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.irow {
+  display: grid;
+  grid-template-columns: 96px 1fr;
+  gap: 34px;
+  align-items: start;
+  padding: 22px 0;
+  border-bottom: 1px solid var(--ink-faint);
+  flex: 1 1 0;
+  min-height: 0;
+}
+.irow:last-child { border-bottom: 0; }
+
+/* === LEDGER TABLE === */
+.ledger { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.lrow {
+  display: grid;
+  grid-template-columns: 84px 1.05fr 2fr 0.72fr;
+  gap: 30px;
+  align-items: start;
+  padding: 21px 0;
+  border-bottom: 1px solid var(--ink-faint);
+  flex: 1 1 0;
+  min-height: 0;
+}
+.lrow--head {
+  border-bottom: 1.5px solid var(--ink);
+  padding: 0 0 14px;
+  flex: 0 0 auto;
+  align-items: end;
+}
+.lrow:last-child { border-bottom: 0; }
+
+/* Delta prefixes carry rank without introducing a second colour.
+   Down and flat are dimmed rather than recoloured. */
+.delta::before { content: "\2014  "; }
+.delta--up::before   { content: "\2191  "; }
+.delta--down::before { content: "\2193  "; opacity: 0.6; }
+.delta--flat::before { content: "\2014  "; opacity: 0.6; }
+
+/* === SCREENSHOT PLATE ===
+   Captures sit as discrete plates, framed by a cobalt hairline the way
+   a printed plate sits in a trend report. Zero radius, no shadow. */
+.plate {
+  border: 1.5px solid var(--ink);
+  background: #fff;
+  overflow: hidden;
+  display: block;
+  line-height: 0;
+}
+.plate img { display: block; width: 100%; height: auto; }
+
+.plate-wrap { position: relative; }
+.plate-cap {
+  margin-top: 13px;
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+/* Walkthrough two-column body: plate left, annotations right. */
+.walk {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 1160px 1fr;
+  gap: var(--gap-lg);
+  padding-top: 30px;
+  min-height: 0;
+}
+.notes { display: flex; flex-direction: column; min-height: 0; }
+.note {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 20px;
+  align-items: start;
+  padding: 17px 0;
+  border-bottom: 1px solid var(--ink-faint);
+  flex: 1 1 0;
+  min-height: 0;
+}
+.note:last-child { border-bottom: 0; }
+.note__n {
+  font-family: var(--font-mono);
+  font-size: 19px;
+  letter-spacing: 0.04em;
+  padding-top: 5px;
+}
+
+/* === COVER === */
+.cover-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--gap-lg);
+  border-bottom: 1.5px solid var(--ink);
+  padding-bottom: 20px;
+}
+
+/* === STAT PAIRS === */
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap-lg); }
+.stat__n {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 128px;
+  line-height: 0.92;
+  letter-spacing: -0.015em;
+}
+
+/* === VERTICAL STACK LABEL === */
+.vstack {
+  position: absolute;
+  right: 26px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 4;
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  display: flex;
+  gap: 40px;
+  font-family: var(--font-mono);
+  font-size: 17px;
+  letter-spacing: 0.06em;
+  opacity: 0.5;
+}
+
+/* === LOAD-IN MOTION ===
+   One orchestrated reveal per slide with a short stagger. Nothing
+   animates on a loop; motion marks arrival and then gets out of the way. */
+.slide.active .rv {
+  animation: rise 520ms cubic-bezier(0.22, 0.61, 0.36, 1) both;
+}
+.slide.active .rv:nth-child(1) { animation-delay: 40ms; }
+.slide.active .rv:nth-child(2) { animation-delay: 100ms; }
+.slide.active .rv:nth-child(3) { animation-delay: 160ms; }
+.slide.active .rv:nth-child(4) { animation-delay: 220ms; }
+.slide.active .rv:nth-child(5) { animation-delay: 280ms; }
+.slide.active .rv:nth-child(6) { animation-delay: 340ms; }
+.slide.active .rv:nth-child(7) { animation-delay: 400ms; }
+.slide.active .rv:nth-child(8) { animation-delay: 460ms; }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.slide { transition: opacity 280ms ease; }
+
+@media (prefers-reduced-motion: reduce) {
+  .slide.active .rv { animation: none !important; opacity: 1; transform: none; }
+}
+</style>
+</head>
+
+<body>
+
+<div class="deck-viewport" id="viewport">
+<div class="deck-stage" id="stage">
+
+<!-- === SHARED PAINT SERVER ===
+     The scanline pattern every pixel-glitch column paints with. It
+     lives outside the slides so that a hidden slide can never take
+     the paint server down with it. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <pattern id="scan" width="10" height="10" patternUnits="userSpaceOnUse">
+      <rect width="10" height="10" fill="#F0EBDE"/>
+      <rect width="2.6" height="10" fill="#1F2BE0"/>
+    </pattern>
+  </defs>
+</svg>
+
+<!-- ============================================================
+     SLIDE 01 — COVER
+     Signature composition: towering Newsreader hero, pixel-glitch
+     column at the right edge, QR patch as punctuation.
+     ============================================================ -->
+<section class="slide active" data-t="Cover">
+  <svg class="glitch glitch--right" viewBox="0 0 560 1080" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="392" y="0"   width="168" height="196" fill="url(#scan)"/>
+    <rect x="308" y="196" width="252" height="150" fill="url(#scan)"/>
+    <rect x="196" y="346" width="364" height="118" fill="url(#scan)"/>
+    <rect x="308" y="464" width="252" height="176" fill="url(#scan)"/>
+    <rect x="420" y="640" width="140" height="132" fill="url(#scan)"/>
+    <rect x="336" y="772" width="224" height="104" fill="url(#scan)"/>
+    <rect x="448" y="876" width="112" height="204" fill="url(#scan)"/>
+  </svg>
+
+  <div class="qr" style="position:absolute;top:118px;right:96px;width:96px;height:96px" aria-hidden="true">
+    <i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i>
+    <i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i></i>
+    <i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i>
+    <i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i>
+    <i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i>
+    <i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i></i>
+    <i></i><i class="on"></i><i></i><i></i><i class="on"></i><i></i><i class="on"></i><i class="on"></i>
+    <i class="on"></i><i></i><i class="on"></i><i class="on"></i><i></i><i class="on"></i><i></i><i class="on"></i>
+  </div>
+
+  <!-- The frame is held clear of the glitch column on the right; text
+       never runs under the scanlines. -->
+  <div class="frame" style="padding-right:320px">
+    <div class="cover-meta rv">
+      <span class="micro">Almanac &mdash; Home Assistant scheduling</span>
+      <span class="mono-sm">24 SEP 2026</span>
+    </div>
+
+    <div style="flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;max-width:1180px">
+      <div class="d-hero rv" style="margin-bottom:38px">Five<br>Situations</div>
+      <div class="ed-callout rv" style="max-width:840px">
+        A walkthrough of the interface, and an honest account
+        of where it strains.
+      </div>
+    </div>
+
+    <div class="rv" style="display:flex;gap:64px;align-items:baseline">
+      <span class="mono">01&ndash;05 &nbsp;INTERFACE</span>
+      <span class="mono">06 &nbsp;CRITIQUE</span>
+      <span class="mono dim">22 SLIDES</span>
+    </div>
+  </div>
+
+  <div class="pagenum">01</div>
+  <div class="navhint">&larr; &rarr; OR SPACE TO ADVANCE</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 02 — INDEX OF THE FIVE SITUATIONS
+     Dense index layout: the graph paper wants to be filled.
+     ============================================================ -->
+<section class="slide" data-t="The five">
+  <div class="frame">
+    <div class="topbar rv">
+      <div class="headline">The five situations</div>
+      <div class="mono-sm dim">REQUESTED &nbsp;/&nbsp; INDEX</div>
+    </div>
+
+    <div class="index rv" style="margin-top:6px">
+      <div class="irow">
+        <div class="mono" style="padding-top:8px">01</div>
+        <div>
+          <div class="row-head">Configuring a container card</div>
+          <div class="body dim" style="margin-top:8px;max-width:1420px">
+            A Lovelace card that holds schedules filtered by tag &mdash; the pattern
+            the existing scheduler card established, with its filter semantics made explicit.
+          </div>
+        </div>
+      </div>
+      <div class="irow">
+        <div class="mono" style="padding-top:8px">02</div>
+        <div>
+          <div class="row-head">A cover, every weekday that is not a holiday or Shabbat</div>
+          <div class="body dim" style="margin-top:8px;max-width:1420px">
+            One fixed time, one day set, two exclusion terms &mdash; and a term that turns out to remove nothing.
+          </div>
+        </div>
+      </div>
+      <div class="irow">
+        <div class="mono" style="padding-top:8px">03</div>
+        <div>
+          <div class="row-head">Two air conditioners, staged around candle lighting</div>
+          <div class="body dim" style="margin-top:8px;max-width:1420px">
+            Sixty minutes before, then a second stage five minutes before that changes mode,
+            temperature and fan and turns on light switches. Four steps.
+          </div>
+        </div>
+      </div>
+      <div class="irow">
+        <div class="mono" style="padding-top:8px">04</div>
+        <div>
+          <div class="row-head">The card as a list, with descriptions</div>
+          <div class="body dim" style="margin-top:8px;max-width:1420px">
+            What each schedule is for, in the owner&rsquo;s words, next to what it will do next.
+          </div>
+        </div>
+      </div>
+      <div class="irow">
+        <div class="mono" style="padding-top:8px">05</div>
+        <div>
+          <div class="row-head">One schedule, and its next runs</div>
+          <div class="body dim" style="margin-top:8px;max-width:1420px">
+            The enumeration itself &mdash; six dated rows, a stated horizon, and a clock
+            change that lands inside the window.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">02</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 03 — THE MODEL, AND THE FIXTURE
+     Stat layout. The three numerals are the argument: two rule
+     shapes, one clock, zero invented dates.
+     ============================================================ -->
+<section class="slide" data-t="The model">
+  <div class="frame">
+    <div class="topbar rv">
+      <div class="headline">What the screens assume</div>
+      <div class="mono-sm dim">MODEL &nbsp;/&nbsp; FIXTURE</div>
+    </div>
+
+    <div class="rv" style="display:grid;grid-template-columns:1fr 1fr;gap:var(--gap-lg);flex:1 1 auto;align-content:center;padding:30px 0">
+      <div>
+        <div class="micro" style="margin-bottom:16px">Two rule shapes, one schedule</div>
+        <div class="body" style="max-width:740px">
+          A schedule holds rules, and a rule is either an <em>At</em> &mdash; a moment,
+          firing service calls &mdash; or a <em>During</em> &mdash; a span, holding
+          desired state. Times are anchors plus offsets, where an anchor is a
+          stable machine key, never display text. Day sets are named objects, not
+          checkboxes buried in a rule.
+        </div>
+      </div>
+      <div>
+        <div class="micro" style="margin-bottom:16px">Nothing below the tick reads a clock</div>
+        <div class="body" style="max-width:740px">
+          <span class="mono" style="font-size:22px">now</span> is threaded as a parameter
+          all the way down. That single constraint is what makes the dry run, the
+          timeline and the live engine the same code path &mdash; and it is why a
+          list of future runs is a view rather than a simulation.
+        </div>
+      </div>
+    </div>
+
+    <div class="rv stats" style="padding-top:40px;border-top:1.5px solid var(--ink)">
+      <div>
+        <div class="stat__n">18:26</div>
+        <div class="body--sm dim" style="margin-top:12px;max-width:440px">
+          Candle lighting on Friday 18 September 2026, the moment every screen is
+          drawn against. Sunset less eighteen minutes.
+        </div>
+      </div>
+      <div>
+        <div class="stat__n">32&deg;05&prime;N</div>
+        <div class="body--sm dim" style="margin-top:12px;max-width:440px">
+          Sunsets computed by the standard solar algorithm; Hebrew dates by the
+          fixed arithmetic calendar. Checked against three independent anchors.
+        </div>
+      </div>
+      <div>
+        <div class="stat__n">0</div>
+        <div class="body--sm dim" style="margin-top:12px;max-width:440px">
+          Invented dates. The first draft used hand-written ones and was wrong by a
+          day throughout &mdash; every screen individually plausible.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">03</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 04 — CHAPTER 01
+     Declarative slide: sparse, glitch column, grid left breathing.
+     ============================================================ -->
+<section class="slide" data-t="Chapter 01">
+  <svg class="glitch glitch--right glitch--slim" viewBox="0 0 300 1080" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="168" y="90"  width="132" height="188" fill="url(#scan)"/>
+    <rect x="84"  y="278" width="216" height="140" fill="url(#scan)"/>
+    <rect x="196" y="418" width="104" height="220" fill="url(#scan)"/>
+    <rect x="112" y="638" width="188" height="126" fill="url(#scan)"/>
+    <rect x="224" y="764" width="76"  height="226" fill="url(#scan)"/>
+  </svg>
+
+  <div class="frame">
+    <div class="rv"><span class="micro-strong">Situation 01</span></div>
+    <div style="flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;max-width:1180px">
+      <div class="vbig rv" style="margin-bottom:26px">01</div>
+      <div class="d-chapter rv">Configuring a<br>container card</div>
+      <div class="lede rv dim" style="margin-top:34px;max-width:880px">
+        The filter is the whole feature. Upstream ships one and never states what it
+        means &mdash; so the first job was to read it, not to redesign it.
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">04</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 05 — WALKTHROUGH: CARD CONFIG
+     ============================================================ -->
+<section class="slide" data-t="Card config">
+  <div class="frame">
+    <div class="topbar rv">
+      <div class="headline headline--sm">The card editor, with the filter made explicit</div>
+      <div class="mono-sm dim">01 &nbsp;/&nbsp; LOVELACE</div>
+    </div>
+
+    <div class="walk">
+      <div class="plate-wrap rv">
+        <div class="plate"><img src="img/card-config-light-desktop.png" alt="The almanac card editor in a Home Assistant dashboard, showing tag filter controls with a live preview of matching schedules."></div>
+        <div class="plate-cap">
+          <span class="mono-sm dim">HOME ASSISTANT &mdash; CARD EDITOR, LIGHT THEME</span>
+          <span class="mono-sm dim">PLATE 01</span>
+        </div>
+      </div>
+
+      <div class="notes rv">
+        <div class="note">
+          <div class="note__n">a</div>
+          <div class="body--sm">
+            <b>Match any / match all is a stored mode.</b> Upstream matching is an OR
+            with no alternative and no field to record intent, so
+            &ldquo;tagged both sanctuary and kiddush&rdquo; cannot be expressed at all.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">b</div>
+          <div class="body--sm">
+            <b>Exclusion is promoted out of YAML.</b> The option already exists upstream
+            and is honoured at runtime &mdash; it is simply absent from the editor, so
+            only readers of the docs know it is there.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">c</div>
+          <div class="body--sm">
+            <b>On and off stop being tags.</b> Upstream reserves three words inside the
+            same list the real tags come from, with no escape syntax. A schedule
+            genuinely tagged with one of them cannot be filtered for.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">d</div>
+          <div class="body--sm">
+            <b>A tag that matches nothing says so.</b> The typo on this screen is
+            deliberate. Free text plus OR matching means a mistyped tag yields a
+            quieter card and no error &mdash; which reads as breakage, not as a typo.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">e</div>
+          <div class="body--sm">
+            <b>The preview carries a count.</b> Three of fourteen match, one hidden by
+            exclusion. A filter is the one control whose result you cannot infer
+            from its inputs.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">05</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 06 — CHAPTER 02
+     ============================================================ -->
+<section class="slide" data-t="Chapter 02">
+  <svg class="glitch glitch--right glitch--slim" viewBox="0 0 300 1080" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="140" y="60"  width="160" height="150" fill="url(#scan)"/>
+    <rect x="216" y="210" width="84"  height="196" fill="url(#scan)"/>
+    <rect x="96"  y="406" width="204" height="132" fill="url(#scan)"/>
+    <rect x="184" y="538" width="116" height="238" fill="url(#scan)"/>
+    <rect x="60"  y="776" width="240" height="120" fill="url(#scan)"/>
+    <rect x="208" y="896" width="92"  height="152" fill="url(#scan)"/>
+  </svg>
+
+  <div class="frame">
+    <div class="rv"><span class="micro-strong">Situation 02</span></div>
+    <div style="flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;max-width:1180px">
+      <div class="vbig rv" style="margin-bottom:26px">02</div>
+      <div class="d-chapter rv">A cover, on<br>ordinary days</div>
+      <div class="lede rv dim" style="margin-top:34px;max-width:880px">
+        Written exactly as asked, the rule contains a term that does nothing.
+        The dangerous part is that it is correct.
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">06</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 07 — WALKTHROUGH: COVER / DAY SET
+     ============================================================ -->
+<section class="slide" data-t="Cover schedule">
+  <div class="frame">
+    <div class="topbar rv">
+      <div class="headline headline--sm">Every weekday that is not a holiday or Shabbat</div>
+      <div class="mono-sm dim">02 &nbsp;/&nbsp; NEW SCHEDULE</div>
+    </div>
+
+    <div class="walk">
+      <div class="plate-wrap rv">
+        <div class="plate"><img src="img/new-cover-light-desktop.png" alt="A new schedule dialog for raising a cover at 07:15, with a day set of Sunday to Friday and two exclusion terms, one flagged as removing nothing."></div>
+        <div class="plate-cap">
+          <span class="mono-sm dim">NEW SCHEDULE &mdash; DAY SET AND EXCLUSIONS</span>
+          <span class="mono-sm dim">PLATE 02</span>
+        </div>
+      </div>
+
+      <div class="notes rv">
+        <div class="note">
+          <div class="note__n">a</div>
+          <div class="body--sm">
+            <b>The day set is a named object.</b> Not a row of weekday checkboxes buried
+            inside the rule &mdash; a thing with a name, editable once and referenced by
+            every schedule that uses it.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">b</div>
+          <div class="body--sm">
+            <b>One level of set algebra.</b> Start from a set, then union, intersect or
+            subtract &mdash; once. Deeper nesting was refused deliberately; it is the
+            point at which a rule stops being readable aloud.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">c</div>
+          <div class="body--sm">
+            <b>&ldquo;Except Shabbat&rdquo; removes nothing here</b>, and the term says so on
+            its own row. Sunday to Friday never contained Saturday, and 07:15 on a
+            Friday is hours before candle lighting.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">d</div>
+          <div class="body--sm">
+            <b>Both buttons are offered.</b> Remove it, or keep it anyway &mdash; keeping a
+            defensive term against a future edit is a legitimate choice, and the
+            interface should not assume otherwise.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">e</div>
+          <div class="body--sm">
+            <b>Eleven of the next fourteen days.</b> The count is the check. Three days
+            are grey, and each is grey for a reason you can read.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">07</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 08 — CHAPTER 03
+     ============================================================ -->
+<section class="slide" data-t="Chapter 03">
+  <svg class="glitch glitch--right glitch--slim" viewBox="0 0 300 1080" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="196" y="40"  width="104" height="210" fill="url(#scan)"/>
+    <rect x="88"  y="250" width="212" height="128" fill="url(#scan)"/>
+    <rect x="160" y="378" width="140" height="206" fill="url(#scan)"/>
+    <rect x="44"  y="584" width="256" height="114" fill="url(#scan)"/>
+    <rect x="180" y="698" width="120" height="188" fill="url(#scan)"/>
+    <rect x="116" y="886" width="184" height="162" fill="url(#scan)"/>
+  </svg>
+
+  <div class="frame">
+    <div class="rv"><span class="micro-strong">Situation 03</span></div>
+    <div style="flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;max-width:1180px">
+      <div class="vbig rv" style="margin-bottom:26px">03</div>
+      <div class="d-chapter rv">Two stages,<br>before lighting</div>
+      <div class="lede rv dim" style="margin-top:34px;max-width:880px">
+        Four steps. The anchor is not a clock time, the actions travel by two
+        different routes, and the first run turns out to be a Sunday.
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">08</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 09 — WALKTHROUGH 15-1: THE ANCHOR
+     ============================================================ -->
+<section class="slide" data-t="Step 1 — anchor">
+  <div class="frame">
+    <div class="topbar rv">
+      <div class="headline headline--sm">Step one &mdash; the time is not a time</div>
+      <div class="mono-sm dim">03 &nbsp;/&nbsp; STEP 1 OF 4</div>
+    </div>
+
+    <div class="walk">
+      <div class="plate-wrap rv">
+        <div class="plate"><img src="img/new-shabbat-1-light-desktop.png" alt="Step one of the new schedule wizard: choosing candle lighting as the anchor with a sixty minute negative offset."></div>
+        <div class="plate-cap">
+          <span class="mono-sm dim">STEP 1 &mdash; ANCHOR AND OFFSET</span>
+          <span class="mono-sm dim">PLATE 03</span>
+        </div>
+      </div>
+
+      <div class="notes rv">
+        <div class="note">
+          <div class="note__n">a</div>
+          <div class="body--sm">
+            <b>Anchor plus offset, not a clock.</b> Sixty minutes before candle lighting
+            is a different wall-clock time every week, and the rule stores the
+            relationship rather than the result.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">b</div>
+          <div class="body--sm">
+            <b>The anchor list is wider than upstream&rsquo;s.</b> Upstream whitelists
+            sunrise and sunset only &mdash; excluding dawn, dusk and noon, which the sun
+            entity already publishes.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">c</div>
+          <div class="body--sm">
+            <b>Entity anchors are the reason this project exists.</b> They were proposed
+            upstream and explicitly refused by the maintainer, which is what makes
+            this a rebuild rather than a contribution.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">d</div>
+          <div class="body--sm">
+            <b>No magnitude limit.</b> Upstream&rsquo;s card caps offsets at four hours;
+            the number has been changed four times since 2020 and never with a
+            stated reason. The engine has no check at all.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">e</div>
+          <div class="body--sm">
+            <b>Horizon is declared next to the anchor.</b> Candle lighting is pure local
+            computation, so it is unbounded. An anchor read from a calendar entity
+            is not, and says where it stops.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">09</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 10 — WALKTHROUGH 15-2: TWO ROUTES
+     ============================================================ -->
+<section class="slide" data-t="Step 2 — actions">
+  <div class="frame">
+    <div class="topbar rv">
+      <div class="headline headline--sm">Step two &mdash; one unit per route, side by side</div>
+      <div class="mono-sm dim">03 &nbsp;/&nbsp; STEP 2 OF 4</div>
+    </div>
+
+    <div class="walk">
+      <div class="plate-wrap rv">
+        <div class="plate"><img src="img/new-shabbat-2-light-desktop.png" alt="Step two: two air conditioner actions, one delivered as climate service calls and one as a script, each showing its own failure mode."></div>
+        <div class="plate-cap">
+          <span class="mono-sm dim">STEP 2 &mdash; ACTIONS, CLIMATE AND SCRIPT ROUTES</span>
+          <span class="mono-sm dim">PLATE 04</span>
+        </div>
+      </div>
+
+      <div class="notes rv">
+        <div class="note">
+          <div class="note__n">a</div>
+          <div class="body--sm">
+            <b>You said either route was fine.</b> They are &mdash; but they fail
+            differently, so the route sits in the row header rather than behind a
+            settings page. It changes what the row can promise.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">b</div>
+          <div class="body--sm">
+            <b>Temperature and fan is two calls.</b> Home Assistant has no atomic
+            set-full-state for climate: setting temperature accepts an optional mode,
+            and nothing accepts fan mode alongside anything else.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">c</div>
+          <div class="body--sm">
+            <b>So a row can half-succeed</b>, and results are reported per attribute
+            rather than per row. A row that says &ldquo;done&rdquo; when one of its two
+            calls was refused is the failure this avoids.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">d</div>
+          <div class="body--sm">
+            <b>The script route pre-flights.</b> A script already running in its default
+            mode logs a line and returns without raising &mdash; the caller cannot tell
+            that from success, so the row checks first and records it as skipped.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">e</div>
+          <div class="body--sm">
+            <b>Amber, here, means one thing:</b> this can silently not happen. Failure is
+            red, deliberately inactive is dimmed. Amber is reserved for the case
+            where the system reports success and you are still wrong.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">10</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 11 — WALKTHROUGH 15-3: STAGE TWO
+     ============================================================ -->
+<section class="slide" data-t="Step 3 — stage two">
+  <div class="frame">
+    <div class="topbar rv">
+      <div class="headline headline--sm">Step three &mdash; the second stage, five minutes before</div>
+      <div class="mono-sm dim">03 &nbsp;/&nbsp; STEP 3 OF 4</div>
+    </div>
+
+    <div class="walk">
+      <div class="plate-wrap rv">
+        <div class="plate"><img src="img/new-shabbat-3-light-desktop.png" alt="Step three: a second stage five minutes before candle lighting turning on light switches and changing the air conditioners to a quieter mode."></div>
+        <div class="plate-cap">
+          <span class="mono-sm dim">STEP 3 &mdash; SECOND STAGE</span>
+          <span class="mono-sm dim">PLATE 05</span>
+        </div>
+      </div>
+
+      <div class="notes rv">
+        <div class="note">
+          <div class="note__n">a</div>
+          <div class="body--sm">
+            <b>Two stages, one anchor.</b> Both are measured from candle lighting &mdash;
+            sixty minutes and five minutes &mdash; so they keep their spacing as the
+            anchor moves through the year.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">b</div>
+          <div class="body--sm">
+            <b>Four light switches and two units in one stage.</b> Upstream forbids this:
+            its actions list may hold only a single service and data combination,
+            which is what forces the script-per-permutation workaround.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">c</div>
+          <div class="body--sm">
+            <b>The change is to mode, temperature and fan.</b> Which is three attributes
+            across two calls per unit &mdash; the same constraint as stage one, now
+            with more to lose.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">d</div>
+          <div class="body--sm">
+            <b>Nothing is scheduled to undo it.</b> That is deliberate and visible: the
+            span ends thirty minutes after havdalah, and what happens at the end is
+            a property of the rule, not an afterthought.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">e</div>
+          <div class="body--sm">
+            <b>This is where the model and the user diverge.</b> One preparation, two
+            rules. Hold that thought &mdash; it returns in the critique as the most
+            serious thing on these screens.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">11</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 12 — WALKTHROUGH 15-4: REVIEW
+     ============================================================ -->
+<section class="slide" data-t="Step 4 — review">
+  <div class="frame">
+    <div class="topbar rv">
+      <div class="headline headline--sm">Step four &mdash; and the first run is a Sunday</div>
+      <div class="mono-sm dim">03 &nbsp;/&nbsp; STEP 4 OF 4</div>
+    </div>
+
+    <div class="walk">
+      <div class="plate-wrap rv">
+        <div class="plate"><img src="img/new-shabbat-4-light-desktop.png" alt="Step four: the review step showing the first run on Sunday 20 September, erev Yom Kippur, followed by three subsequent Fridays at different times."></div>
+        <div class="plate-cap">
+          <span class="mono-sm dim">STEP 4 &mdash; REVIEW AND FIRST RUN</span>
+          <span class="mono-sm dim">PLATE 06</span>
+        </div>
+      </div>
+
+      <div class="notes rv">
+        <div class="note">
+          <div class="note__n">a</div>
+          <div class="body--sm">
+            <b>Sunday 20 September, not Friday.</b> Erev Yom Kippur. Nobody arranged
+            this &mdash; it is what the enumeration returned once the fixture was
+            computed rather than written by hand.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">b</div>
+          <div class="body--sm">
+            <b>The claim pays for itself.</b> Every earlier draft asserted in prose that
+            candle lighting is not always a Friday. This step demonstrates it
+            without a sentence of explanation.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">c</div>
+          <div class="body--sm">
+            <b>Then 17:17, then 17:07, then 16:58.</b> The times drift because the
+            anchor drifts. A review step showing one fixed time would be hiding the
+            behaviour that matters most.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">d</div>
+          <div class="body--sm">
+            <b>Havdalah is two days out.</b> Yom Kippur ends Monday night, so the span
+            runs Sunday evening to Monday evening &mdash; and the review says so rather
+            than quietly printing a longer bar.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">e</div>
+          <div class="body--sm">
+            <b>Review is the same code path as the engine.</b> Not a preview built
+            separately and liable to drift &mdash; the same enumeration, with a
+            different value of now.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">12</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 13 — CHAPTER 04
+     ============================================================ -->
+<section class="slide" data-t="Chapter 04">
+  <svg class="glitch glitch--right glitch--slim" viewBox="0 0 300 1080" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="120" y="76"  width="180" height="164" fill="url(#scan)"/>
+    <rect x="208" y="240" width="92"  height="182" fill="url(#scan)"/>
+    <rect x="68"  y="422" width="232" height="140" fill="url(#scan)"/>
+    <rect x="164" y="562" width="136" height="214" fill="url(#scan)"/>
+    <rect x="100" y="776" width="200" height="132" fill="url(#scan)"/>
+    <rect x="232" y="908" width="68"  height="140" fill="url(#scan)"/>
+  </svg>
+
+  <div class="frame">
+    <div class="rv"><span class="micro-strong">Situation 04</span></div>
+    <div style="flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;max-width:1180px">
+      <div class="vbig rv" style="margin-bottom:26px">04</div>
+      <div class="d-chapter rv">The list, with<br>descriptions</div>
+      <div class="lede rv dim" style="margin-top:34px;max-width:880px">
+        Drawing it established that the description is not decoration on the row.
+        It is the reason to look at the card at all.
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">13</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 14 — WALKTHROUGH: LIST CARD
+     ============================================================ -->
+<section class="slide" data-t="List card">
+  <div class="frame">
+    <div class="topbar rv">
+      <div class="headline headline--sm">Eight schedules, and what each one is for</div>
+      <div class="mono-sm dim">04 &nbsp;/&nbsp; LOVELACE</div>
+    </div>
+
+    <div class="walk">
+      <div class="plate-wrap rv">
+        <div class="plate"><img src="img/card-list-light-desktop.png" alt="A dashboard card listing eight schedules with descriptions and next run times, alongside a sun card showing sunset, candle lighting and havdalah."></div>
+        <div class="plate-cap">
+          <span class="mono-sm dim">CONTAINER CARD &mdash; LIST WITH DESCRIPTIONS</span>
+          <span class="mono-sm dim">PLATE 07</span>
+        </div>
+      </div>
+
+      <div class="notes rv">
+        <div class="note">
+          <div class="note__n">a</div>
+          <div class="body--sm">
+            <b>A column of names is a directory.</b> The description is what says
+            something the name does not, and it is why this card is worth the space
+            it takes.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">b</div>
+          <div class="body--sm">
+            <b>It needs roughly 460 pixels.</b> The default masonry column is 340, at
+            which every description loses its second half &mdash; and a truncated
+            reason is worse than none, because it reads as complete.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">c</div>
+          <div class="body--sm">
+            <b>Next run sits opposite the description.</b> What it is for, and what it
+            will do next, on one line. Sorted by what happens soonest, with
+            anything wrong lifted out of the sort.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">d</div>
+          <div class="body--sm">
+            <b>The sun card is the fixture, visible.</b> Sunset 18:44, candle lighting
+            18:26, havdalah 19:33 tomorrow &mdash; the same numbers every other screen
+            is derived from.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">e</div>
+          <div class="body--sm">
+            <b>One row is amber, and it is the wrong row.</b> Kiddush setup was skipped
+            last Friday &mdash; and the status has taken the description&rsquo;s place.
+            That is the second finding in the critique.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">14</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 15 — CHAPTER 05
+     ============================================================ -->
+<section class="slide" data-t="Chapter 05">
+  <svg class="glitch glitch--right glitch--slim" viewBox="0 0 300 1080" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="180" y="50"  width="120" height="196" fill="url(#scan)"/>
+    <rect x="72"  y="246" width="228" height="126" fill="url(#scan)"/>
+    <rect x="148" y="372" width="152" height="200" fill="url(#scan)"/>
+    <rect x="56"  y="572" width="244" height="118" fill="url(#scan)"/>
+    <rect x="192" y="690" width="108" height="196" fill="url(#scan)"/>
+    <rect x="108" y="886" width="192" height="162" fill="url(#scan)"/>
+  </svg>
+
+  <div class="frame">
+    <div class="rv"><span class="micro-strong">Situation 05</span></div>
+    <div style="flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;max-width:1180px">
+      <div class="vbig rv" style="margin-bottom:26px">05</div>
+      <div class="d-chapter rv">One schedule,<br>its next runs</div>
+      <div class="lede rv dim" style="margin-top:34px;max-width:880px">
+        The enumeration, printed. Which is the whole premise of the project,
+        and therefore the screen with the least room to be wrong.
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">15</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 16 — WALKTHROUGH: NEXT RUNS
+     ============================================================ -->
+<section class="slide" data-t="Next runs">
+  <div class="frame">
+    <div class="topbar rv">
+      <div class="headline headline--sm">Six dated rows, a stated horizon, one clock change</div>
+      <div class="mono-sm dim">05 &nbsp;/&nbsp; SCHEDULE DETAIL</div>
+    </div>
+
+    <div class="walk">
+      <div class="plate-wrap rv">
+        <div class="plate"><img src="img/schedule-runs-light-desktop.png" alt="A schedule detail card listing its next six runs with start and end times, a horizon footer, and a note about the clock change in late October."></div>
+        <div class="plate-cap">
+          <span class="mono-sm dim">NEXT RUNS &mdash; WITH HORIZON FOOTER</span>
+          <span class="mono-sm dim">PLATE 08</span>
+        </div>
+      </div>
+
+      <div class="notes rv">
+        <div class="note">
+          <div class="note__n">a</div>
+          <div class="body--sm">
+            <b>Every row is start and end.</b> Forty-five minutes before candle
+            lighting, thirty minutes after havdalah &mdash; and both ends move, so both
+            are printed rather than one plus a duration.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">b</div>
+          <div class="body--sm">
+            <b>The horizon lives in the footer.</b> On a list, the horizon is a property
+            of the end of the list, not of the picker. Rows printed past it look
+            exactly like rows before it.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">c</div>
+          <div class="body--sm">
+            <b>Unbounded gets its own wording.</b> Silence is indistinguishable from
+            &ldquo;we did not check&rdquo;, so a schedule that can be enumerated
+            indefinitely says so in as many words.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">d</div>
+          <div class="body--sm">
+            <b>16:57, then 15:50.</b> The clocks go back on 25 October, so the start
+            jumps an hour and seven minutes earlier &mdash; correct, and indistinguishable
+            from a bug unless the card says which.
+          </div>
+        </div>
+        <div class="note">
+          <div class="note__n">e</div>
+          <div class="body--sm">
+            <b>That footer was wrong once.</b> It quoted candle lighting instead of the
+            start &mdash; a real number for that date, in a sentence that parsed.
+            A footer must quote the same quantity as the rows above it.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">16</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 17 — CHAPTER: THE CRITIQUE
+     ============================================================ -->
+<section class="slide" data-t="Critique">
+  <svg class="glitch glitch--left" viewBox="0 0 420 1080" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="0"   y="0"   width="196" height="184" fill="url(#scan)"/>
+    <rect x="0"   y="184" width="300" height="142" fill="url(#scan)"/>
+    <rect x="0"   y="326" width="152" height="218" fill="url(#scan)"/>
+    <rect x="0"   y="544" width="360" height="126" fill="url(#scan)"/>
+    <rect x="0"   y="670" width="228" height="196" fill="url(#scan)"/>
+    <rect x="0"   y="866" width="130" height="214" fill="url(#scan)"/>
+  </svg>
+
+  <div class="frame" style="align-items:flex-end;text-align:right">
+    <div class="rv"><span class="micro-strong">Part two</span></div>
+    <div style="flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;align-items:flex-end;max-width:1080px">
+      <div class="d-chapter rv">Where this<br>would strain</div>
+      <div class="lede rv dim" style="margin-top:34px;max-width:840px">
+        Seven pitfalls, ranked. Three of them are severe enough to change the model
+        rather than the interface, and one is a promise the engine cannot keep.
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">17</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 18 — CRITIQUE METHOD
+     Sparse manifesto register; the grid is allowed to show.
+     ============================================================ -->
+<section class="slide" data-t="How to read it">
+  <div class="frame" style="padding-left:82px;padding-right:82px">
+    <div class="rv"><span class="micro-strong">How to read the ranking</span></div>
+
+    <div style="flex:1 1 auto;display:flex;flex-direction:column;justify-content:center">
+      <div class="d-manifesto rv" style="max-width:1560px">
+        A pitfall is not a bug. It is a place where the interface
+        <em>will be believed</em> and should not be.
+      </div>
+
+      <div class="body--sm dim rv" style="margin-top:28px;max-width:1300px">
+        Ranks below were settled with the owner on 29 September 2026. Two came down;
+        one was re-framed after checking it against the design doc and the prototype,
+        and the original reading of it is recorded on slide 21 as wrong.
+      </div>
+
+      <div class="rv" style="display:grid;grid-template-columns:repeat(4,1fr);gap:40px;margin-top:64px;padding-top:34px;border-top:1px solid var(--ink)">
+        <div>
+          <div class="mono" style="margin-bottom:12px">&uarr;&nbsp;&nbsp;SEVERE</div>
+          <div class="body--sm dim">Changes the model, not the screen. Shipping without deciding
+            makes it more expensive later, not less.</div>
+        </div>
+        <div>
+          <div class="mono" style="margin-bottom:12px">&mdash;&nbsp;&nbsp;MODERATE</div>
+          <div class="body--sm dim">Real, and addressable in the interface. Costly if ignored
+            through the first release.</div>
+        </div>
+        <div>
+          <div class="mono" style="margin-bottom:12px">&darr;&nbsp;&nbsp;KNOWN</div>
+          <div class="body--sm dim">Already recorded against a decision. Listed so the ranking
+            is honest about what is and is not news.</div>
+        </div>
+        <div>
+          <div class="mono" style="margin-bottom:12px">&darr;&nbsp;&nbsp;DEFERRED</div>
+          <div class="body--sm dim">Accepted as real, then ruled to a later phase. What the
+            interface says in the meantime still has to change.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">18</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 19 — PITFALLS 01-03 (SEVERE)
+     Ledger table. Rank carried by mono delta arrows, never by hue.
+     ============================================================ -->
+<section class="slide" data-t="Pitfalls 1–3">
+  <div class="frame">
+    <div class="topbar rv">
+      <div class="headline headline--sm">Three that were severe; one still is</div>
+      <div class="mono-sm dim">CRITIQUE &nbsp;/&nbsp; 1&ndash;3 OF 7</div>
+    </div>
+
+    <div class="ledger rv" style="margin-top:4px">
+      <div class="lrow lrow--head">
+        <div class="micro-sm dim">No.</div>
+        <div class="micro-sm dim">Pitfall</div>
+        <div class="micro-sm dim">Why it bites</div>
+        <div class="micro-sm dim">Rank</div>
+      </div>
+
+      <div class="lrow">
+        <div class="mono">01</div>
+        <div class="tbl-name">One occasion,<br>never drawn<br>whole</div>
+        <div class="body--sm">
+          Getting the place ready for Shabbat is a single thing to the person who wants it,
+          and the model already agrees &mdash; recurrence sits on the schedule, the schedule
+          owns the switch and the sensor, and the list and the timeline each give it one row.
+          The defect is that no surface draws the occasion <em>with its parts</em>: authoring
+          walks four steps one stage at a time, and every read surface collapses the evening
+          back to a single line. Disable one stage and nothing says the schedule is half-armed.
+        </div>
+        <div class="mono delta delta--up">SEVERE</div>
+      </div>
+
+      <div class="lrow">
+        <div class="mono">02</div>
+        <div class="tbl-name">The description<br>drifts, and is<br>overwritten</div>
+        <div class="body--sm">
+          The description is free text and nothing ties it to the rule it describes &mdash;
+          edit the rule and the sentence silently becomes a lie. Ruled <em>moderate</em>: most
+          users never write one, and it is cheap to change later. The sharper half survives the
+          downgrade &mdash; the list card renders skipped-status text <em>into</em> the
+          description slot, so the row that most needs explaining loses its explanation.
+        </div>
+        <div class="mono delta delta--flat">MODERATE</div>
+      </div>
+
+      <div class="lrow">
+        <div class="mono">03</div>
+        <div class="tbl-name">The script<br>pre-flight is<br>a race</div>
+        <div class="body--sm">
+          The row promises it will check a script&rsquo;s mode before calling and record a
+          skip rather than a false success. But the check and the call are separate
+          operations, and the script can start in between. Ruled to a <em>later phase</em>:
+          the race is rare and closing it is engine work. What changes now is the wording
+          &mdash; the interface must describe a check, never a guarantee.
+        </div>
+        <div class="mono delta delta--down">DEFERRED</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">19</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 20 — PITFALLS 04-07 (MODERATE / KNOWN)
+     ============================================================ -->
+<section class="slide" data-t="Pitfalls 4–7">
+  <div class="frame">
+    <div class="topbar rv">
+      <div class="headline headline--sm">Four more, in descending order</div>
+      <div class="mono-sm dim">CRITIQUE &nbsp;/&nbsp; 4&ndash;7 OF 7</div>
+    </div>
+
+    <div class="ledger rv" style="margin-top:4px">
+      <div class="lrow lrow--head">
+        <div class="micro-sm dim">No.</div>
+        <div class="micro-sm dim">Pitfall</div>
+        <div class="micro-sm dim">Why it bites</div>
+        <div class="micro-sm dim">Rank</div>
+      </div>
+
+      <div class="lrow">
+        <div class="mono">04</div>
+        <div class="tbl-name">Enumeration at<br>scale is unproven</div>
+        <div class="body--sm">
+          Forty schedules have been drawn as a sorted list, and one schedule has been drawn
+          as a timeline. Forty schedules <em>on</em> a timeline has not been drawn at all &mdash;
+          and that view is the product&rsquo;s entire thesis. The density that makes a single
+          schedule legible is the density that makes forty unreadable.
+        </div>
+        <div class="mono delta delta--flat">MODERATE</div>
+      </div>
+
+      <div class="lrow">
+        <div class="mono">05</div>
+        <div class="tbl-name">Anchors have no<br>shallow path</div>
+        <div class="body--sm">
+          Before a user can schedule anything they must absorb anchor, offset and horizon.
+          The concepts are taught well, but they are taught <em>first</em>, and the thing
+          being replaced lets you pick 07:15 and stop. A product whose simplest task is
+          harder than the incumbent&rsquo;s loses users before its advantages appear.
+        </div>
+        <div class="mono delta delta--flat">MODERATE</div>
+      </div>
+
+      <div class="lrow">
+        <div class="mono">06</div>
+        <div class="tbl-name">Amber must be<br>learned to be<br>read</div>
+        <div class="body--sm">
+          Red is failure, amber is silent no-op, dim is deliberately inactive &mdash; a good
+          contract that a user can only infer by meeting all three. Text accompanies each
+          state today, which is what keeps it accessible; the risk is that the text is
+          treated as optional later, at which point the distinction rests on two hues that
+          a meaningful share of users cannot reliably separate.
+        </div>
+        <div class="mono delta delta--flat">MODERATE</div>
+      </div>
+
+      <div class="lrow">
+        <div class="mono">07</div>
+        <div class="tbl-name">The card wants a<br>column it will<br>not get</div>
+        <div class="body--sm">
+          Descriptions need about 460 pixels; the default masonry column is 340. The fork
+          is already recorded against the card decision, and screen 13 makes it the
+          user&rsquo;s choice &mdash; but shipping a default that truncates the payload is still
+          shipping a default that truncates the payload.
+        </div>
+        <div class="mono delta delta--down">KNOWN</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">20</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 21 — THE ONE THAT WOULD SINK IT
+     Quote register: deliberately sparse, glitch at the right edge.
+     ============================================================ -->
+<section class="slide" data-t="The one">
+  <svg class="glitch glitch--right glitch--slim" viewBox="0 0 300 1080" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="152" y="112" width="148" height="206" fill="url(#scan)"/>
+    <rect x="60"  y="318" width="240" height="134" fill="url(#scan)"/>
+    <rect x="188" y="452" width="112" height="222" fill="url(#scan)"/>
+    <rect x="96"  y="674" width="204" height="140" fill="url(#scan)"/>
+    <rect x="216" y="814" width="84"  height="196" fill="url(#scan)"/>
+  </svg>
+
+  <div class="frame" style="padding-right:400px">
+    <div class="rv"><span class="micro-strong">If only one gets fixed</span></div>
+
+    <div style="flex:1 1 auto;display:flex;flex-direction:column;justify-content:center">
+      <div class="d-quote rv" style="max-width:1300px">
+        Fix the first one &mdash; but not in the
+        schema. The container is already there.
+        What is missing is a view of the
+        occasion with its parts.
+      </div>
+
+      <div class="rv" style="margin-top:56px;padding-top:24px;border-top:1px solid var(--ink);max-width:1300px;display:flex;justify-content:space-between;gap:40px">
+        <span class="micro">Pitfall 01 &mdash; one occasion, never drawn whole</span>
+        <span class="mono-sm dim">RANKED SEVERE</span>
+      </div>
+
+      <div class="body rv dim" style="margin-top:44px;max-width:1160px">
+        This deck first read it as a schema split. That was wrong: the schedule already
+        is the container, in storage and in the entity registry alike. The other six are
+        fixable where they appear &mdash; a footer, a column width, a colour contract, a
+        settings default. This one is fixable in exactly two places, and both are early.
+        The editor&rsquo;s shape is what teaches the model; the row&rsquo;s shape is what
+        reminds you of it.
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">21</div>
+</section>
+
+
+<!-- ============================================================
+     SLIDE 22 — COLOPHON
+     Right-aligned closing; glitch mirrors to the left edge.
+     ============================================================ -->
+<section class="slide" data-t="Colophon">
+  <svg class="glitch glitch--left" viewBox="0 0 420 1080" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="0" y="0"   width="140" height="212" fill="url(#scan)"/>
+    <rect x="0" y="212" width="276" height="138" fill="url(#scan)"/>
+    <rect x="0" y="350" width="188" height="204" fill="url(#scan)"/>
+    <rect x="0" y="554" width="344" height="122" fill="url(#scan)"/>
+    <rect x="0" y="676" width="216" height="190" fill="url(#scan)"/>
+    <rect x="0" y="866" width="118" height="214" fill="url(#scan)"/>
+  </svg>
+
+  <div class="frame" style="align-items:flex-end;text-align:right;padding-left:400px">
+    <div class="rv"><span class="micro-strong">End</span></div>
+
+    <div style="flex:1 1 auto;display:flex;flex-direction:column;justify-content:center;align-items:flex-end">
+      <div class="d-closing rv" style="max-width:1240px">Twenty screens,<br>seven pitfalls</div>
+    </div>
+
+    <div class="rv" style="display:grid;grid-template-columns:repeat(4,1fr);gap:40px;padding-top:30px;border-top:1px solid var(--ink);width:100%;text-align:left">
+      <div>
+        <div class="micro-sm" style="margin-bottom:10px">Screens</div>
+        <div class="body--sm dim">Twenty static screens in the prototype; the five requested
+          situations are the last eight of them.</div>
+      </div>
+      <div>
+        <div class="micro-sm" style="margin-bottom:10px">Captures</div>
+        <div class="body--sm dim">Forty-five, light and dark, desktop and phone. The eight
+          plates here are the light desktop set.</div>
+      </div>
+      <div>
+        <div class="micro-sm" style="margin-bottom:10px">Fixture</div>
+        <div class="body--sm dim">Friday 18 September 2026, early evening. Every date computed;
+          screens one to twelve still carry the earlier hand-written one.</div>
+      </div>
+      <div>
+        <div class="micro-sm" style="margin-bottom:10px">Findings</div>
+        <div class="body--sm dim">Eighteen recorded against the design decisions. Seven pitfalls
+          above; the remainder are what worked.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="pagenum">22</div>
+</section>
+
+</div><!-- /deck-stage -->
+</div><!-- /deck-viewport -->
+
+<script>
+/* === FIXED-STAGE SCALER ===
+   The 1920x1080 canvas is scaled as a single unit and centred. Slide
+   content is never reflowed for narrow screens; the stage letterboxes
+   or pillarboxes instead, so a phone shows the same composition. */
+(function () {
+  var stage = document.getElementById('stage');
+  var viewport = document.getElementById('viewport');
+
+  function fit() {
+    var vw = viewport.clientWidth;
+    var vh = viewport.clientHeight;
+    var scale = Math.min(vw / 1920, vh / 1080);
+    var x = (vw - 1920 * scale) / 2;
+    var y = (vh - 1080 * scale) / 2;
+    stage.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + scale + ')';
+  }
+
+  fit();
+  window.addEventListener('resize', fit, { passive: true });
+  window.addEventListener('orientationchange', fit, { passive: true });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', fit, { passive: true });
+  }
+  document.fonts && document.fonts.ready && document.fonts.ready.then(fit);
+
+  /* === NAVIGATION ===
+   Keyboard, click and swipe. Re-triggering the reveal animation on
+   arrival is done by removing and re-adding .active, which restarts
+   the staggered load-in for the incoming slide only. */
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var i = 0;
+
+  function show(n) {
+    if (n < 0 || n >= slides.length || n === i) return;
+    slides[i].classList.remove('active');
+    i = n;
+    slides[i].classList.add('active');
+    history.replaceState(null, '', '#' + (i + 1));
+  }
+
+  function next() { show(i + 1); }
+  function prev() { show(i - 1); }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    else if (e.key === 'Home') { show(0); }
+    else if (e.key === 'End') { show(slides.length - 1); }
+  });
+
+  viewport.addEventListener('click', function (e) {
+    next();
+  });
+
+  var tx = 0, ty = 0;
+  viewport.addEventListener('touchstart', function (e) {
+    tx = e.changedTouches[0].clientX;
+    ty = e.changedTouches[0].clientY;
+  }, { passive: true });
+
+  viewport.addEventListener('touchend', function (e) {
+    var dx = e.changedTouches[0].clientX - tx;
+    var dy = e.changedTouches[0].clientY - ty;
+    if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy)) {
+      if (dx < 0) next(); else prev();
+    }
+  }, { passive: true });
+
+  /* Deep link: #7 opens slide seven. */
+  var hash = parseInt((location.hash || '').slice(1), 10);
+  if (hash >= 1 && hash <= slides.length) {
+    slides[0].classList.remove('active');
+    i = hash - 1;
+    slides[i].classList.add('active');
+  }
+})();
+</script>
+
+</body>
+</html>

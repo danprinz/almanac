@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · UX prototype</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  .wrap { max-width: 920px; margin: 0 auto; padding: 32px 16px 64px; }
+  .lede { font-size: 16px; line-height: 1.6; max-width: 68ch; }
+  .tier { margin-top: 30px; }
+  .tier__h { display: flex; align-items: baseline; gap: 10px; margin-bottom: 10px; }
+  .tier__h h2 { font-size: 15px; font-weight: 500; margin: 0; }
+  .tier__h span { font-size: 12.5px; color: var(--al-text-2); }
+  .screens { display: grid; grid-template-columns: 1fr 1fr; gap: var(--al-gap-sm); }
+  .scr { display: flex; gap: 12px; align-items: flex-start; padding: 13px 14px;
+         border: 1px solid var(--al-divider); border-radius: var(--al-radius-sm);
+         text-decoration: none; color: inherit; background: var(--al-surface); }
+  .scr:hover { border-color: var(--al-accent); }
+  .scr__n { flex: 0 0 26px; font-size: 12px; color: var(--al-text-3);
+            font-variant-numeric: tabular-nums; padding-top: 2px; }
+  .scr__t { display: block; font-size: 14.5px; font-weight: 500; }
+  .scr__e { display: block; font-size: 12.5px; color: var(--al-text-2); margin-top: 3px;
+            line-height: 1.45; }
+  @media (max-width: 760px) { .screens { grid-template-columns: minmax(0,1fr); } }
+</style>
+</head>
+<body style="background:var(--al-bg)">
+
+<div class="wrap">
+
+  <div class="row" style="margin-bottom:6px">
+    <span class="entity__ic" data-on><svg class="ic ic--sm"><use href="#i-timeline"></use></svg></span>
+    <h1 style="font-size:24px;font-weight:400;margin:0">almanac &mdash; UX prototype</h1>
+    <span class="spacer"></span>
+    <a class="btn btn--out btn--sm" data-theme-toggle href="#">dark theme</a>
+  </div>
+
+  <p class="lede dim">Twelve static screens, and five more added later for named
+    situations on a real dashboard, built to find out where the rule model in
+    <b>DESIGN.md</b> is hard to render. It is a validation exercise: several of these
+    screens exist because drawing them broke something. The conclusions are in
+    <a href="../FINDINGS.md">FINDINGS.md</a> &mdash; that document is the deliverable, not
+    these pages.</p>
+
+  <div class="alert alert--info" style="margin-top:18px">
+    <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+    <div>No build step, no framework, no JavaScript beyond a theme switch and an icon
+      sprite. Colours come from Home Assistant's own theme tokens, copied from source with
+      the commit pinned in <a href="assets/tokens.css">tokens.css</a>. Nothing here is
+      connected to anything &mdash; every number is fixed in the HTML.</div>
+  </div>
+
+  <div class="tier">
+    <p class="small dim" style="margin:0 0 14px">Screens 01&ndash;12 predate the
+      computed fixture used on 13&ndash;17 and still carry hand-written dates, so
+      the two groups disagree about the same schedule &mdash; it ends
+      <b>20:08</b> here and <b>20:03</b> there. Rebasing them is outstanding work;
+      see finding 18 in <a href="../FINDINGS.md">FINDINGS.md</a>.</p>
+    <div class="tier__h"><h2>Tier 1</h2><span>fully rendered, light and dark, desktop and phone</span></div>
+    <div class="screens">
+      <a class="scr" href="01-timeline.html">
+        <span class="scr__n">01</span>
+        <span><span class="scr__t">Timeline</span>
+          <span class="scr__e">The hero. Past and future either side of <i>now</i> (D63),
+            anchors on their own rails, an unknowable region where a sensor's horizon ends,
+            and the occurrence that was excluded by its own day set.</span></span>
+      </a>
+      <a class="scr" href="02-rule-editor.html">
+        <span class="scr__n">02</span>
+        <span><span class="scr__t">Rule editor</span>
+          <span class="scr__e">Scenario A, the flagship &mdash; and the screen that found the
+            flagship bug. As the brief specifies it, this rule never runs.</span></span>
+      </a>
+      <a class="scr" href="03-card.html">
+        <span class="scr__n">03</span>
+        <span><span class="scr__t">Dashboard card</span>
+          <span class="scr__e">Compact and expanded, in a Lovelace column. What belongs on a
+            card, and what has to stay in the panel.</span></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="tier">
+    <div class="tier__h"><h2>Tier 2</h2><span>desktop, light</span></div>
+    <div class="screens">
+      <a class="scr" href="04-anchor-picker.html">
+        <span class="scr__n">04</span>
+        <span><span class="scr__t">Anchor picker</span>
+          <span class="scr__e">Where a time comes from, how far it is shifted, and how far
+            ahead each source can see (D13).</span></span>
+      </a>
+      <a class="scr" href="05-schedule-list.html">
+        <span class="scr__n">05</span>
+        <span><span class="scr__t">Schedules at scale</span>
+          <span class="scr__e">Scenario F. 40 schedules, sorted by what happens next, with
+            anything wrong lifted out of the sort.</span></span>
+      </a>
+      <a class="scr" href="06-dayset-editor.html">
+        <span class="scr__n">06</span>
+        <span><span class="scr__t">Day set &amp; impact preview</span>
+          <span class="scr__e">Scenario C. One level of set algebra (D19), and D22's preview
+            of what an edit does to six schedules you do not own.</span></span>
+      </a>
+      <a class="scr" href="07-execution-log.html">
+        <span class="scr__n">07</span>
+        <span><span class="scr__t">Execution log</span>
+          <span class="scr__e">Scenario E. Skipped, dropped and failed are three different
+            things, and the screen never lets them blur.</span></span>
+      </a>
+      <a class="scr" href="08-dry-run.html">
+        <span class="scr__n">08</span>
+        <span><span class="scr__t">Dry run</span>
+          <span class="scr__e">The live engine with a different <span class="mono">now</span>
+            (D64). It is what proves Scenario A produces nothing.</span></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="tier">
+    <div class="tier__h"><h2>Tier 3</h2><span>sketches</span></div>
+    <div class="screens">
+      <a class="scr" href="09-more-info.html">
+        <span class="scr__n">09</span>
+        <span><span class="scr__t">More-info</span>
+          <span class="scr__e">D62. How much of this dialog almanac can own turns out to be
+            a verifiable question with a surprising answer.</span></span>
+      </a>
+      <a class="scr" href="10-first-run.html">
+        <span class="scr__n">10</span>
+        <span><span class="scr__t">First run</span>
+          <span class="scr__e">There is no empty state. The sun and the Jewish calendar are
+            already on the timeline before you write anything.</span></span>
+      </a>
+      <a class="scr" href="11-conflict.html">
+        <span class="scr__n">11</span>
+        <span><span class="scr__t">Two rules fighting</span>
+          <span class="scr__e">Scenario D, which DESIGN.md does not settle. No priority
+            system is invented; what the model actually does is drawn instead.</span></span>
+      </a>
+      <a class="scr" href="12-completion.html">
+        <span class="scr__n">12</span>
+        <span><span class="scr__t">Finishing</span>
+          <span class="scr__e">D46's three axes, one of which is not independent of another
+            and should not be shown as though it were.</span></span>
+      </a>
+    </div>
+  </div>
+
+  <!-- Built to a later, specific request: five named situations, each of which had
+       to be a Lovelace dashboard rather than a design of its own. Screens 01-12 asked
+       "can the model be drawn at all"; these ask "does it survive contact with a real
+       dashboard and a real evening". -->
+  <div class="tier">
+    <div class="tier__h"><h2>On a dashboard</h2>
+      <span>five requested situations, in Lovelace</span></div>
+    <!-- Every date and time on screens 13-17 is computed, not invented. `now` is
+         Friday 18 September 2026, early evening: Hebrew dates from the fixed
+         arithmetic calendar, sunsets from NOAA at an Israeli coastal latitude,
+         candle lighting at sunset minus 18 minutes, havdalah at plus 50. That is
+         why erev Yom Kippur turns up on a Sunday and the clocks go back inside
+         screen 17's list -- neither was arranged. -->
+    <p class="small dim" style="margin:-4px 0 14px">Every date on these five is
+      computed, not invented. <b>Now</b> is Friday 18 September 2026, early evening
+      &mdash; which is why erev Yom Kippur falls on a Sunday and a clock change
+      lands inside screen 17's list. Neither was arranged.</p>
+    <div class="screens">
+      <a class="scr" href="13-card-config.html">
+        <span class="scr__n">13</span>
+        <span><span class="scr__t">Configuring the card</span>
+          <span class="scr__e">HA's own edit-card dialog, two panes past 1000px. Upstream
+            filters tags with OR and never says so; a mistyped tag silently empties the
+            card. Both are shown, because both are fixable in the form.</span></span>
+      </a>
+      <a class="scr" href="14-new-cover.html">
+        <span class="scr__n">14</span>
+        <span><span class="scr__t">Blinds, every weekday</span>
+          <span class="scr__e">&ldquo;Weekdays, not holidays, not Shabbat&rdquo; is three set
+            operations (D19). One of them removes nothing, and saying so is the
+            screen.</span></span>
+      </a>
+      <a class="scr" href="15-new-shabbat-1.html">
+        <span class="scr__n">15</span>
+        <span><span class="scr__t">Two stages before candle lighting</span>
+          <span class="scr__e">Four steps
+            (<a href="15-new-shabbat-1.html">1</a> &middot;
+             <a href="15-new-shabbat-2.html">2</a> &middot;
+             <a href="15-new-shabbat-3.html">3</a> &middot;
+             <a href="15-new-shabbat-4.html">4</a>).
+            One schedule, two <span class="mono">At</span> rules, no weekday grid &mdash;
+            the anchor supplies the days. Device route and script route side by side,
+            because they fail differently.</span></span>
+      </a>
+      <a class="scr" href="16-card-list.html">
+        <span class="scr__n">16</span>
+        <span><span class="scr__t">The card, with descriptions</span>
+          <span class="scr__e">Seven schedules beside a thermostat and a Sun card. The
+            description is the payload, and it needs a wider column than masonry
+            gives it.</span></span>
+      </a>
+      <a class="scr" href="17-schedule-runs.html">
+        <span class="scr__n">17</span>
+        <span><span class="scr__t">The next few runs</span>
+          <span class="scr__e">One schedule, enumerated. A skipped fortnight, a DST jump
+            explained in place, and a footer that states where the list stops
+            knowing (D13).</span></span>
+      </a>
+    </div>
+  </div>
+
+  <div class="hr" style="margin-top:30px"></div>
+  <p class="small dim">Screenshots in <span class="mono">../screenshots/</span>, named
+    <span class="mono">&lt;screen&gt;-&lt;theme&gt;-&lt;viewport&gt;.png</span>. The phone
+    captures are genuine 390&times;844 layouts, not desktop renderings cropped narrow &mdash;
+    see the capture note at the end of FINDINGS.md for why that distinction needed work.</p>
+
+</div>
+
+</body>
+</html>

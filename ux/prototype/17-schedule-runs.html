@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Next runs card</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* Requested set 5: one schedule, and the list of its next X runs.
+
+     This is the timeline (D63) folded into 340px. The timeline answers "what
+     happens between now and Friday night" across every schedule; this card
+     answers the same question for one, and it is the cheaper thing to put on
+     a dashboard. Same enumeration underneath — D64 says `now` is a parameter,
+     so the card asks for N occurrences after `now` exactly as the dry run and
+     the engine do.
+
+     TWO THINGS THIS CARD HAS TO SHOW THAT A PLAIN LIST WOULD NOT:
+
+     1. Occurrences that will NOT happen. D11 generates candidate dates and
+        then filters with covers(); D12 says the filtered-out ones stay
+        visible. A list of only the surviving runs is a lie of omission — the
+        user who is asking "why didn't the blinds open on Thursday" needs to
+        see Thursday in the list, greyed, with the reason. So skipped rows are
+        rendered, dimmed, with the day set that excluded them NAMED.
+
+     2. Where knowledge runs out. D13 gives a resolver a horizon: UNBOUNDED,
+        UNTIL(date), or NEXT_ONLY. Candle lighting is pure computation and so
+        unbounded; a holiday list read from a calendar entity is UNTIL. Past
+        that date almanac is guessing, and a card that keeps printing
+        confident rows past its own horizon is the single worst thing this
+        surface can do. The footer of the second card states the horizon.
+
+     The DST jump stated under the first card (16:57, then 15:50 once the
+     clocks go back on Sun 25 Oct) is not a mistake — it is what the
+     enumeration actually produces across a clock change, and showing it
+     without explanation is how a user concludes the card is broken. The note
+     is part of the design, and it quotes the START time, because that is the
+     number in the rows above it; quoting candle lighting instead would look
+     right and be a different quantity.
+
+     EVERY DATE AND TIME HERE IS COMPUTED, NOT INVENTED. `now` is Friday 18
+     September 2026, early evening. Hebrew dates come from the fixed
+     arithmetic calendar, sunsets from NOAA at an Israeli coastal latitude,
+     candle lighting at sunset minus 18 minutes and havdalah at plus 50. Erev
+     Yom Kippur falls on Sunday 20 September 2026, which is why a midweek
+     occurrence appears in the list without anyone contriving one. */
+
+  .lv-cols { grid-template-columns: minmax(300px, 380px) minmax(280px, 340px); }
+  .tile { display: flex; align-items: center; gap: 12px; padding: 12px; }
+  .tile__ic { width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto;
+              display: flex; align-items: center; justify-content: center;
+              background: var(--al-tint-neutral); color: var(--al-text-2); }
+  .tile__n { font-size: 14px; }
+  .tile__s { font-size: 12.5px; color: var(--al-text-2); }
+  /* the schedule's own header, richer than a list row because this card is
+     about one thing */
+  .sh { display: flex; align-items: center; gap: 12px; padding: 14px 16px 12px; }
+  .sh__ic { width: 40px; height: 40px; border-radius: 50%; flex: 0 0 auto;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--al-tint-accent); color: var(--al-accent); }
+  .sh__n { font-size: 16px; }
+  .sh__s { font-size: 12.5px; color: var(--al-text-2); margin-top: 1px; }
+  @media (max-width: 870px) { .lv-cols { grid-template-columns: minmax(0,1fr); } }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <div class="lv-bar">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="lv-bar__title only-wide">Home</div>
+      <div class="lv-tabs">
+        <a class="lv-tab" href="#"><svg class="ic"><use href="#i-home"></use></svg></a>
+        <a class="lv-tab" href="16-card-list.html">Sanctuary</a>
+        <a class="lv-tab" href="#" data-on>Shabbat</a>
+        <a class="lv-tab" href="#">Climate</a>
+        <a class="lv-tab" href="#">Admin</a>
+      </div>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-search"></use></svg></button>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-pencil"></use></svg></button>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-dots"></use></svg></button>
+    </div>
+
+    <div class="lv-view">
+      <div class="lv-cols">
+
+        <div class="lv-col">
+
+          <!-- ======== one schedule, its next runs ======== -->
+          <section class="card">
+            <div class="sh">
+              <span class="sh__ic"><svg class="ic ic--lg"><use href="#i-flame"></use></svg></span>
+              <div class="cardline__t">
+                <div class="sh__n">Shabbat &mdash; sanctuary</div>
+                <div class="sh__s">Running now &middot; ends 20:03 tomorrow</div>
+              </div>
+              <span class="sw" data-on></span>
+            </div>
+
+            <div class="runs">
+              <!-- the occurrence in progress -->
+              <div class="run run--next">
+                <div class="run__w"><b>Today</b>Fri 18 Sep</div>
+                <div class="run__b">
+                  <div>17:41 &rarr; <span class="dim">Sat</span> 20:03</div>
+                  <div class="run__s">45 min before candle lighting &rarr; 30 min after havdalah</div>
+                </div>
+              </div>
+
+              <!-- The row that pays for the whole anchor model. Erev Yom Kippur
+                   is a Sunday this year, so the same rule, unedited, produces a
+                   midweek occurrence. A weekday-and-time scheduler cannot state
+                   this at all; it is why the day set is not a row of checkboxes. -->
+              <div class="run">
+                <div class="run__w"><b>Sun 20 Sep</b>in 2 days</div>
+                <div class="run__b">
+                  <div>17:38 &rarr; <span class="dim">Mon</span> 20:00</div>
+                  <div class="run__s">erev Yom Kippur &mdash; not every candle
+                    lighting is a Friday</div>
+                </div>
+              </div>
+
+              <div class="run">
+                <div class="run__w"><b>Fri 25 Sep</b>in 7 days</div>
+                <div class="run__b">
+                  <div>17:32 &rarr; <span class="dim">Sat</span> 19:53</div>
+                  <div class="run__s">lights 80%, climate heat 22&deg;C</div>
+                </div>
+              </div>
+
+              <div class="run">
+                <div class="run__w"><b>Fri 2 Oct</b>in 2 weeks</div>
+                <div class="run__b">
+                  <div>17:22 &rarr; <span class="dim">Sat</span> 19:44</div>
+                </div>
+              </div>
+
+              <div class="run">
+                <div class="run__w"><b>Fri 9 Oct</b>in 3 weeks</div>
+                <div class="run__b">
+                  <div>17:13 &rarr; <span class="dim">Sat</span> 19:35</div>
+                </div>
+              </div>
+
+              <!-- D12: an occurrence that will NOT happen, and why -->
+              <div class="run run--skip">
+                <div class="run__w"><b>Fri 16 Oct</b>in 4 weeks</div>
+                <div class="run__b">
+                  <div class="row" style="gap:6px">
+                    <svg class="ic ic--sm" style="color:var(--al-text-3)"><use href="#i-minus"></use></svg>
+                    <span>Won&rsquo;t run</span>
+                  </div>
+                  <div class="run__s">11&ndash;18 Oct is in <b>Building closed</b></div>
+                </div>
+              </div>
+            </div>
+
+            <!-- The clock change is stated where the list stops rather than as a
+                 sixth row, because the row it would explain is four weeks past
+                 the end of this card and the fact is about all of them. -->
+            <div class="card__footer" style="align-items:flex-start">
+              <svg class="ic ic--sm dim" style="margin-top:2px"><use href="#i-info"></use></svg>
+              <span class="small dim">Clocks go back on <b>Sun 25 Oct</b>, so from
+                <b>Fri 30 Oct</b> this starts at <b>15:50</b> instead of 16:57 &mdash; an
+                hour and seven minutes earlier by the clock, and still exactly 45
+                minutes before candle lighting.</span>
+            </div>
+
+            <div class="card__footer">
+              <span class="small dim">Next 6</span>
+              <span class="spacer"></span>
+              <a class="btn btn--text btn--sm" href="01-timeline.html">Timeline</a>
+              <a class="btn btn--text btn--sm" href="02-rule-editor.html">Edit</a>
+            </div>
+          </section>
+
+          <!-- ======== the same card on a simple At rule, where the
+                       interesting thing is the horizon ======== -->
+          <section class="card">
+            <div class="sh">
+              <span class="sh__ic" style="background:var(--al-tint-neutral);color:var(--al-text-2)"><svg class="ic ic--lg"><use href="#i-layers"></use></svg></span>
+              <div class="cardline__t">
+                <div class="sh__n">Blinds up</div>
+                <div class="sh__s">07:15 &middot; weekdays, except holidays</div>
+              </div>
+              <span class="sw" data-on></span>
+            </div>
+
+            <div class="runs">
+              <div class="run run--next">
+                <div class="run__w"><b>Sun 20 Sep</b>in 2 days</div>
+                <div class="run__b"><div>07:15</div>
+                  <div class="run__s">opens Sanctuary blinds</div></div>
+              </div>
+              <div class="run run--skip">
+                <div class="run__w"><b>Mon 21 Sep</b>in 3 days</div>
+                <div class="run__b">
+                  <div class="row" style="gap:6px">
+                    <svg class="ic ic--sm" style="color:var(--al-text-3)"><use href="#i-minus"></use></svg>
+                    <span>Won&rsquo;t run</span></div>
+                  <div class="run__s">Yom Kippur, from <span class="mono">calendar.jewish_calendar</span></div>
+                </div>
+              </div>
+              <div class="run">
+                <div class="run__w"><b>Tue 22 Sep</b>in 4 days</div>
+                <div class="run__b"><div>07:15</div></div>
+              </div>
+              <div class="run">
+                <div class="run__w"><b>Wed 23 Sep</b>in 5 days</div>
+                <div class="run__b"><div>07:15</div></div>
+              </div>
+            </div>
+
+            <!-- D13. A card that prints confident rows past its own horizon
+                 is worse than a card that stops. -->
+            <div class="card__footer" style="align-items:flex-start">
+              <svg class="ic ic--sm dim" style="margin-top:2px"><use href="#i-info"></use></svg>
+              <span class="small dim">The holiday list is known to <b>31 Dec 2026</b>.
+                After that, almanac can still tell you it is a weekday &mdash; not whether
+                it is a holiday.</span>
+            </div>
+          </section>
+        </div>
+
+        <!-- ===== ordinary cards, so this reads as a dashboard ===== -->
+        <div class="lv-col">
+          <section class="card">
+            <div class="card__header">Sun &amp; zmanim</div>
+            <div class="card__body">
+              <dl class="kv">
+                <dt>Sunset</dt><dd>18:44</dd>
+                <dt>Candle lighting</dt><dd>18:26</dd>
+                <dt>Havdalah</dt><dd>19:33 tomorrow</dd>
+                <dt>Next holiday</dt><dd>Mon 21 Sep</dd>
+              </dl>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card__body--flush">
+              <div class="tile" style="border-bottom:1px solid var(--al-divider)">
+                <span class="tile__ic" style="color:var(--state-light-active-color);background:color-mix(in srgb,var(--state-light-active-color) 22%,transparent)"><svg class="ic"><use href="#i-bulb"></use></svg></span>
+                <div class="cardline__t"><div class="tile__n">Sanctuary lights</div>
+                  <div class="tile__s">On &middot; 80%</div></div>
+                <span class="sw" data-on></span>
+              </div>
+              <div class="tile">
+                <span class="tile__ic" style="color:var(--state-climate-heat-color);background:color-mix(in srgb,var(--state-climate-heat-color) 22%,transparent)"><svg class="ic"><use href="#i-thermo"></use></svg></span>
+                <div class="cardline__t"><div class="tile__n">Sanctuary climate</div>
+                  <div class="tile__s">Heat &middot; 22&deg;C</div></div>
+                <span class="sw" data-on></span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card__header">Notes</div>
+            <div class="card__body">
+              <div class="small dim">Building closed 11&ndash;18 Oct for the floor.
+                Miriam has the key.</div>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>17 &middot; One schedule, its next runs</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

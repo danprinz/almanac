@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · New schedule 2/4</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* Requested set 3, step 2 of 4: what happens at candle lighting minus 60.
+
+     THE USER'S OWN FRAMING IS THE CONTROL. "ACs can be controlled by a script
+     or climate device" is not an implementation detail to hide behind an
+     abstraction — the two routes fail differently, so the choice has to be on
+     screen and its consequence has to be visible in the same row:
+
+       Set the device — almanac writes the desired state itself. HA has no
+       atomic "set full state" service for climate: set_temperature takes an
+       optional hvac_mode, and NOTHING takes fan_mode alongside anything else.
+       So one unit is two service calls, and either can be rejected on its own.
+       almanac reports per attribute rather than per row, which is why the row
+       can end up half green.
+
+       Run a script — the install's own script. D31: a script already running
+       under the default mode: single logs "Already running" and RETURNS
+       WITHOUT RAISING. The caller cannot tell that from success. Script
+       entities expose mode / current / max as attributes, so almanac
+       pre-flights the call and says so here, at the moment the route is
+       chosen, not in a log the morning after.
+
+     Both routes appear on this one screen deliberately — one unit each — so
+     the comparison is concrete rather than a paragraph of help text. */
+
+  .kicker { font-size: 12.5px; color: var(--al-text-2); }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+  <main class="ha-main">
+    <div class="lv-bar">
+      <div class="lv-bar__title only-wide">Home</div>
+      <div class="lv-tabs">
+        <a class="lv-tab" href="#"><svg class="ic"><use href="#i-home"></use></svg></a>
+        <a class="lv-tab" href="#" data-on>Sanctuary</a>
+        <a class="lv-tab" href="#">Social hall</a>
+        <a class="lv-tab" href="#">Climate</a>
+      </div>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-search"></use></svg></button>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-pencil"></use></svg></button>
+    </div>
+    <div class="lv-view">
+      <div class="lv-cols" style="grid-template-columns:repeat(auto-fill,minmax(300px,340px))">
+        <div class="lv-col">
+          <section class="card"><div class="card__header">
+            <svg class="ic"><use href="#i-timeline"></use></svg>Sanctuary schedules</div>
+            <div class="card__body"><span class="dim small">&hellip;</span></div></section>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="dlg-scrim">
+  <div class="dlg dlg--wide">
+
+    <div class="dlg__head">
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-close"></use></svg></button>
+      <span>New schedule &mdash; Sanctuary &mdash; candle lighting</span>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-code"></use></svg></button>
+    </div>
+
+    <div class="dlg__body dlg__body--flush">
+      <div class="wiz">
+
+        <div class="wiz__rail">
+          <div class="wstep" data-done>
+            <span class="wstep__n"><svg class="ic ic--sm"><use href="#i-check"></use></svg></span>
+            <span>Name and first stage<span class="wstep__s">60 min before, 17:23</span></span>
+          </div>
+          <div class="wstep" data-on>
+            <span class="wstep__n">2</span>
+            <span>What happens then<span class="wstep__s">the two units</span></span>
+          </div>
+          <div class="wstep">
+            <span class="wstep__n">3</span>
+            <span>A second stage<span class="wstep__s">lights, and a change</span></span>
+          </div>
+          <div class="wstep">
+            <span class="wstep__n">4</span>
+            <span>Check and save<span class="wstep__s">the next few runs</span></span>
+          </div>
+        </div>
+
+        <div class="wiz__main">
+
+          <div class="tstage tstage--on" style="margin-bottom:16px">
+            <div class="tstage__h">
+              <span class="tstage__t">Stage 1 &mdash; 17:23</span>
+              <span class="badge badge--neutral">60 minutes before candle lighting</span>
+            </div>
+          </div>
+
+          <div class="sect-title">Do this</div>
+          <div class="stack stack--sm" style="margin-bottom:12px">
+
+            <!-- route A: almanac writes the state -->
+            <div class="arow">
+              <div class="arow__h">
+                <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg></span>
+                <span>Sanctuary AC &mdash; east</span>
+                <span class="spacer"></span>
+                <span class="arow__how">
+                  <span data-on>Set the device</span>
+                  <span>Run a script</span>
+                </span>
+                <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-trash"></use></svg></button>
+              </div>
+              <div class="arow__b">
+                <div class="row row--wrap">
+                  <span class="sel sel--inline">Cool</span>
+                  <span class="tf" style="width:96px">24&deg;C</span>
+                  <span class="sel sel--inline">Fan: low</span>
+                </div>
+                <div class="arow__warn arow__warn--note">
+                  <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+                  <span>Home Assistant has no single call that sets mode, temperature and
+                    fan together, so almanac sends <b>two</b>: mode with temperature, then
+                    fan. Each is reported on its own &mdash; if the unit refuses the fan
+                    speed you will see that, and the temperature will still have landed.</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- route B: the install's own script -->
+            <div class="arow">
+              <div class="arow__h">
+                <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-script"></use></svg></span>
+                <span>Sanctuary AC &mdash; west</span>
+                <span class="spacer"></span>
+                <span class="arow__how">
+                  <span>Set the device</span>
+                  <span data-on>Run a script</span>
+                </span>
+                <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-trash"></use></svg></button>
+              </div>
+              <div class="arow__b">
+                <div class="row row--wrap">
+                  <span class="sel" style="min-width:210px">script.ac_west_preset</span>
+                  <span class="sel sel--inline">preset: shabbat_pre</span>
+                </div>
+                <div class="arow__warn">
+                  <svg class="ic ic--sm"><use href="#i-alert"></use></svg>
+                  <span>This script runs in <b>single</b> mode. If it is already running when
+                    the schedule fires, Home Assistant logs &ldquo;Already running&rdquo; and
+                    returns &mdash; the call looks like it worked. almanac checks before
+                    calling and will record it as <b>skipped</b>, not as done.</span>
+                </div>
+              </div>
+            </div>
+
+            <button class="btn btn--text btn--sm" style="align-self:flex-start">
+              <svg class="ic ic--sm"><use href="#i-plus"></use></svg>Add another</button>
+          </div>
+
+          <div class="hr"></div>
+
+          <div class="nudge">
+            <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+            <div><b>This sets the units once, at 17:23.</b> It does not hold them there
+              &mdash; if somebody changes a unit at 18:00, almanac will not put it back.
+              That is what you want here, because stage 2 is about to change them again.</div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="dlg__foot">
+      <a class="btn btn--text btn--sm" href="15-new-shabbat-1.html">Back</a>
+      <span class="spacer"></span>
+      <span class="small dim" style="margin-right:10px">Step 2 of 4</span>
+      <button class="btn btn--text btn--sm">Cancel</button>
+      <a class="btn btn--sm" href="15-new-shabbat-3.html">Next</a>
+    </div>
+  </div>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>15b &middot; New schedule 2/4 &mdash; two units, two routes</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

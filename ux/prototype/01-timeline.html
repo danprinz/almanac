@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Timeline</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* Page-local only. Anything reusable belongs in app.css. */
+  .tbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .win  { font-size: 15px; font-weight: 500; }
+  .win small { display: block; font-size: 12px; font-weight: 400; color: var(--al-text-2); }
+</style>
+</head>
+<body>
+
+<div class="ha">
+
+  <!-- ===================== HA sidebar ===================== -->
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header">
+      <svg class="ic ic--lg"><use href="#i-home"></use></svg>
+      <span>Beit Knesset</span>
+    </div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <!-- ===================== Panel ===================== -->
+  <main class="ha-main">
+
+    <header class="ha-header">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="ha-header__title">Almanac</div>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-search"></use></svg></button>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-dots"></use></svg></button>
+    </header>
+
+    <div class="ha-tabs">
+      <div class="ha-tab" aria-selected="true">Timeline</div>
+      <div class="ha-tab">Schedules</div>
+      <div class="ha-tab">Day sets</div>
+      <div class="ha-tab">Log</div>
+    </div>
+
+    <div class="ha-content ha-content--wide">
+
+      <div class="tbar">
+        <div class="win">
+          Fri 25 Sep 14:00 &rarr; Sun 27 Sep 02:00
+          <small>36 hours &middot; 7 of 40 schedules have something in this window</small>
+        </div>
+        <div class="spacer"></div>
+        <button class="chip" data-on>36 hours</button>
+        <button class="chip">Today</button>
+        <button class="chip">7 days</button>
+        <button class="chip"><svg class="ic ic--sm"><use href="#i-calendar"></use></svg>Custom</button>
+        <button class="btn btn--out btn--sm"><svg class="ic ic--sm"><use href="#i-clock"></use></svg>Jump to now</button>
+      </div>
+
+      <!-- ===================== The ribbon ===================== -->
+      <section class="card only-wide" style="margin-bottom:16px">
+        <div class="tl">
+          <div class="tl-body">
+
+            <!-- ruler -->
+            <div class="tl-head">
+              <div class="tl-head__pad"></div>
+              <div class="tl-ruler">
+                <div class="tick tick--day" style="left:0%"><span>Fri 25 Sep</span></div>
+                <div class="tick" style="left:11.111%"><span>18:00</span></div>
+                <div class="tick" style="left:22.222%"><span>22:00</span></div>
+                <div class="tick tick--day" style="left:27.778%"><span>Sat 26 Sep</span></div>
+                <div class="tick" style="left:44.444%"><span>06:00</span></div>
+                <div class="tick" style="left:55.556%"><span>10:00</span></div>
+                <div class="tick" style="left:66.667%"><span>14:00</span></div>
+                <div class="tick" style="left:77.778%"><span>18:00</span></div>
+                <div class="tick" style="left:88.889%"><span>22:00</span></div>
+                <div class="tick tick--day" style="left:94.444%"><span>Sun 27</span></div>
+              </div>
+            </div>
+
+            <!-- anchor rails: the almanac itself. These render whether or not a
+                 single schedule exists — see 10-first-run.html. -->
+            <div class="tl-rail">
+              <div class="tl-rail__label">Sun</div>
+              <div class="tl-rail__track">
+                <div class="tl-anchor" style="left:13.426%">sunset 18:50</div>
+                <div class="tl-anchor tl-anchor--lo" style="left:45.556%">dawn 06:24</div>
+                <div class="tl-anchor" style="left:46.852%">sunrise 06:52</div>
+                <div class="tl-anchor tl-anchor--lo" style="left:80.000%">sunset 18:48</div>
+              </div>
+            </div>
+            <div class="tl-rail">
+              <div class="tl-rail__label">Jewish cal.</div>
+              <div class="tl-rail__track">
+                <div class="tl-anchor tl-anchor--key" style="left:12.593%">candle lighting 18:32</div>
+                <div class="tl-anchor tl-anchor--lo" style="left:15.370%">nightfall 19:32</div>
+                <div class="tl-anchor tl-anchor--key" style="left:82.315%">havdalah 19:38</div>
+              </div>
+            </div>
+
+            <!-- lanes -->
+            <div class="tl-grid">
+
+              <!-- 1 — the flagship. Crosses now: recorded on the left, predicted
+                   on the right, and the join is exactly the divider. -->
+              <div class="tl-lane">
+                <div class="tl-lane__label">
+                  <div class="tl-lane__name"><svg class="ic ic--sm"><use href="#i-flame"></use></svg>Shabbat &mdash; sanctuary</div>
+                  <div class="tl-lane__meta">candle lighting &minus;45m &rarr; havdalah +30m</div>
+                </div>
+                <div class="tl-lane__track">
+                  <div class="tl-bar st-fired" style="left:10.509%;width:44.120%">
+                    <svg class="ic ic--xs"><use href="#i-check"></use></svg>Lights on &middot; PA Shabbat preset
+                  </div>
+                  <div class="tl-bar tl-bar--future st-future" style="left:54.630%;width:29.074%">
+                    holding &rarr; 20:08
+                  </div>
+                  <div class="tl-edge st-fired" style="left:10.509%"></div>
+                  <div class="tl-edge st-future" style="left:83.704%"></div>
+                </div>
+              </div>
+
+              <!-- 2 — D12. The Saturday 22:00 occurrence is generated by the
+                   recurrence and then removed by covers(); it is drawn, not
+                   omitted. -->
+              <div class="tl-lane">
+                <div class="tl-lane__label">
+                  <div class="tl-lane__name"><svg class="ic ic--sm"><use href="#i-bulb"></use></svg>Social hall &mdash; off</div>
+                  <div class="tl-lane__meta">At 22:00 &middot; days: Shabbat</div>
+                </div>
+                <div class="tl-lane__track">
+                  <div class="tl-mark st-fired" style="left:22.222%" title="Fired 22:00">&#10003;</div>
+                  <div class="tl-mark st-outside" style="left:88.889%" title="Outside the set">&ndash;</div>
+                </div>
+              </div>
+
+              <!-- 3 — skipped, with the condition's own label (D24) -->
+              <div class="tl-lane">
+                <div class="tl-lane__label">
+                  <div class="tl-lane__name"><svg class="ic ic--sm"><use href="#i-speaker"></use></svg>Kiddush setup</div>
+                  <div class="tl-lane__meta">At 15:30 &middot; if hall is free</div>
+                </div>
+                <div class="tl-lane__track">
+                  <div class="tl-mark st-skipped" style="left:4.167%" title="Skipped">!</div>
+                  <div style="position:absolute;left:5.6%;top:14px;font-size:11.5px;color:var(--al-st-skipped);white-space:nowrap">
+                    skipped &mdash; cleaning crew present
+                  </div>
+                </div>
+              </div>
+
+              <!-- 4 — an interval that repeats nightly, relative to an anchor -->
+              <div class="tl-lane">
+                <div class="tl-lane__label">
+                  <div class="tl-lane__name"><svg class="ic ic--sm"><use href="#i-bulb"></use></svg>Corridor lights</div>
+                  <div class="tl-lane__meta">sunset &minus;20m &rarr; 23:30 &middot; every day</div>
+                </div>
+                <div class="tl-lane__track">
+                  <div class="tl-bar st-fired" style="left:12.500%;width:13.889%">18:30 &rarr; 23:30</div>
+                  <div class="tl-bar tl-bar--future st-future" style="left:79.074%;width:13.982%">18:28 &rarr; 23:30</div>
+                </div>
+              </div>
+
+              <!-- 5 — a failed edge action, surfaced on the bar itself (D49) -->
+              <div class="tl-lane">
+                <div class="tl-lane__label">
+                  <div class="tl-lane__name"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg>Boiler &mdash; Shabbat mode</div>
+                  <div class="tl-lane__meta">Fri 16:00 &rarr; Sat 20:30</div>
+                </div>
+                <div class="tl-lane__track">
+                  <div class="tl-bar st-fired" style="left:5.556%;width:49.074%">
+                    <svg class="ic ic--xs" style="color:var(--al-err)"><use href="#i-alert"></use></svg>1 of 2 actions failed
+                  </div>
+                  <div class="tl-bar tl-bar--future st-future" style="left:54.630%;width:30.093%">holding &rarr; 20:30</div>
+                  <div class="tl-edge tl-edge--failed" style="left:5.556%"></div>
+                </div>
+              </div>
+
+              <!-- 6 — D13. An entity_time anchor whose source publishes only the
+                   next occurrence. Past it, the lane says so rather than
+                   extrapolating. -->
+              <div class="tl-lane">
+                <div class="tl-lane__label">
+                  <div class="tl-lane__name"><svg class="ic ic--sm"><use href="#i-bell"></use></svg>Evening PA</div>
+                  <div class="tl-lane__meta">sensor.hoshen_tzeit &middot; next only</div>
+                </div>
+                <div class="tl-lane__track">
+                  <div class="tl-unknown" style="left:82.500%"><span style="left:24px">not knowable</span></div>
+                  <div class="tl-mark st-fired" style="left:15.370%" title="Fired 19:32">&#10003;</div>
+                  <div class="tl-mark st-future" style="left:82.500%" title="19:42 — the only future time this sensor knows">&#9679;</div>
+                </div>
+              </div>
+
+              <!-- 7 -->
+              <div class="tl-lane">
+                <div class="tl-lane__label">
+                  <div class="tl-lane__name"><svg class="ic ic--sm"><use href="#i-trash"></use></svg>Bins out</div>
+                  <div class="tl-lane__meta">At 01:30 &middot; days: collection eve</div>
+                </div>
+                <div class="tl-lane__track">
+                  <div class="tl-mark st-future" style="left:98.611%" title="Sun 01:30">&#9679;</div>
+                </div>
+              </div>
+
+              <!-- gridlines + past shading, beneath the bars and inside the
+                   lane grid, so the rails above keep their own background -->
+              <div class="tl-overlay tl-overlay--under">
+                <div class="tl-past" style="width:54.630%"></div>
+                <div class="tl-gridlines">
+                  <div class="g" style="left:11.111%"></div>
+                  <div class="g" style="left:22.222%"></div>
+                  <div class="g g--day" style="left:27.778%"></div>
+                  <div class="g" style="left:44.444%"></div>
+                  <div class="g" style="left:55.556%"></div>
+                  <div class="g" style="left:66.667%"></div>
+                  <div class="g" style="left:77.778%"></div>
+                  <div class="g" style="left:88.889%"></div>
+                  <div class="g g--day" style="left:94.444%"></div>
+                </div>
+              </div>
+
+            </div><!-- /tl-grid -->
+
+            <!-- the divider, over everything (D63) -->
+            <div class="tl-overlay tl-overlay--over">
+              <div class="tl-now" style="left:54.630%">
+                <span class="tl-now__flag tl-now__flag--in">NOW &middot; 09:40</span>
+              </div>
+            </div>
+
+          </div><!-- /tl-body -->
+
+          <div class="tl-foot">
+            <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+            33 of your 40 schedules have no occurrence in this window.
+            <a href="05-schedule-list.html" style="color:var(--al-accent)">Show them anyway</a>
+          </div>
+
+          <div class="tl-legend">
+            <span class="li"><span class="glyph st-fired">&#10003;</span> ran</span>
+            <span class="li"><span class="glyph st-skipped">!</span> skipped &mdash; a condition said no</span>
+            <span class="li"><span class="glyph st-failed">&times;</span> an action failed</span>
+            <span class="li"><span class="glyph st-outside">&ndash;</span> outside the day set</span>
+            <span class="li"><span class="glyph st-future">&#9679;</span> predicted</span>
+            <span class="li"><span style="display:inline-block;width:22px;height:10px;border-left:1px dashed var(--al-text-2);background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--al-text) 10%,transparent) 0 6px,transparent 6px 12px)"></span> not knowable yet</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- on a phone the ribbon is dropped outright, not shrunk -->
+      <div class="alert alert--info only-narrow" style="margin-bottom:12px">
+        <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+        <div>The swimlane ribbon is a desktop view. On a phone the same window is
+        the list below, read top to bottom, with the same <b>now</b> divider.</div>
+      </div>
+
+      <!-- ===================== The agenda ===================== -->
+      <section class="card">
+        <div class="card__header">
+          What happens next
+          <span class="sub">every occurrence in the window, merged</span>
+          <div class="spacer"></div>
+          <button class="chip chip--sm" data-on>All</button>
+          <button class="chip chip--sm">Only exceptions</button>
+        </div>
+        <div class="card__body--flush">
+          <div class="ag">
+
+            <div class="ag__day">Fri 25 Sep <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">&middot; erev Shabbat</span></div>
+
+            <div class="ag__row ag__row--past">
+              <div class="ag__time"><span>15:30</span><small>&nbsp;</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-skipped">!</span><b>Kiddush setup</b>
+                  <span class="badge badge--warn">skipped</span></div>
+                <div class="ag__why">Didn&rsquo;t run because <em>cleaning crew present</em> was true.
+                  Policy: <em>skip today</em>.</div>
+              </div>
+              <div class="ag__right"><button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-chevr"></use></svg></button></div>
+            </div>
+
+            <div class="ag__row ag__row--past">
+              <div class="ag__time"><span>16:00</span><small>starts</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-failed">&times;</span><b>Boiler &mdash; Shabbat mode</b>
+                  <span class="badge badge--err">1 of 2 actions failed</span></div>
+                <div class="ag__why"><em>water_heater.mikveh</em> set to 42&deg;C.
+                  <em>water_heater.kitchen</em> &mdash; not responding.</div>
+              </div>
+              <div class="ag__right"><button class="btn btn--text btn--sm">Retry</button></div>
+            </div>
+
+            <div class="ag__row ag__row--past">
+              <div class="ag__time"><span>17:47</span><small>starts</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-fired">&#10003;</span><b>Shabbat &mdash; sanctuary</b>
+                  <span class="badge badge--accent">running now</span></div>
+                <div class="ag__why">candle lighting 18:32 &minus; 45m. Holds until
+                  havdalah 19:38 + 30m tomorrow.</div>
+              </div>
+              <div class="ag__right"><button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-chevr"></use></svg></button></div>
+            </div>
+
+            <div class="ag__row ag__row--past">
+              <div class="ag__time"><span>18:30</span><small>starts</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-fired">&#10003;</span><b>Corridor lights</b></div>
+                <div class="ag__why">sunset 18:50 &minus; 20m.</div>
+              </div>
+            </div>
+
+            <div class="ag__row ag__row--past">
+              <div class="ag__time"><span>19:32</span><small>&nbsp;</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-fired">&#10003;</span><b>Evening PA</b></div>
+                <div class="ag__why">From <em>sensor.hoshen_tzeit</em>, which published 19:32.</div>
+              </div>
+            </div>
+
+            <div class="ag__row ag__row--past">
+              <div class="ag__time"><span>22:00</span><small>&nbsp;</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-fired">&#10003;</span><b>Social hall &mdash; off</b></div>
+                <div class="ag__why">Friday is in the day set <em>Shabbat</em>.</div>
+              </div>
+            </div>
+
+            <div class="ag__row ag__row--past">
+              <div class="ag__time"><span>23:30</span><small>ends</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-fired">&#10003;</span><b>Corridor lights</b></div>
+                <div class="ag__why">Put back how it was before 18:30.</div>
+              </div>
+            </div>
+
+            <div class="ag__day">Sat 26 Sep <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">&middot; Shabbat</span></div>
+
+            <div class="ag__now"><span>now &middot; 09:40</span><span class="line"></span><span>everything below is predicted</span></div>
+
+            <div class="ag__row">
+              <div class="ag__time"><span>18:28</span><small>starts</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-future">&#9679;</span><b>Corridor lights</b></div>
+                <div class="ag__why">sunset 18:48 &minus; 20m.</div>
+              </div>
+            </div>
+
+            <div class="ag__row">
+              <div class="ag__time"><span>19:42</span><small>&nbsp;</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-future">&#9679;</span><b>Evening PA</b>
+                  <span class="badge badge--neutral">last one we can see</span></div>
+                <div class="ag__why"><em>sensor.hoshen_tzeit</em> publishes one time at a time.
+                  After this, almanac cannot say &mdash; it does not guess.</div>
+              </div>
+            </div>
+
+            <div class="ag__row">
+              <div class="ag__time"><span>20:08</span><small>ends</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-future">&#9679;</span><b>Shabbat &mdash; sanctuary</b></div>
+                <div class="ag__why">havdalah 19:38 + 30m. Then: <em>put everything back how it was</em>.</div>
+              </div>
+            </div>
+
+            <div class="ag__row">
+              <div class="ag__time"><span>20:30</span><small>ends</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-future">&#9679;</span><b>Boiler &mdash; Shabbat mode</b></div>
+                <div class="ag__why">Back to the weekday setpoint.</div>
+              </div>
+            </div>
+
+            <!-- D12 rendered as an explanation, not as an omission -->
+            <div class="ag__row ag__row--ghost">
+              <div class="ag__time"><span>22:00</span><small>&nbsp;</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-outside">&ndash;</span><b>Social hall &mdash; off</b>
+                  <span class="badge badge--ghost">outside the set</span></div>
+                <div class="ag__why">Saturday 22:00 is <em>after Shabbat ended at 19:38</em>,
+                  so the day set no longer covers it. Nothing will run.</div>
+                <div class="nudge">
+                  <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+                  <div>If you meant the whole of Saturday, switch the days to
+                    <b>Saturday (calendar day)</b>. If you meant Shabbat itself,
+                    a period from candle lighting to havdalah says it exactly.</div>
+                  <button class="btn btn--out btn--sm">Fix this</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="ag__row">
+              <div class="ag__time"><span>23:30</span><small>ends</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-future">&#9679;</span><b>Corridor lights</b></div>
+              </div>
+            </div>
+
+            <div class="ag__day">Sun 27 Sep</div>
+
+            <div class="ag__row">
+              <div class="ag__time"><span>01:30</span><small>&nbsp;</small></div>
+              <div class="ag__body">
+                <div class="ag__title"><span class="glyph st-future">&#9679;</span><b>Bins out</b></div>
+                <div class="ag__why">Sunday is in the day set <em>collection eve</em>.</div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>01 &middot; Panel &rarr; Timeline</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

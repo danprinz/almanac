@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Day set</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* Scenario C. A day set is a shared object (D18), so editing one is not a
+     private act — D22 requires an impact preview. The preview here answers
+     two different questions with two different widgets:
+       "which days change"  -> the calendars
+       "who is affected"    -> the list of schedules and their owners
+     Only the first is what D22 asks for. The second is a proposal; see
+     FINDINGS.md, D22. */
+
+  /* The algebra is one level deep (D19). Rendering it as a vertical list of
+     steps, each with its own verb, is what keeps that flat: there is nowhere
+     for a nested group to go. */
+  .step { display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+          border: 1px solid var(--al-divider); border-radius: var(--al-radius-sm);
+          background: var(--al-surface); }
+  .step + .step { margin-top: 8px; }
+  .step__verb { flex: 0 0 96px; font-size: 12px; font-weight: 500; letter-spacing: .05em;
+                text-transform: uppercase; color: var(--al-text-2); }
+  .step--minus .step__verb { color: var(--al-err); }
+  .step__b { flex: 1 1 auto; min-width: 0; }
+  .step__t { font-size: 14.5px; }
+  .step__s { font-size: 12.5px; color: var(--al-text-2); }
+
+  /* A month, small enough that two fit beside the editor. */
+  .cal { font-size: 11.5px; }
+  .cal__m { font-size: 12px; font-weight: 500; margin: 0 0 6px; }
+  .cal__g { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+  .cal__g span { color: var(--al-text-3); font-size: 10px; padding-bottom: 2px; }
+  .cal__d { height: 24px; line-height: 24px; border-radius: 5px; color: var(--al-text-2); }
+  .cal__d--in   { background: var(--al-tint-accent); color: var(--al-accent); font-weight: 600; }
+  .cal__d--gone { background: var(--al-tint-err); color: var(--al-err); font-weight: 600;
+                  text-decoration: line-through; }
+  .cal__d--new  { background: var(--al-tint-ok); color: var(--al-ok); font-weight: 600; }
+  .cal__d--pad  { color: var(--al-text-3); opacity: .45; }
+
+  .swatch { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px;
+            color: var(--al-text-2); }
+  .swatch i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  .diffnum { display: flex; align-items: baseline; gap: 8px; font-size: 22px; font-weight: 300; }
+  .diffnum small { font-size: 12px; color: var(--al-text-2); font-weight: 400; }
+
+  /* entity_ids are long and have no spaces */
+  .kv dd { overflow-wrap: anywhere; }
+
+  @media (max-width: 870px) { .cols { grid-template-columns: minmax(0,1fr); } }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <header class="ha-header">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="ha-header__title">Cleaning days</div>
+      <span class="badge badge--neutral">used by 6 schedules</span>
+      <div class="spacer"></div>
+      <button class="btn btn--text btn--sm">Cancel</button>
+      <button class="btn btn--sm">Save</button>
+    </header>
+
+    <div class="ha-tabs">
+      <a class="ha-tab" href="01-timeline.html">Timeline</a>
+      <a class="ha-tab" href="05-schedule-list.html">Schedules</a>
+      <a class="ha-tab" href="06-dayset-editor.html" data-on>Day sets</a>
+      <a class="ha-tab" href="07-execution-log.html">Log</a>
+    </div>
+
+    <div class="ha-content ha-content--wide">
+      <div class="cols">
+
+        <!-- ============ the definition ============ -->
+        <div class="stack">
+
+          <section class="card">
+            <div class="card__header">Which days
+              <span class="sub">built up in steps, top to bottom</span>
+            </div>
+            <div class="card__body">
+
+              <div class="step">
+                <div class="step__verb">Start with</div>
+                <div class="step__b">
+                  <div class="step__t">The <b>2nd</b> and <b>4th</b> <b>Tuesday</b> of every month</div>
+                  <div class="step__s">14 days in the next 8 months</div>
+                </div>
+                <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-pencil"></use></svg></button>
+              </div>
+
+              <div class="step step--minus">
+                <div class="step__verb">Except</div>
+                <div class="step__b">
+                  <div class="step__t">Days in <b>Holiday list</b></div>
+                  <div class="step__s">a list of 9 dates &middot; also used by <b>Term Sundays</b></div>
+                </div>
+                <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-pencil"></use></svg></button>
+                <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-trash"></use></svg></button>
+              </div>
+
+              <div class="row" style="margin-top:12px">
+                <button class="btn btn--out btn--sm"><svg class="ic ic--sm"><use href="#i-plus"></use></svg>Also include&hellip;</button>
+                <button class="btn btn--out btn--sm">Only when also&hellip;</button>
+                <button class="btn btn--out btn--sm">Except&hellip;</button>
+                <span class="spacer"></span>
+                <!-- D19 is a constraint the UI has to make feel like a choice,
+                     not a wall. Saying so in one line beats a disabled button. -->
+                <span class="small dim">Steps apply in order. A step can't contain another set of steps.</span>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ the impact preview (D22) ============ -->
+          <section class="card" style="border-left:3px solid var(--al-warn)">
+            <div class="card__header">
+              <svg class="ic ic--lg" style="color:var(--al-warn)"><use href="#i-alert"></use></svg>
+              What this change does
+              <span class="sub">you added the <b>Except</b> step</span>
+            </div>
+
+            <div class="card__body">
+              <div class="grid-3">
+                <div>
+                  <div class="diffnum">14 <svg class="ic ic--sm dim"><use href="#i-arrowr"></use></svg> <b>12</b></div>
+                  <div class="small dim">days, next 8 months</div>
+                </div>
+                <div>
+                  <div class="diffnum" style="color:var(--al-err)">&minus;2</div>
+                  <div class="small dim">22 Dec, 23 Mar</div>
+                </div>
+                <div>
+                  <div class="diffnum">6</div>
+                  <div class="small dim">schedules affected, 3 owners</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card__body">
+              <div class="sect-title">What stops happening on those days</div>
+              <div class="stack stack--sm">
+                <div class="row row--top">
+                  <span class="glyph st-outside">&#8212;</span>
+                  <span class="small"><b>Cleaning &mdash; lights and heat</b> <span class="dim">&mdash; social hall stays cold on 22 Dec</span></span>
+                  <span class="spacer"></span><span class="who-sm small dim">Miriam</span>
+                </div>
+                <div class="row row--top">
+                  <span class="glyph st-outside">&#8212;</span>
+                  <span class="small"><b>Cleaning &mdash; corridor lights</b> <span class="dim">&mdash; won't come on</span></span>
+                  <span class="spacer"></span><span class="who-sm small dim">Miriam</span>
+                </div>
+                <div class="row row--top">
+                  <span class="glyph st-outside">&#8212;</span>
+                  <span class="small"><b>Cleaner arriving &mdash; unlock</b> <span class="dim">&mdash; door stays locked</span></span>
+                  <span class="spacer"></span><span class="who-sm small dim">Rivka</span>
+                </div>
+                <div class="row row--top">
+                  <span class="glyph st-outside">&#8212;</span>
+                  <span class="small"><b>Bins out</b> <span class="dim">&mdash; no reminder</span></span>
+                  <span class="spacer"></span><span class="who-sm small dim">Rivka</span>
+                </div>
+                <div class="small dim" style="padding-left:26px">and 2 more owned by Daniel</div>
+              </div>
+
+              <!-- Proposal, not a decision. D22 protects the person doing the
+                   editing; it does nothing for the five people who did not.
+                   The event machinery for this already exists (D48/D49). -->
+              <div class="nudge">
+                <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+                <div><b>Miriam and Rivka own 4 of these.</b> Saving will post a line to
+                  the logbook on each affected schedule, so it shows up where they look.</div>
+                <button class="btn btn--out btn--sm">Preview it</button>
+              </div>
+            </div>
+
+            <div class="card__footer">
+              <button class="btn btn--text btn--sm">Undo the step</button>
+              <span class="spacer"></span>
+              <button class="btn btn--sm">Save the change</button>
+            </div>
+          </section>
+
+        </div>
+
+        <!-- ============ right: the days themselves ============ -->
+        <div class="stack">
+          <section class="card">
+            <div class="card__header">The next few months
+              <div class="spacer"></div>
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-chevr"></use></svg></button>
+            </div>
+            <div class="card__body">
+              <div class="cal">
+                <p class="cal__m">December 2026</p>
+                <div class="cal__g">
+                  <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+                  <div class="cal__d cal__d--pad">30</div><div class="cal__d">1</div><div class="cal__d">2</div>
+                  <div class="cal__d">3</div><div class="cal__d">4</div><div class="cal__d">5</div><div class="cal__d">6</div>
+                  <div class="cal__d">7</div><div class="cal__d cal__d--in">8</div><div class="cal__d">9</div>
+                  <div class="cal__d">10</div><div class="cal__d">11</div><div class="cal__d">12</div><div class="cal__d">13</div>
+                  <div class="cal__d">14</div><div class="cal__d">15</div><div class="cal__d">16</div>
+                  <div class="cal__d">17</div><div class="cal__d">18</div><div class="cal__d">19</div><div class="cal__d">20</div>
+                  <div class="cal__d">21</div><div class="cal__d cal__d--gone">22</div><div class="cal__d">23</div>
+                  <div class="cal__d">24</div><div class="cal__d">25</div><div class="cal__d">26</div><div class="cal__d">27</div>
+                  <div class="cal__d">28</div><div class="cal__d">29</div><div class="cal__d">30</div>
+                  <div class="cal__d">31</div>
+                </div>
+              </div>
+
+              <div class="hr"></div>
+
+              <div class="cal">
+                <p class="cal__m">January 2027</p>
+                <div class="cal__g">
+                  <span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span><span>S</span>
+                  <div class="cal__d cal__d--pad">28</div><div class="cal__d cal__d--pad">29</div>
+                  <div class="cal__d cal__d--pad">30</div><div class="cal__d cal__d--pad">31</div>
+                  <div class="cal__d">1</div><div class="cal__d">2</div><div class="cal__d">3</div>
+                  <div class="cal__d">4</div><div class="cal__d">5</div><div class="cal__d">6</div>
+                  <div class="cal__d">7</div><div class="cal__d">8</div><div class="cal__d">9</div><div class="cal__d">10</div>
+                  <div class="cal__d">11</div><div class="cal__d cal__d--in">12</div><div class="cal__d">13</div>
+                  <div class="cal__d">14</div><div class="cal__d">15</div><div class="cal__d">16</div><div class="cal__d">17</div>
+                  <div class="cal__d">18</div><div class="cal__d">19</div><div class="cal__d">20</div>
+                  <div class="cal__d">21</div><div class="cal__d">22</div><div class="cal__d">23</div><div class="cal__d">24</div>
+                  <div class="cal__d">25</div><div class="cal__d cal__d--in">26</div><div class="cal__d">27</div>
+                  <div class="cal__d">28</div><div class="cal__d">29</div><div class="cal__d">30</div><div class="cal__d">31</div>
+                </div>
+              </div>
+
+              <div class="row row--wrap" style="margin-top:12px">
+                <span class="swatch"><i style="background:var(--al-tint-accent);border:1px solid var(--al-accent)"></i>in the set</span>
+                <span class="swatch"><i style="background:var(--al-tint-err);border:1px solid var(--al-err)"></i>removed by your step</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card__header">Elsewhere</div>
+            <div class="card__body">
+              <!-- D21. Worth showing, because it is the escape hatch for anyone
+                   who wants this set in an automation almanac doesn't own. -->
+              <dl class="kv">
+                <dt>Entity</dt>
+                <dd><span class="mono">binary_sensor.almanac_cleaning_days</span>
+                  <span class="badge badge--neutral">off today</span></dd>
+                <dt>Next on</dt>
+                <dd>Tuesday 13 Oct</dd>
+                <dt>Used by</dt>
+                <dd><a href="05-schedule-list.html">6 schedules</a>, 3 owners</dd>
+              </dl>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>06 &middot; Day set &amp; impact preview</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

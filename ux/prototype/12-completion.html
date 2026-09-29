@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Finishing</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* D46 gives completion three axes: finished-when, then-what, and what makes
+     the counter go up. Three dropdowns side by side would be a truthful
+     rendering of the model and a bad screen, because the third axis is
+     MEANINGLESS unless the first is a count — you cannot "increment on" a
+     date. So: four presets for the answer people actually want, and a
+     sentence underneath where the axes appear only when they apply.
+     See FINDINGS.md, D46. */
+
+  .preset { display: flex; gap: 10px; align-items: flex-start; padding: 11px 13px;
+            border: 1px solid var(--al-divider); border-radius: var(--al-radius-sm);
+            background: none; text-align: left; font: inherit; color: inherit; }
+  .preset[data-on] { border-color: var(--al-accent); background: var(--al-tint-accent); }
+  .preset__t { display: block; font-size: 14px; font-weight: 500; }
+  .preset__e { display: block; font-size: 12.5px; color: var(--al-text-2); margin-top: 2px; }
+  .presets { display: grid; grid-template-columns: 1fr 1fr; gap: var(--al-gap-sm); }
+
+  @media (max-width: 870px) {
+    .presets { grid-template-columns: minmax(0,1fr); }
+    .cols { grid-template-columns: minmax(0,1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <header class="ha-header">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="ha-header__title">Guest room heating</div>
+      <div class="spacer"></div>
+      <a class="btn btn--text btn--sm" href="02-rule-editor.html">Back to the rule</a>
+      <button class="btn btn--sm">Save</button>
+    </header>
+
+    <div class="ha-content ha-content--wide">
+      <div class="cols">
+
+        <section class="card">
+          <div class="card__header">When is this finished?
+            <span class="sub">a schedule that never ends is the normal case, so it is the first one</span>
+          </div>
+
+          <div class="card__body">
+            <div class="presets">
+              <button class="preset">
+                <span class="radio"></span>
+                <span><span class="preset__t">Never</span>
+                  <span class="preset__e">keeps going until you turn it off</span></span>
+              </button>
+              <button class="preset" data-on>
+                <span class="radio" data-on></span>
+                <span><span class="preset__t">After a few times</span>
+                  <span class="preset__e">counts the runs, then stops</span></span>
+              </button>
+              <button class="preset">
+                <span class="radio"></span>
+                <span><span class="preset__t">On a date</span>
+                  <span class="preset__e">stops after a day you pick</span></span>
+              </button>
+              <button class="preset">
+                <span class="radio"></span>
+                <span><span class="preset__t">When something is true</span>
+                  <span class="preset__e">stops when the guests have left</span></span>
+              </button>
+            </div>
+          </div>
+
+          <div class="card__body">
+            <div class="sentence">
+              Stop after it has run <span class="sel sel--inline">3</span> times.
+              Then <span class="sel sel--inline">turn it off</span>.
+            </div>
+
+            <!-- Axis 3. It exists only in the "after a few times" branch, and
+                 its options are only distinguishable when you can see that
+                 they give different answers — hence the count beside each. -->
+            <div class="field" style="margin-top:10px">
+              <div class="field__label">Which runs count</div>
+              <div class="row row--wrap">
+                <span class="chip">when it starts <span class="dim">&middot; 3 so far</span></span>
+                <span class="chip" data-on>when it finishes <span class="dim">&middot; 2 so far</span></span>
+                <span class="chip">only if it did something <span class="dim">&middot; 1 so far</span></span>
+              </div>
+              <div class="field__hint">A run that was skipped, or that failed every action,
+                is still a run under the first two.</div>
+            </div>
+
+            <div class="hr"></div>
+
+            <!-- D47. This is a promise, so it is stated as one. -->
+            <div class="row row--top">
+              <svg class="ic ic--sm dim"><use href="#i-info"></use></svg>
+              <span class="small dim">A period that has already started always finishes.
+                The last run will not be cut off in the middle, and whatever it was told to put
+                back, it puts back.</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="card">
+          <div class="card__header">So it will end
+            <div class="spacer"></div>
+            <a class="btn btn--text btn--sm" href="08-dry-run.html">Run it forward</a>
+          </div>
+          <div class="card__body--flush">
+            <div class="ag">
+              <div class="ag__row ag__row--past">
+                <div class="ag__time"><span>Mon</span><small>22 Sep</small></div>
+                <div class="ag__body"><div class="ag__title"><span class="glyph st-fired">&#10003;</span>
+                  Run 1 <span class="dim">&mdash; finished</span></div></div>
+              </div>
+              <div class="ag__row ag__row--past">
+                <div class="ag__time"><span>Tue</span><small>23 Sep</small></div>
+                <div class="ag__body"><div class="ag__title"><span class="glyph st-fired">&#10003;</span>
+                  Run 2 <span class="dim">&mdash; finished</span></div></div>
+              </div>
+              <div class="ag__row ag__row--past">
+                <div class="ag__time"><span>Wed</span><small>24 Sep</small></div>
+                <div class="ag__body"><div class="ag__title"><span class="glyph st-skipped">!</span>
+                  <span class="dim">Skipped &mdash; nobody home. Did not count.</span></div></div>
+              </div>
+              <div class="ag__row">
+                <div class="ag__time"><span>Thu</span><small>25 Sep</small></div>
+                <div class="ag__body"><div class="ag__title"><span class="glyph st-future">&#9679;</span>
+                  Run 3 <span class="badge badge--warn">the last one</span></div></div>
+              </div>
+              <div class="ag__row ag__row--ghost">
+                <div class="ag__time"><span>Fri</span><small>26 Sep</small></div>
+                <div class="ag__body"><div class="ag__title"><span class="glyph st-outside">&#8212;</span>
+                  <span class="dim">Turned off. Nothing after this.</span></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="card__footer">
+            <span class="small dim">Counting <b>finished</b> runs, so Wednesday did not count.</span>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>12 &middot; Completion settings</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

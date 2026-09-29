@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Schedules card</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* The container card as it actually sits on somebody's dashboard, beside
+     their thermostat and their lights. Requested set 4: a list of schedules
+     with their descriptions.
+
+     THE DESCRIPTION IS THE CARD. A list of schedule names is a directory and
+     tells you nothing; the reason to look at this card is to read, in one
+     pass, what each schedule does and when it next does it. So the
+     description gets two lines before it truncates, and the next occurrence
+     gets its own fixed column so the times line up down the card.
+
+     Where the description comes from is a design question DESIGN.md does not
+     answer — see FINDINGS.md, "the description is not free". Rows here show
+     both kinds: derived from the rule (the common case, and never empty) and
+     overwritten by a person (the rows whose text says something the model
+     does not know, like *why*). A derived description carries no marker,
+     because a user should not have to think about the distinction while
+     reading; the distinction matters only in the editor. */
+
+  /* The first column is wider than a default masonry column on purpose. The
+     description is the payload, and at 340px it truncates to a stub — which
+     is itself a finding: this card needs a wide column, or the description
+     option should not be the default. */
+  .lv-cols { grid-template-columns: minmax(300px, 460px) minmax(280px, 340px); }
+  /* a plain HA tile, so the almanac card is not the only thing on screen */
+  .tile { display: flex; align-items: center; gap: 12px; padding: 12px; }
+  .tile__ic { width: 36px; height: 36px; border-radius: 50%; flex: 0 0 auto;
+              display: flex; align-items: center; justify-content: center;
+              background: var(--al-tint-neutral); color: var(--al-text-2); }
+  .tile__n { font-size: 14px; }
+  .tile__s { font-size: 12.5px; color: var(--al-text-2); }
+  @media (max-width: 870px) { .lv-cols { grid-template-columns: minmax(0,1fr); } }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <!-- an ordinary Lovelace toolbar: title, view tabs, icon cluster -->
+    <div class="lv-bar">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="lv-bar__title only-wide">Home</div>
+      <div class="lv-tabs">
+        <a class="lv-tab" href="#"><svg class="ic"><use href="#i-home"></use></svg></a>
+        <a class="lv-tab" href="#" data-on>Sanctuary</a>
+        <a class="lv-tab" href="#">Social hall</a>
+        <a class="lv-tab" href="#">Climate</a>
+        <a class="lv-tab" href="#">Admin</a>
+      </div>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-search"></use></svg></button>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-pencil"></use></svg></button>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-dots"></use></svg></button>
+    </div>
+
+    <div class="lv-view">
+      <div class="lv-cols">
+
+        <!-- ================= column 1 ================= -->
+        <div class="lv-col">
+
+          <!-- ============ the almanac schedules card ============ -->
+          <section class="card">
+            <div class="card__header">
+              <svg class="ic"><use href="#i-timeline"></use></svg>
+              Sanctuary schedules
+              <span class="spacer"></span>
+              <span class="tag tag--on">sanctuary</span>
+            </div>
+
+            <div class="card__body--flush">
+
+              <div class="schrow">
+                <span class="entity__ic" data-on><svg class="ic ic--sm"><use href="#i-flame"></use></svg></span>
+                <div class="schrow__b">
+                  <div class="schrow__n">Shabbat &mdash; sanctuary</div>
+                  <!-- user-written: says WHY, which no derivation can know -->
+                  <div class="schrow__d">Everything on before the room fills up, off once
+                    people have gone home.</div>
+                </div>
+                <div class="schrow__r"><b style="color:var(--al-accent)">Running</b>until 20:03 tomorrow</div>
+                <span class="sw" data-on></span>
+              </div>
+
+              <div class="schrow">
+                <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-layers"></use></svg></span>
+                <div class="schrow__b">
+                  <div class="schrow__n">Blinds up</div>
+                  <!-- derived from the rule, and this is the common case -->
+                  <div class="schrow__d">At 07:15 on weekdays, except holidays. Opens
+                    Sanctuary blinds.</div>
+                </div>
+                <div class="schrow__r"><b>Sun 07:15</b>in 2 days</div>
+                <span class="sw" data-on></span>
+              </div>
+
+              <div class="schrow">
+                <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg></span>
+                <div class="schrow__b">
+                  <div class="schrow__n">Morning warmup</div>
+                  <div class="schrow__d">At 06:30 on weekdays, if someone&rsquo;s home &mdash;
+                    otherwise waits until 07:30. Heats Sanctuary climate.</div>
+                </div>
+                <div class="schrow__r"><b>Sun 06:30</b>in 2 days</div>
+                <span class="sw" data-on></span>
+              </div>
+
+              <div class="schrow">
+                <span class="glyph st-skipped" style="width:26px;height:26px;font-size:13px">!</span>
+                <div class="schrow__b">
+                  <div class="schrow__n">Kiddush setup</div>
+                  <div class="schrow__d" style="color:var(--al-warn)">Skipped last Friday &mdash;
+                    cleaning crew present.</div>
+                </div>
+                <div class="schrow__r"><b>Fri 15:30</b>in 7 days</div>
+                <span class="sw" data-on></span>
+              </div>
+
+              <div class="schrow">
+                <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-speaker"></use></svg></span>
+                <div class="schrow__b">
+                  <div class="schrow__n">Evening PA</div>
+                  <div class="schrow__d">20 minutes after sunset, every day. Runs
+                    <span class="mono">script.pa_announce</span>.</div>
+                </div>
+                <div class="schrow__r"><b>19:04</b>in 1 h</div>
+                <span class="sw" data-on></span>
+              </div>
+
+              <div class="schrow">
+                <span class="glyph st-failed" style="width:26px;height:26px;font-size:13px">&times;</span>
+                <div class="schrow__b">
+                  <div class="schrow__n">Boiler &mdash; Shabbat mode</div>
+                  <div class="schrow__d" style="color:var(--al-err)">1 of 2 actions failed
+                    &mdash; kitchen water heater not responding.</div>
+                </div>
+                <div class="schrow__r"><b>Fri 16:00</b>in 7 days</div>
+                <span class="sw" data-on></span>
+              </div>
+
+              <div class="schrow" style="opacity:.55">
+                <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-trash"></use></svg></span>
+                <div class="schrow__b">
+                  <div class="schrow__n">Bins out</div>
+                  <div class="schrow__d">At 01:30 the night before collection. Turned off.</div>
+                </div>
+                <div class="schrow__r"><b>&mdash;</b>off</div>
+                <span class="sw"></span>
+              </div>
+            </div>
+
+            <div class="card__footer">
+              <span class="small dim">7 schedules &middot; 2 need attention</span>
+              <span class="spacer"></span>
+              <a class="btn btn--text btn--sm" href="01-timeline.html">Timeline</a>
+              <a class="btn btn--text btn--sm" href="14-new-cover.html">
+                <svg class="ic ic--sm"><use href="#i-plus"></use></svg>Add</a>
+            </div>
+          </section>
+
+          <!-- a second, narrower instance — same card, different tag, and
+               deliberately shown to make the point that the tag is the
+               filter, not the card -->
+          <section class="card">
+            <div class="card__header">
+              <svg class="ic"><use href="#i-timeline"></use></svg>
+              Cleaning
+              <span class="spacer"></span>
+              <span class="tag tag--on">cleaning</span>
+            </div>
+            <div class="card__body--flush">
+              <div class="schrow">
+                <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-bulb"></use></svg></span>
+                <div class="schrow__b">
+                  <div class="schrow__n">Hall lights for cleaners</div>
+                  <div class="schrow__d">06:00 until 09:00 on 2nd and 4th Tuesdays, except
+                    the holiday list.</div>
+                </div>
+                <div class="schrow__r"><b>Tue 06:00</b>in 4 days</div>
+                <span class="sw" data-on></span>
+              </div>
+              <div class="schrow">
+                <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg></span>
+                <div class="schrow__b">
+                  <div class="schrow__n">Heat off while cleaning</div>
+                  <div class="schrow__d">Same days. Owned by Miriam.</div>
+                </div>
+                <div class="schrow__r"><b>Tue 06:00</b>in 4 days</div>
+                <span class="sw" data-on></span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- ================= column 2 — ordinary HA cards ================= -->
+        <div class="lv-col">
+          <section class="card">
+            <div class="card__body" style="padding:12px 16px 16px">
+              <div class="row">
+                <span class="entity__ic" style="color:var(--state-climate-heat-color);background:color-mix(in srgb,var(--state-climate-heat-color) 22%,transparent)"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg></span>
+                <div class="cardline__t">
+                  <div style="font-size:15px">Sanctuary climate</div>
+                  <div class="small dim">Heat &middot; 22&deg;C &middot; currently 21.4&deg;C</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card__body--flush">
+              <div class="tile" style="border-bottom:1px solid var(--al-divider)">
+                <span class="tile__ic" style="color:var(--state-light-active-color);background:color-mix(in srgb,var(--state-light-active-color) 22%,transparent)"><svg class="ic"><use href="#i-bulb"></use></svg></span>
+                <div class="cardline__t"><div class="tile__n">Sanctuary lights</div>
+                  <div class="tile__s">On &middot; 80%</div></div>
+                <span class="sw" data-on></span>
+              </div>
+              <div class="tile">
+                <span class="tile__ic"><svg class="ic"><use href="#i-layers"></use></svg></span>
+                <div class="cardline__t"><div class="tile__n">Sanctuary blinds</div>
+                  <div class="tile__s">Closed</div></div>
+                <span class="sw"></span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card__header">Sun</div>
+            <div class="card__body">
+              <dl class="kv">
+                <dt>Sunset</dt><dd>18:44</dd>
+                <dt>Candle lighting</dt><dd>18:26</dd>
+                <dt>Havdalah</dt><dd>19:33 tomorrow</dd>
+                <dt>Next holiday</dt><dd>Mon 21 Sep</dd>
+              </dl>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>16 &middot; Schedules card, with descriptions</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

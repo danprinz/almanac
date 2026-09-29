@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Rule editor</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  .sect { margin-bottom: 22px; }
+  .anchorbox { display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+               border: 1px solid var(--al-divider); border-radius: var(--al-radius-sm); }
+  .anchorbox__main { flex: 1 1 auto; min-width: 0; }
+  .anchorbox__t { font-size: 14.5px; font-weight: 500; display: flex; align-items: center;
+                  gap: 8px; flex-wrap: wrap; }
+  .anchorbox__s { font-size: 12.5px; color: var(--al-text-2); margin-top: 2px; }
+  .mini { font-size: 12.5px; }
+  .mini__r { display: flex; gap: 8px; padding: 7px 0; border-bottom: 1px solid var(--al-divider); }
+  .mini__r:last-child { border-bottom: 0; }
+  .mini__d { width: 54px; flex: 0 0 54px; color: var(--al-text-2); }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <header class="ha-header">
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-chevl"></use></svg></button>
+      <div class="ha-header__title">Shabbat &mdash; sanctuary</div>
+      <span class="sw" data-on></span>
+      <button class="btn btn--text">Cancel</button>
+      <button class="btn">Save</button>
+    </header>
+
+    <div class="ha-content ha-content--wide">
+      <div class="cols">
+
+        <!-- =============== the form =============== -->
+        <div>
+
+          <!-- The validation that matters. Scenario A as written produces no
+               occurrences at all: the day set begins at candle lighting, and
+               the rule starts 45 minutes before it. See FINDINGS.md, "The
+               flagship scenario cannot run". -->
+          <div class="alert alert--warn sect" style="align-items:flex-start">
+            <svg class="ic"><use href="#i-alert"></use></svg>
+            <div>
+              <strong>As written, this rule will never run.</strong><br>
+              Its days are the set <b>Shabbat</b>, which starts at candle lighting
+              (18:32 this Friday). But the rule starts <b>45 minutes before</b> that
+              &mdash; 17:47 &mdash; and the set doesn&rsquo;t cover 17:47. Every
+              occurrence would be dropped as <em>outside the set</em>.
+              <div class="row row--wrap" style="margin-top:10px">
+                <button class="btn btn--sm">Use Friday and Saturday instead</button>
+                <button class="btn btn--out btn--sm">Keep the set, start at candle lighting</button>
+                <a href="06-dayset-editor.html" class="btn btn--text btn--sm">Look at the day set</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- shape -->
+          <div class="sect">
+            <div class="sect-title">What kind of rule</div>
+            <div class="stemset">
+              <button class="stem">
+                <span class="radio"></span>
+                <span>
+                  <span class="stem__t">At a moment</span>
+                  <span class="stem__e">&ldquo;At 06:30, do these things.&rdquo;</span>
+                </span>
+              </button>
+              <button class="stem" data-on>
+                <span class="radio" data-on></span>
+                <span>
+                  <span class="stem__t">Over a period</span>
+                  <span class="stem__e">&ldquo;From one time until another, keep things like this.&rdquo;</span>
+                </span>
+              </button>
+            </div>
+          </div>
+
+          <!-- when -->
+          <div class="sect">
+            <div class="sect-title">When</div>
+
+            <div class="anchorbox" style="margin-bottom:8px">
+              <svg class="ic"><use href="#i-flame"></use></svg>
+              <div class="anchorbox__main">
+                <div class="anchorbox__t">
+                  Starts <b>45 minutes before candle lighting</b>
+                  <span class="badge badge--neutral">Jewish calendar</span>
+                </div>
+                <div class="anchorbox__s">This Friday that is <b>17:47</b>. Recomputed for each date.</div>
+              </div>
+              <a class="btn btn--text btn--sm" href="04-anchor-picker.html">Change</a>
+            </div>
+
+            <div class="anchorbox">
+              <svg class="ic"><use href="#i-flame"></use></svg>
+              <div class="anchorbox__main">
+                <div class="anchorbox__t">
+                  Ends <b>30 minutes after havdalah</b>
+                  <span class="badge badge--neutral">Jewish calendar</span>
+                </div>
+                <div class="anchorbox__s">
+                  Saturday that is <b>20:08</b> &mdash; 26 h 21 m later.
+                  <a href="#" style="color:var(--al-accent)">Use a length of time instead</a>
+                </div>
+              </div>
+              <a class="btn btn--text btn--sm" href="04-anchor-picker.html">Change</a>
+            </div>
+          </div>
+
+          <!-- days -->
+          <div class="sect">
+            <div class="sect-title">Which days</div>
+            <div class="anchorbox">
+              <svg class="ic"><use href="#i-layers"></use></svg>
+              <div class="anchorbox__main">
+                <div class="anchorbox__t">Shabbat
+                  <span class="badge badge--warn">doesn&rsquo;t cover the start</span>
+                </div>
+                <div class="anchorbox__s">
+                  Shared &mdash; used by 4 other schedules. Candle lighting &rarr; havdalah, weekly.
+                </div>
+              </div>
+              <a class="btn btn--text btn--sm" href="06-dayset-editor.html">Change</a>
+            </div>
+          </div>
+
+          <!-- the body: desired state (D27/D28) -->
+          <div class="sect">
+            <div class="sect-title">While it&rsquo;s on, keep things like this</div>
+            <div class="act">
+              <svg class="ic drag"><use href="#i-drag"></use></svg>
+              <span class="entity__ic" data-on><svg class="ic ic--sm"><use href="#i-bulb"></use></svg></span>
+              <div class="act__body">
+                <div class="act__t">Sanctuary lights &mdash; <b>on, 80%</b></div>
+                <div class="act__s">light.sanctuary</div>
+              </div>
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-pencil"></use></svg></button>
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-close"></use></svg></button>
+            </div>
+            <div class="act">
+              <svg class="ic drag"><use href="#i-drag"></use></svg>
+              <span class="entity__ic" style="color:var(--state-climate-heat-color);background:color-mix(in srgb,var(--state-climate-heat-color) 22%,transparent)"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg></span>
+              <div class="act__body">
+                <div class="act__t">Sanctuary climate &mdash; <b>heat, 22&deg;C</b></div>
+                <div class="act__s">climate.sanctuary</div>
+              </div>
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-pencil"></use></svg></button>
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-close"></use></svg></button>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <button class="btn btn--out btn--sm"><svg class="ic ic--sm"><use href="#i-plus"></use></svg>Add something</button>
+              <span class="small dim">These are states, not commands. If something drifts,
+                almanac puts it back.</span>
+            </div>
+          </div>
+
+          <!-- on_exit -->
+          <div class="sect">
+            <div class="sect-title">When it ends</div>
+            <div class="stack stack--sm">
+              <label class="row"><span class="radio" data-on></span>
+                <span>Put everything back how it was
+                  <span class="small dim">&mdash; as it was at 17:47, when this started</span></span></label>
+              <label class="row"><span class="radio"></span><span>Set it to something else</span></label>
+              <label class="row"><span class="radio"></span><span>Leave it as it is</span></label>
+            </div>
+          </div>
+
+          <!-- edges -->
+          <div class="sect">
+            <div class="sect-title">Steps at the start and the end</div>
+            <div class="panelx" style="margin-bottom:8px">
+              <div class="panelx__head">
+                <svg class="ic ic--sm"><use href="#i-chevd"></use></svg>
+                At the start <span class="sub">1 step</span>
+              </div>
+              <div class="panelx__body">
+                <div class="act">
+                  <svg class="ic drag"><use href="#i-drag"></use></svg>
+                  <svg class="ic"><use href="#i-script"></use></svg>
+                  <div class="act__body">
+                    <div class="act__t">Run <b>PA announce</b></div>
+                    <div class="act__s">script.pa_announce &middot; message: &ldquo;Shabbat begins&rdquo;</div>
+                  </div>
+                  <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-pencil"></use></svg></button>
+                </div>
+                <div class="alert alert--info" style="margin-top:10px">
+                  <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+                  <div>This script only runs one at a time. If it is already speaking when
+                    Shabbat starts, the announcement is <b>dropped</b>, and the log will say so.
+                    <a href="07-execution-log.html" style="color:var(--al-accent)">See what that looks like</a></div>
+                </div>
+              </div>
+            </div>
+            <div class="panelx">
+              <div class="panelx__head">
+                <svg class="ic ic--sm"><use href="#i-chevr"></use></svg>
+                At the end <span class="sub">1 step &mdash; PA announce, &ldquo;Shabbat is over&rdquo;</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- conditions. Empty here, and that is the point: with no condition
+               there is nothing for `latch` to govern, so the control is absent
+               rather than present-and-inert. -->
+          <div class="sect">
+            <div class="sect-title">Only when&hellip;</div>
+            <div class="act" style="border-style:dashed">
+              <div class="act__body">
+                <div class="act__t dim">No conditions. This runs on every day in the set.</div>
+                <div class="act__s">Add one and you&rsquo;ll be asked what should happen if it
+                  stops being true partway through.</div>
+              </div>
+              <button class="btn btn--out btn--sm"><svg class="ic ic--sm"><use href="#i-plus"></use></svg>Add</button>
+            </div>
+          </div>
+
+          <div class="sect">
+            <div class="sect-title">Finishing</div>
+            <div class="act">
+              <svg class="ic"><use href="#i-history"></use></svg>
+              <div class="act__body">
+                <div class="act__t">Repeats forever</div>
+                <div class="act__s">Never stops on its own.</div>
+              </div>
+              <a class="btn btn--text btn--sm" href="12-completion.html">Change</a>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- =============== live preview =============== -->
+        <div class="stack">
+          <section class="card">
+            <div class="card__header">
+              Next 3 times
+              <span class="sub">as edited</span>
+            </div>
+            <div class="card__body">
+              <div class="mini">
+                <div class="mini__r">
+                  <span class="mini__d">Fri 25</span>
+                  <span class="spacer">
+                    <span class="badge badge--ghost">dropped</span>
+                    <div class="dim" style="margin-top:3px">17:47 is outside the set</div>
+                  </span>
+                </div>
+                <div class="mini__r">
+                  <span class="mini__d">Sat 26</span>
+                  <span class="spacer">
+                    <span class="badge badge--ghost">dropped</span>
+                    <div class="dim" style="margin-top:3px">17:51 is outside the set</div>
+                  </span>
+                </div>
+                <div class="mini__r">
+                  <span class="mini__d">Fri 2</span>
+                  <span class="spacer">
+                    <span class="badge badge--ghost">dropped</span>
+                    <div class="dim" style="margin-top:3px">17:35 is outside the set</div>
+                  </span>
+                </div>
+              </div>
+              <div class="alert alert--warn" style="margin-top:12px">
+                <svg class="ic ic--sm"><use href="#i-alert"></use></svg>
+                <div>Nothing in the next 30 days.</div>
+              </div>
+            </div>
+            <div class="card__footer">
+              <a class="btn btn--text btn--sm" href="08-dry-run.html">
+                <svg class="ic ic--sm"><use href="#i-play"></use></svg>Dry run</a>
+              <span class="spacer"></span>
+              <a class="btn btn--text btn--sm" href="01-timeline.html">On the timeline</a>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card__header">Touches</div>
+            <div class="card__body">
+              <div class="stack stack--sm">
+                <span class="entity"><span class="entity__ic" data-on><svg class="ic ic--sm"><use href="#i-bulb"></use></svg></span>light.sanctuary</span>
+                <span class="entity"><span class="entity__ic"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg></span>climate.sanctuary</span>
+                <span class="entity"><span class="entity__ic"><svg class="ic ic--sm"><use href="#i-script"></use></svg></span>script.pa_announce</span>
+              </div>
+              <hr class="hr" style="margin:12px 0">
+              <div class="alert alert--warn">
+                <svg class="ic ic--sm"><use href="#i-alert"></use></svg>
+                <div><b>climate.sanctuary</b> is also held by
+                  <a href="11-conflict.html" style="color:var(--al-accent)">Boiler &mdash; Shabbat mode</a>
+                  for part of this period. Whichever ends last wins.</div>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card__header">Advanced</div>
+            <div class="card__body">
+              <div class="row"><svg class="ic ic--sm"><use href="#i-code"></use></svg>
+                <a href="#" style="color:var(--al-accent)">Edit as YAML</a></div>
+            </div>
+          </section>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>02 &middot; Rule editor &mdash; Scenario A</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Dashboard card</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* A Lovelace masonry column is ~340px wide at this breakpoint. */
+  .lovelace { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 340px));
+              gap: 16px; align-items: start; }
+  .lbl { grid-column: 1 / -1; font-size: 12px; font-weight: 500; letter-spacing: .06em;
+         text-transform: uppercase; color: var(--al-text-2); margin: 8px 0 -4px; }
+
+  /* progress through an interval — thin, and only on an interval rule */
+  .prog { height: 4px; border-radius: 2px; background: var(--al-tint-neutral); overflow: hidden; }
+  .prog > i { display: block; height: 100%; background: var(--al-accent); }
+
+  .cardline { display: flex; align-items: center; gap: 10px; }
+  .cardline__t { flex: 1 1 auto; min-width: 0; }
+  .cardname { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden;
+              text-overflow: ellipsis; }
+  .cardsub  { font-size: 12.5px; color: var(--al-text-2); }
+  .big { font-size: 13.5px; }
+  .big b { font-weight: 500; }
+  @media (max-width: 870px) { .lovelace { grid-template-columns: minmax(0,1fr); } }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <header class="ha-header">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="ha-header__title">Home</div>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-pencil"></use></svg></button>
+    </header>
+
+    <div class="ha-content ha-content--wide">
+      <div class="lovelace">
+
+        <div class="lbl">Compact &mdash; the default</div>
+
+        <!-- ============ compact, an interval, running ============ -->
+        <section class="card">
+          <div class="card__body" style="padding:14px 16px">
+            <div class="cardline">
+              <span class="entity__ic" data-on><svg class="ic ic--sm"><use href="#i-flame"></use></svg></span>
+              <div class="cardline__t">
+                <div class="cardname">Shabbat &mdash; sanctuary</div>
+                <div class="cardsub">Running &middot; <b style="color:var(--al-text)">until 20:08 tomorrow</b></div>
+              </div>
+              <span class="sw" data-on></span>
+            </div>
+            <div class="prog" style="margin-top:12px"><i style="width:60%"></i></div>
+            <div class="row" style="margin-top:6px">
+              <span class="small dim">started 17:47 yesterday</span>
+              <span class="spacer"></span>
+              <span class="small dim">16 h left</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ compact, a moment, waiting ============ -->
+        <section class="card">
+          <div class="card__body" style="padding:14px 16px">
+            <div class="cardline">
+              <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg></span>
+              <div class="cardline__t">
+                <div class="cardname">Morning warmup</div>
+                <div class="cardsub">Next <b style="color:var(--al-text)">Mon 06:30</b> &middot; in 2 days</div>
+              </div>
+              <span class="sw" data-on></span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ compact, something went wrong ============ -->
+        <section class="card">
+          <div class="card__body" style="padding:14px 16px">
+            <div class="cardline">
+              <span class="glyph st-skipped" style="width:26px;height:26px;font-size:13px">!</span>
+              <div class="cardline__t">
+                <div class="cardname">Kiddush setup</div>
+                <div class="cardsub" style="color:var(--al-warn)">Skipped yesterday &mdash; cleaning crew present</div>
+              </div>
+              <span class="sw" data-on></span>
+            </div>
+            <div class="row" style="margin-top:10px">
+              <a class="btn btn--out btn--sm" href="07-execution-log.html">Why?</a>
+              <span class="spacer"></span>
+              <span class="small dim">Next Fri 15:30</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ compact, disabled ============ -->
+        <section class="card">
+          <div class="card__body" style="padding:14px 16px">
+            <div class="cardline">
+              <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-bulb"></use></svg></span>
+              <div class="cardline__t">
+                <div class="cardname dim">Social hall &mdash; off</div>
+                <div class="cardsub">Turned off. Nothing will run.</div>
+              </div>
+              <span class="sw"></span>
+            </div>
+          </div>
+        </section>
+
+        <div class="lbl">Expanded</div>
+
+        <!-- ============ expanded ============ -->
+        <section class="card" style="grid-column: span 1">
+          <div class="card__body" style="padding:14px 16px 0">
+            <div class="cardline">
+              <span class="entity__ic" data-on><svg class="ic ic--sm"><use href="#i-flame"></use></svg></span>
+              <div class="cardline__t">
+                <div class="cardname">Shabbat &mdash; sanctuary</div>
+                <div class="cardsub">Running &middot; <b style="color:var(--al-text)">until 20:08 tomorrow</b></div>
+              </div>
+              <span class="sw" data-on></span>
+            </div>
+            <div class="prog" style="margin-top:12px"><i style="width:60%"></i></div>
+            <div class="row" style="margin-top:6px">
+              <span class="small dim">17:47 Fri</span>
+              <span class="spacer"></span>
+              <span class="small dim">20:08 Sat</span>
+            </div>
+          </div>
+
+          <div class="card__body" style="padding:12px 16px 0">
+            <div class="sect-title">Holding</div>
+            <div class="stack stack--sm">
+              <span class="entity"><span class="entity__ic" data-on><svg class="ic ic--sm"><use href="#i-bulb"></use></svg></span>
+                Sanctuary lights <span class="dim">&mdash; on, 80%</span></span>
+              <span class="entity"><span class="entity__ic" style="color:var(--state-climate-heat-color);background:color-mix(in srgb,var(--state-climate-heat-color) 22%,transparent)"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg></span>
+                Sanctuary climate <span class="dim">&mdash; heat, 22&deg;C</span></span>
+            </div>
+          </div>
+
+          <div class="card__body" style="padding:14px 16px 0">
+            <div class="sect-title">Then</div>
+            <div class="mini-agenda">
+              <div class="row" style="align-items:flex-start;padding:5px 0">
+                <span class="glyph st-future" style="width:16px;height:16px;font-size:8px">&#9679;</span>
+                <span class="big"><b>Sat 20:08</b> <span class="dim">&mdash; ends, everything back how it was</span></span>
+              </div>
+              <div class="row" style="align-items:flex-start;padding:5px 0">
+                <span class="glyph st-future" style="width:16px;height:16px;font-size:8px">&#9679;</span>
+                <span class="big"><b>Fri 2 Oct 17:35</b> <span class="dim">&mdash; starts again</span></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- The card carries state and the one-touch adjustments. It does not
+               carry the rule editor: the full form opens in the panel. See
+               FINDINGS.md on D61/D70. -->
+          <div class="card__footer">
+            <button class="btn btn--out btn--sm"><svg class="ic ic--sm"><use href="#i-minus"></use></svg>15m</button>
+            <button class="btn btn--out btn--sm"><svg class="ic ic--sm"><use href="#i-plus"></use></svg>15m</button>
+            <span class="spacer"></span>
+            <a class="btn btn--text btn--sm" href="01-timeline.html">Timeline</a>
+            <a class="btn btn--text btn--sm" href="02-rule-editor.html">Edit</a>
+          </div>
+        </section>
+
+        <!-- ============ expanded, with a problem ============ -->
+        <section class="card">
+          <div class="card__body" style="padding:14px 16px 0">
+            <div class="cardline">
+              <span class="entity__ic" style="color:var(--al-err);background:var(--al-tint-err)"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg></span>
+              <div class="cardline__t">
+                <div class="cardname">Boiler &mdash; Shabbat mode</div>
+                <div class="cardsub" style="color:var(--al-err)">Running, but one thing failed</div>
+              </div>
+              <span class="sw" data-on></span>
+            </div>
+            <div class="prog" style="margin-top:12px"><i style="width:73%"></i></div>
+          </div>
+          <div class="card__body" style="padding:12px 16px 0">
+            <div class="alert alert--err">
+              <svg class="ic ic--sm"><use href="#i-alert"></use></svg>
+              <div><b>water_heater.kitchen</b> did not respond at 16:00.
+                Everything else is set.</div>
+            </div>
+          </div>
+          <div class="card__footer">
+            <button class="btn btn--out btn--sm">Try again</button>
+            <span class="spacer"></span>
+            <a class="btn btn--text btn--sm" href="07-execution-log.html">Log</a>
+          </div>
+        </section>
+
+        <div class="lbl">A whole-window card, for a wall tablet</div>
+
+        <section class="card" style="grid-column: 1 / -1; max-width: 700px">
+          <div class="card__header">Today
+            <span class="sub">everything, in order</span>
+            <div class="spacer"></div>
+            <span class="badge badge--accent">1 running</span>
+          </div>
+          <div class="card__body--flush">
+            <div class="ag">
+              <div class="ag__row ag__row--past">
+                <div class="ag__time"><span>17:47</span><small>started</small></div>
+                <div class="ag__body"><div class="ag__title"><span class="glyph st-fired">&#10003;</span><b>Shabbat &mdash; sanctuary</b>
+                  <span class="badge badge--accent">running</span></div></div>
+              </div>
+              <div class="ag__row">
+                <div class="ag__time"><span>18:28</span><small>starts</small></div>
+                <div class="ag__body"><div class="ag__title"><span class="glyph st-future">&#9679;</span><b>Corridor lights</b></div></div>
+              </div>
+              <div class="ag__row">
+                <div class="ag__time"><span>19:42</span><small>&nbsp;</small></div>
+                <div class="ag__body"><div class="ag__title"><span class="glyph st-future">&#9679;</span><b>Evening PA</b></div></div>
+              </div>
+              <div class="ag__row">
+                <div class="ag__time"><span>20:08</span><small>ends</small></div>
+                <div class="ag__body"><div class="ag__title"><span class="glyph st-future">&#9679;</span><b>Shabbat &mdash; sanctuary</b></div></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>03 &middot; Dashboard card</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

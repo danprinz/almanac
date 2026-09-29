@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · New schedule 1/4</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* Requested set 3, step 1 of 4. Two ACs sixty minutes before candle
+     lighting; five minutes before it, some light switches on and the ACs
+     moved to a different temperature and fan speed.
+
+     THIS IS ONE SCHEDULE WITH TWO `At` RULES, NOT TWO SCHEDULES. D2 gives a
+     schedule a list of rules, and the two moments here share a name, an
+     on/off switch, a tag and a reason for existing. Splitting them would mean
+     two rows on the card that must be enabled and disabled together and are
+     not linked by anything the model knows. The wizard therefore asks for
+     "stages" of one schedule, and the numbered rail exists to make that
+     structure visible before the first field is filled in.
+
+     THE ANCHOR SUPPLIES THE DAYS. This is the D11 point that a scheduler
+     built on weekday checkboxes cannot express: candidate_dates() for the
+     candle-lighting resolver already yields Fridays AND festival eves, so
+     there is no day set to configure and no weekday grid on this screen. The
+     right-hand note says so out loud, because its absence is otherwise read
+     as an unfinished form.
+
+     ANCHOR IDENTITY. jewish_calendar ships a calendar platform (PR #145140)
+     whose candle_lighting and havdalah events are timed and zero-length, and
+     whose summary is TRANSLATED — so the anchor is addressed by the const.py
+     enum key and shown with its entity beneath, never matched on the words a
+     user sees. D8 is the same rule stated generally. */
+
+  .anchor { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .kicker { font-size: 12.5px; color: var(--al-text-2); }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+  <main class="ha-main">
+    <div class="lv-bar">
+      <div class="lv-bar__title only-wide">Home</div>
+      <div class="lv-tabs">
+        <a class="lv-tab" href="#"><svg class="ic"><use href="#i-home"></use></svg></a>
+        <a class="lv-tab" href="#" data-on>Sanctuary</a>
+        <a class="lv-tab" href="#">Social hall</a>
+        <a class="lv-tab" href="#">Climate</a>
+      </div>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-search"></use></svg></button>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-pencil"></use></svg></button>
+    </div>
+    <div class="lv-view">
+      <div class="lv-cols" style="grid-template-columns:repeat(auto-fill,minmax(300px,340px))">
+        <div class="lv-col">
+          <section class="card"><div class="card__header">
+            <svg class="ic"><use href="#i-timeline"></use></svg>Sanctuary schedules</div>
+            <div class="card__body"><span class="dim small">&hellip;</span></div></section>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<div class="dlg-scrim">
+  <div class="dlg dlg--wide">
+
+    <div class="dlg__head">
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-close"></use></svg></button>
+      <span>New schedule</span>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-code"></use></svg></button>
+    </div>
+
+    <div class="dlg__body dlg__body--flush">
+      <div class="wiz">
+
+        <!-- the rail is the argument: four steps, and step 3 exists, so the
+             reader knows a second stage is coming before they need it -->
+        <div class="wiz__rail">
+          <div class="wstep" data-on>
+            <span class="wstep__n">1</span>
+            <span>Name and first stage<span class="wstep__s">when it starts</span></span>
+          </div>
+          <div class="wstep">
+            <span class="wstep__n">2</span>
+            <span>What happens then<span class="wstep__s">the two units</span></span>
+          </div>
+          <div class="wstep">
+            <span class="wstep__n">3</span>
+            <span>A second stage<span class="wstep__s">lights, and a change</span></span>
+          </div>
+          <div class="wstep">
+            <span class="wstep__n">4</span>
+            <span>Check and save<span class="wstep__s">the next few runs</span></span>
+          </div>
+        </div>
+
+        <div class="wiz__main">
+
+          <div class="field" style="margin-bottom:18px">
+            <div class="field__label">Name</div>
+            <div class="tf tf--focus" style="font-size:15px">Sanctuary &mdash; candle lighting</div>
+          </div>
+
+          <div class="sect-title">This schedule starts</div>
+          <div class="anchor" style="margin-bottom:10px">
+            <span class="tf" style="width:74px">60</span>
+            <span class="sel">minutes before</span>
+            <span class="sel" style="min-width:186px">Candle lighting</span>
+          </div>
+
+          <!-- addressed by key, shown by entity -->
+          <div class="row row--top" style="margin-bottom:18px">
+            <svg class="ic ic--sm dim"><use href="#i-calendar"></use></svg>
+            <span class="small dim">from <span class="mono">calendar.jewish_calendar</span>
+              &mdash; computed locally, no network, and known for any date you ask for.</span>
+          </div>
+
+          <!-- the day set that is not there -->
+          <div class="nudge" style="margin-top:0;margin-bottom:18px">
+            <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+            <div><b>There are no weekdays to pick.</b> Candle lighting happens on Fridays
+              and on the eve of a festival, so the anchor already decides which days this
+              runs &mdash; including the festival eves that fall midweek.
+              <span class="dim">You can still narrow it later.</span></div>
+          </div>
+
+          <div class="sect-title">Which gives you</div>
+          <!-- The first run this rule produces is a SUNDAY, and that is not a
+               contrivance: erev Yom Kippur falls on Sun 20 Sep 2026. The notice
+               above claims the anchor decides the days; the strip immediately
+               under it has to pay that claim off, or it is just a sentence. -->
+          <div class="evstrip">
+            <div class="ev ev--on"><b>17:23</b>this schedule starts<br>
+              <span class="dim">stage 1</span></div>
+            <div class="ev"><b>&mdash;</b>stage 2<br><span class="dim">next step</span></div>
+            <div class="ev ev--anchor"><b>18:23</b>candle lighting<br>
+              <span class="dim">Sun 20 Sep &middot; erev Yom Kippur</span></div>
+          </div>
+          <div class="kicker" style="margin-top:8px">Next: Sun 20 Sep 17:23 &middot;
+            Fri 25 Sep 17:17 &middot; Fri 2 Oct 17:07 &mdash; Fridays and the eve of
+            each festival.</div>
+
+        </div>
+      </div>
+    </div>
+
+    <div class="dlg__foot">
+      <span class="small dim">Step 1 of 4</span>
+      <span class="spacer"></span>
+      <button class="btn btn--text btn--sm">Cancel</button>
+      <a class="btn btn--sm" href="15-new-shabbat-2.html">Next</a>
+    </div>
+  </div>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>15a &middot; New schedule 1/4 &mdash; when it starts</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

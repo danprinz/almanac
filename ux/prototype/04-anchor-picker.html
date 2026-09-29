@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Anchor picker</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* The word "anchor" never appears on this screen. The user is choosing
+     what a time is measured from; the model's name for that is not their
+     problem. See FINDINGS.md, Naming. */
+  .offers { display: flex; flex-direction: column; gap: 2px; margin: 0 -6px; }
+  .horizon { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px;
+             color: var(--al-text-2); white-space: nowrap; }
+  .horizon i { width: 7px; height: 7px; border-radius: 50%; background: currentColor;
+               display: inline-block; flex: 0 0 auto; }
+  .h-known    { color: var(--al-ok); }
+  .h-until    { color: var(--al-warn); }
+  .h-next     { color: var(--al-text-3); }
+  .offsetrow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .num { width: 64px; text-align: right; }
+  .resolved { background: var(--al-tint-accent); border-radius: var(--al-radius-sm);
+              padding: 10px 12px; font-size: 13.5px; }
+  .resolved b { font-weight: 500; }
+  .wasgoing { border-top: 1px dashed var(--al-divider); margin-top: 10px; padding-top: 10px; }
+  /* the horizon legend has a 208px column to live in, so it wraps */
+  .legend .horizon { white-space: normal; align-items: flex-start; line-height: 1.35; }
+  .legend .horizon i { margin-top: 4px; }
+  .legend b { font-weight: 500; }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <header class="ha-header">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="ha-header__title">Shabbat &mdash; sanctuary</div>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-dots"></use></svg></button>
+    </header>
+    <div class="ha-content">
+      <section class="card"><div class="card__body"><div class="dim">the rule editor, behind the dialog</div></div></section>
+    </div>
+  </main>
+</div>
+
+<!-- ======================= the picker ======================= -->
+<div class="dlg-scrim">
+  <div class="dlg">
+    <div class="dlg__head">
+      <svg class="ic ic--lg"><use href="#i-clock"></use></svg>
+      <div>When does it start?</div>
+      <div class="spacer"></div>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-close"></use></svg></button>
+    </div>
+
+    <div class="dlg__body dlg__body--flush">
+      <div class="picker">
+
+        <!-- left: where a time can come from. These are resolvers (D6), but the
+             word is never shown — each one is named for what it knows. -->
+        <div class="picker__src">
+          <div class="srcitem">
+            <svg class="ic"><use href="#i-clock"></use></svg>
+            <span>A time of day<span class="sub">06:30, 22:00&hellip;</span></span>
+          </div>
+          <div class="srcitem">
+            <svg class="ic"><use href="#i-sun"></use></svg>
+            <span>Sun<span class="sub">6 times</span></span>
+          </div>
+          <div class="srcitem" data-on>
+            <svg class="ic"><use href="#i-flame"></use></svg>
+            <span>Jewish calendar<span class="sub">9 times</span></span>
+          </div>
+          <div class="srcitem">
+            <svg class="ic"><use href="#i-calendar"></use></svg>
+            <span>A calendar<span class="sub">3 available</span></span>
+          </div>
+          <div class="srcitem">
+            <svg class="ic"><use href="#i-layers"></use></svg>
+            <span>An entity<span class="sub">anything holding a time</span></span>
+          </div>
+
+          <!-- D13's three horizons, side by side, because the difference only
+               means anything when you can compare them. This is also what the
+               timeline's hatched "not knowable" region is derived from. -->
+          <div class="hr"></div>
+          <div class="small dim" style="padding:0 10px 6px">How far ahead each one can see</div>
+          <div class="stack stack--sm legend" style="padding:0 10px 8px">
+            <span class="horizon h-known"><i></i><span><b>Always</b><br>clock, sun, Jewish calendar</span></span>
+            <span class="horizon h-until"><i></i><span><b>To 31 Dec 2027</b><br>a calendar</span></span>
+            <span class="horizon h-next"><i></i><span><b>The next one only</b><br>an entity</span></span>
+          </div>
+        </div>
+
+        <!-- right: what it offers, then what to do with it -->
+        <div class="picker__main">
+          <label class="tf tf--focus" style="display:flex;align-items:center;gap:8px">
+            <svg class="ic ic--sm"><use href="#i-search"></use></svg>
+            <span class="ph">Search 9 times from the Jewish calendar</span>
+          </label>
+
+          <div class="offers" style="margin-top:10px">
+            <div class="offer" data-on>
+              <span class="radio" data-on></span>
+              <div class="offer__b">
+                <div class="offer__t">Candle lighting</div>
+                <div class="offer__s">this Friday at 18:32</div>
+              </div>
+              <span class="horizon h-known"><i></i>always known</span>
+            </div>
+            <div class="offer">
+              <span class="radio"></span>
+              <div class="offer__b">
+                <div class="offer__t">Havdalah</div>
+                <div class="offer__s">this Saturday at 19:38</div>
+              </div>
+              <span class="horizon h-known"><i></i>always known</span>
+            </div>
+            <div class="offer">
+              <span class="radio"></span>
+              <div class="offer__b">
+                <div class="offer__t">Nightfall <span class="dim">(tzeit hakochavim)</span></div>
+                <div class="offer__s">tonight at 19:32</div>
+              </div>
+              <span class="horizon h-known"><i></i>always known</span>
+            </div>
+            <div class="offer">
+              <span class="radio"></span>
+              <div class="offer__b">
+                <div class="offer__t">Shabbat <span class="badge badge--ghost">a period</span></div>
+                <div class="offer__s">Fri 18:32 &rarr; Sat 19:38, every week</div>
+              </div>
+              <span class="horizon h-known"><i></i>always known</span>
+            </div>
+            <div class="offer">
+              <span class="radio"></span>
+              <div class="offer__b">
+                <div class="offer__t">Fast begins</div>
+                <div class="offer__s">next on 27 Sep</div>
+              </div>
+              <span class="horizon h-known"><i></i>always known</span>
+            </div>
+          </div>
+
+          <div class="hr"></div>
+
+          <!-- Offsets are signed and unclamped (D7). The card's arbitrary
+               MAX_OFFFSET_HOURS = 4 is not reproduced — see FINDINGS.md. -->
+          <div class="field">
+            <div class="field__label">Shift it</div>
+            <div class="offsetrow">
+              <span class="tf num">45</span>
+              <span class="sel">minutes</span>
+              <span class="sel">before</span>
+              <span class="dim small">candle lighting</span>
+            </div>
+            <div class="field__hint">Any size. 45 minutes before, or three days after &mdash; both are fine.</div>
+          </div>
+
+          <div class="resolved" style="margin-top:12px">
+            <div><b>This Friday that is 17:47.</b> <span class="dim">Next week 17:35, the week after 17:23.</span></div>
+            <div class="wasgoing small">
+              <span class="badge badge--warn"><svg class="ic ic--sm"><use href="#i-alert"></use></svg>outside the days</span>
+              17:47 is before Shabbat begins, so the day set <b>Shabbat</b> does not
+              cover it. <a href="06-dayset-editor.html">Check the days</a>
+            </div>
+          </div>
+
+          <!-- Zero-length offerings have no edge to choose. Rather than hide the
+               control (leaving the user to wonder what a period would do), it is
+               shown inert with the reason. -->
+          <div class="field" style="margin-top:14px;opacity:.55">
+            <div class="field__label">Which end of it</div>
+            <div class="row">
+              <span class="chip">the start</span>
+              <span class="chip">the end</span>
+              <span class="small dim">Candle lighting is a moment, not a period, so there is only one.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="dlg__foot">
+      <span class="small dim">Times come from <b>jewish_calendar</b>, computed on this machine. No internet needed.</span>
+      <span class="spacer"></span>
+      <button class="btn btn--text">Cancel</button>
+      <button class="btn">Use this</button>
+    </div>
+  </div>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>04 &middot; Anchor picker</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

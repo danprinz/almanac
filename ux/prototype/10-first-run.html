@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · First run</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* The answer to §9 Q9 is that there is no empty state, and that is the
+     whole point of the product. The sun is a resolver; jewish_calendar is a
+     resolver; both are already installed and both already know their times.
+     So on the very first run the timeline is POPULATED — just with no rules
+     on it. You are looking at an almanac before you have written in it.
+
+     A blank canvas saying "create your first schedule" would throw away the
+     one thing that distinguishes this from every other scheduler. */
+
+  .ghostlane { display: flex; align-items: center; gap: 12px;
+               border: 1px dashed var(--al-divider); border-radius: var(--al-radius-sm);
+               margin: 10px 16px 4px; padding: 18px 16px; }
+
+  .starter { display: flex; gap: 12px; align-items: flex-start; padding: 13px 14px;
+             border: 1px solid var(--al-divider); border-radius: var(--al-radius-sm);
+             background: none; text-align: left; font: inherit; color: inherit; }
+  .starter { text-decoration: none; }
+  .starter:hover { border-color: var(--al-accent); }
+  .starter__ic { width: 34px; height: 34px; border-radius: 9px; flex: 0 0 auto;
+                 background: var(--al-tint-accent); color: var(--al-accent);
+                 display: flex; align-items: center; justify-content: center; }
+  .starter__t { display: block; font-size: 14px; font-weight: 500; }
+  .starter__e { display: block; font-size: 12.5px; color: var(--al-text-2); margin-top: 2px; }
+  .starters { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--al-gap-sm); }
+  @media (max-width: 870px) { .starters { grid-template-columns: minmax(0,1fr); } }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <header class="ha-header">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="ha-header__title">Almanac</div>
+      <div class="spacer"></div>
+      <button class="btn btn--sm"><svg class="ic ic--sm"><use href="#i-plus"></use></svg>New schedule</button>
+    </header>
+
+    <div class="ha-tabs">
+      <a class="ha-tab" href="01-timeline.html" data-on>Timeline</a>
+      <a class="ha-tab" href="05-schedule-list.html">Schedules</a>
+      <a class="ha-tab" href="06-dayset-editor.html">Day sets</a>
+      <a class="ha-tab" href="07-execution-log.html">Log</a>
+    </div>
+
+    <div class="ha-content ha-content--wide">
+
+      <section class="card only-wide" style="margin-bottom:var(--al-gap)">
+        <div class="card__header">The next day and a half
+          <span class="sub">nothing of yours yet &mdash; but the times are already here</span>
+        </div>
+
+        <div class="tl">
+          <div class="tl-body">
+            <div class="tl-head">
+              <div class="tl-head__pad"></div>
+              <div class="tl-ruler">
+                <div class="tick tick--day" style="left:0%"><span>Fri 25 Sep</span></div>
+                <div class="tick" style="left:11.111%"><span>18:00</span></div>
+                <div class="tick" style="left:22.222%"><span>22:00</span></div>
+                <div class="tick tick--day" style="left:27.778%"><span>Sat 26 Sep</span></div>
+                <div class="tick" style="left:44.444%"><span>06:00</span></div>
+                <div class="tick" style="left:55.556%"><span>10:00</span></div>
+                <div class="tick" style="left:66.667%"><span>14:00</span></div>
+                <div class="tick" style="left:77.778%"><span>18:00</span></div>
+                <div class="tick" style="left:88.889%"><span>22:00</span></div>
+                <div class="tick tick--day" style="left:94.444%"><span>Sun 27</span></div>
+              </div>
+            </div>
+
+            <div class="tl-rail">
+              <div class="tl-rail__label">Sun</div>
+              <div class="tl-rail__track">
+                <div class="tl-anchor" style="left:13.426%">sunset 18:50</div>
+                <div class="tl-anchor tl-anchor--lo" style="left:45.556%">dawn 06:24</div>
+                <div class="tl-anchor" style="left:46.852%">sunrise 06:52</div>
+                <div class="tl-anchor tl-anchor--lo" style="left:80.000%">sunset 18:48</div>
+              </div>
+            </div>
+            <div class="tl-rail">
+              <div class="tl-rail__label">Jewish cal.</div>
+              <div class="tl-rail__track">
+                <div class="tl-anchor tl-anchor--key" style="left:12.593%">candle lighting 18:32</div>
+                <div class="tl-anchor tl-anchor--lo" style="left:15.370%">nightfall 19:32</div>
+                <div class="tl-anchor tl-anchor--key" style="left:82.315%">havdalah 19:38</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="ghostlane">
+            <svg class="ic ic--lg dim2"><use href="#i-ghost"></use></svg>
+            <div>
+              <div style="font-size:14px">Your schedules will draw here.</div>
+              <div class="small dim">Every bar lines up with the times above, which is
+                how you check a rule without waiting for it.</div>
+            </div>
+            <span class="spacer"></span>
+            <button class="btn btn--sm">Add one</button>
+          </div>
+
+          <div class="tl-foot">
+            <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+            <span>almanac found <b>2 sources of times</b> already installed: the sun, and the
+              Jewish calendar. Anything that publishes a time can be a third.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- On a phone the ribbon is not shown at all, so first run needs its
+           own narrow rendering: the same information, as a list. -->
+      <section class="card only-narrow" style="margin-bottom:var(--al-gap)">
+        <div class="card__header">Today and tomorrow
+          <span class="sub">nothing of yours yet</span>
+        </div>
+        <div class="card__body--flush">
+          <div class="ag">
+            <div class="ag__row"><div class="ag__time"><span>18:32</span><small>Fri</small></div>
+              <div class="ag__body"><div class="ag__title">Candle lighting</div></div></div>
+            <div class="ag__row"><div class="ag__time"><span>18:50</span><small>Fri</small></div>
+              <div class="ag__body"><div class="ag__title">Sunset</div></div></div>
+            <div class="ag__row"><div class="ag__time"><span>06:52</span><small>Sat</small></div>
+              <div class="ag__body"><div class="ag__title">Sunrise</div></div></div>
+            <div class="ag__row"><div class="ag__time"><span>19:38</span><small>Sat</small></div>
+              <div class="ag__body"><div class="ag__title">Havdalah</div></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card__header">Start with one of these
+          <span class="sub">each one opens the editor already filled in</span>
+        </div>
+        <div class="card__body">
+          <div class="starters">
+            <a class="starter" href="02-rule-editor.html">
+              <span class="starter__ic"><svg class="ic"><use href="#i-clock"></use></svg></span>
+              <span><span class="starter__t">Between two times</span>
+                <span class="starter__e">hold a light on from 18:00 until 23:00</span></span>
+            </a>
+            <a class="starter" href="02-rule-editor.html">
+              <span class="starter__ic"><svg class="ic"><use href="#i-sun"></use></svg></span>
+              <span><span class="starter__t">Around sunset</span>
+                <span class="starter__e">do something 20 minutes before it gets dark</span></span>
+            </a>
+            <a class="starter" href="02-rule-editor.html">
+              <span class="starter__ic"><svg class="ic"><use href="#i-flame"></use></svg></span>
+              <span><span class="starter__t">Through Shabbat</span>
+                <span class="starter__e">from before candle lighting until after havdalah</span></span>
+            </a>
+          </div>
+
+          <div class="nudge">
+            <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+            <div>If you already use the old scheduler, almanac can read what is there and
+              show you what it would become &mdash; without changing anything.</div>
+            <button class="btn btn--out btn--sm">Have a look</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>10 &middot; First run</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

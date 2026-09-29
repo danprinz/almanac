@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · New schedule &mdash; blinds</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* Requested set 2: a new schedule that pulls a cover up at a fixed time
+     every weekday that is neither a holiday nor Shabbat.
+
+     Started from the card, so the entry point is the Add button on the
+     dashboard card in screen 16 — a Lovelace dialog over a Lovelace
+     dashboard, not a settings page. The dialog is HA's edit-card geometry
+     (close left, title beside it, footer actions right); the body is
+     almanac's.
+
+     THE DAY SET IS THE WHOLE SCREEN. "every weekday that isn't a holiday or
+     Shabbat" is one sentence for a person and three set operations for the
+     model: Weekdays MINUS Holidays MINUS Shabbat. D19 allows exactly one
+     level of union / intersect / minus with no nesting, which is enough for
+     this and is why the control below is a flat list of rows rather than a
+     tree. D18 makes each of those a shared named object, so the row names a
+     thing that exists elsewhere and can be clicked.
+
+     AND THE THIRD TERM DOES NOTHING. Weekdays already excludes Saturday, and
+     07:15 on a Friday is hours before candle lighting, so subtracting Shabbat
+     removes not one occurrence. That is not pedantry to surface — a rule that
+     silently contains an inert term is a rule whose author believes something
+     false about it, and they will act on that belief the next time they edit
+     it. D22 already requires an impact preview when a day set is edited; this
+     is the same machinery pointed at the rule being written. The offer is to
+     drop it, and the offer is refusable — "Weekdays" could be redefined
+     later, at which point the term would start to matter. */
+
+  .wrow { display: flex; align-items: center; gap: 10px; padding: 9px 10px;
+          border: 1px solid var(--al-divider); border-radius: var(--al-radius-sm);
+          font-size: 14px; }
+  .wrow__op { flex: 0 0 62px; font-size: 12px; font-weight: 500; letter-spacing: .04em;
+              text-transform: uppercase; color: var(--al-text-2); }
+  .wrow--inert { border-style: dashed; }
+  .wrow--inert .wrow__nm { color: var(--al-text-2); }
+  .prev { display: flex; gap: 3px; flex-wrap: wrap; }
+  .prevd { width: 30px; height: 34px; border-radius: 5px; font-size: 11px;
+           display: flex; flex-direction: column; align-items: center;
+           justify-content: center; background: var(--al-tint-accent);
+           color: var(--al-accent); line-height: 1.15; }
+  .prevd b { font-size: 12px; font-weight: 600; }
+  .prevd--out { background: var(--al-tint-neutral); color: var(--al-text-3); }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <div class="lv-bar">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="lv-bar__title only-wide">Home</div>
+      <div class="lv-tabs">
+        <a class="lv-tab" href="#"><svg class="ic"><use href="#i-home"></use></svg></a>
+        <a class="lv-tab" href="#" data-on>Sanctuary</a>
+        <a class="lv-tab" href="#">Social hall</a>
+        <a class="lv-tab" href="#">Climate</a>
+      </div>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-search"></use></svg></button>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-pencil"></use></svg></button>
+    </div>
+    <div class="lv-view">
+      <div class="lv-cols" style="grid-template-columns:repeat(auto-fill,minmax(300px,340px))">
+        <div class="lv-col">
+          <section class="card"><div class="card__header">
+            <svg class="ic"><use href="#i-timeline"></use></svg>Sanctuary schedules</div>
+            <div class="card__body"><span class="dim small">&hellip;</span></div></section>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- =================== the new-schedule dialog =================== -->
+<div class="dlg-scrim">
+  <div class="dlg dlg--wide">
+
+    <div class="dlg__head">
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-close"></use></svg></button>
+      <span>New schedule</span>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-code"></use></svg></button>
+    </div>
+
+    <div class="dlg__body dlg__body--flush">
+     <div class="cfg">
+      <div class="cfg__form">
+
+      <!-- the rule in one sentence, assembled from the controls below.
+           D2: this is an `At` rule — one anchor, one action list. -->
+      <div class="field" style="margin-bottom:16px">
+        <div class="tf tf--focus" style="font-size:15px">Blinds up</div>
+      </div>
+
+      <!-- ============ 1. when ============ -->
+      <div class="sect-title">When</div>
+      <div class="row row--wrap" style="margin-bottom:18px">
+        <span class="sel">At a time</span>
+        <span class="tf" style="width:110px"><svg class="ic ic--sm"><use href="#i-clock"></use></svg>07:15</span>
+      </div>
+
+      <!-- ============ 2. which days ============ -->
+      <div class="sect-title">On which days</div>
+      <div class="stack stack--sm" style="margin-bottom:10px">
+
+        <div class="wrow">
+          <span class="wrow__op">Start</span>
+          <svg class="ic ic--sm dim"><use href="#i-calendar"></use></svg>
+          <span class="wrow__nm">Weekdays</span>
+          <span class="badge badge--neutral">Sun&ndash;Fri</span>
+          <span class="spacer"></span>
+          <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-pencil"></use></svg></button>
+        </div>
+
+        <div class="wrow">
+          <span class="wrow__op">Except</span>
+          <svg class="ic ic--sm dim"><use href="#i-calendar"></use></svg>
+          <span class="wrow__nm">Holidays</span>
+          <span class="badge badge--neutral">14 days a year</span>
+          <span class="spacer"></span>
+          <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-trash"></use></svg></button>
+        </div>
+
+        <!-- the term that removes nothing -->
+        <div class="wrow wrow--inert">
+          <span class="wrow__op">Except</span>
+          <svg class="ic ic--sm dim"><use href="#i-flame"></use></svg>
+          <span class="wrow__nm">Shabbat</span>
+          <span class="badge badge--warn">removes nothing</span>
+          <span class="spacer"></span>
+          <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-trash"></use></svg></button>
+        </div>
+
+        <button class="btn btn--text btn--sm" style="align-self:flex-start">
+          <svg class="ic ic--sm"><use href="#i-plus"></use></svg>Add another</button>
+      </div>
+
+      <div class="nudge nudge--warn" style="margin-bottom:18px">
+        <svg class="ic ic--sm"><use href="#i-alert"></use></svg>
+        <div><b>Except Shabbat</b> doesn&rsquo;t change anything here. <b>Weekdays</b> is
+          Sunday to Friday, so Saturday was never in the set, and 07:15 on a Friday is
+          long before candle lighting.
+          <div class="row" style="margin-top:8px">
+            <button class="btn btn--out btn--sm">Remove it</button>
+            <button class="btn btn--text btn--sm">Keep it anyway</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ============ 3. what ============ -->
+      <div class="sect-title">Do this</div>
+      <div class="wrow">
+        <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-layers"></use></svg></span>
+        <span>Sanctuary blinds</span>
+        <span class="sel sel--inline" style="margin-left:6px">Open fully</span>
+        <span class="spacer"></span>
+        <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-dots"></use></svg></button>
+      </div>
+
+      </div>
+
+      <!-- ============ the enumeration, live ============
+           The same pane the edit-card dialog uses for a card preview. For a
+           schedule the equivalent of "what the card will look like" is "which
+           days this actually lands on", and it has to update as the day-set
+           rows above change or the three-term sentence stays a guess. -->
+      <div class="cfg__prev">
+        <div class="cfg__prevbox">
+          <div class="cfg__prevlbl">Which means</div>
+
+          <div style="font-size:15px;margin-bottom:2px">First run
+            <b>Sunday 20 September, 07:15</b></div>
+          <div class="small dim" style="margin-bottom:14px">in 2 days</div>
+
+          <div class="prev" style="margin-bottom:10px">
+            <span class="prevd"><b>20</b>Sun</span>
+            <span class="prevd prevd--out"><b>21</b>Mon</span>
+            <span class="prevd"><b>22</b>Tue</span>
+            <span class="prevd"><b>23</b>Wed</span>
+            <span class="prevd"><b>24</b>Thu</span>
+            <span class="prevd"><b>25</b>Fri</span>
+            <span class="prevd prevd--out"><b>26</b>Sat</span>
+            <span class="prevd"><b>27</b>Sun</span>
+            <span class="prevd"><b>28</b>Mon</span>
+            <span class="prevd"><b>29</b>Tue</span>
+            <span class="prevd"><b>30</b>Wed</span>
+            <span class="prevd"><b>1</b>Thu</span>
+            <span class="prevd"><b>2</b>Fri</span>
+            <span class="prevd prevd--out"><b>3</b>Sat</span>
+          </div>
+
+          <div class="small"><b>11 of the next 14 days.</b></div>
+          <!-- Both Saturdays in this fortnight are also festivals, which is not a
+               contrivance: Sukkot begins Sat 26 Sep 2026 and Shmini Atzeret falls
+               Sat 3 Oct. Saying so is the same argument as the warning on the left,
+               made with dates instead of reasoning. -->
+          <div class="small dim" style="margin-top:4px">Grey days are out:
+            <b>Mon 21 Sep</b> is Yom Kippur. The two Saturdays are out twice over
+            &mdash; they are Shabbat, and they are also Sukkot and Shmini Atzeret.</div>
+
+          <div class="hr"></div>
+
+          <div class="sect-title">First few runs</div>
+          <div class="stack stack--sm">
+            <span class="small"><b>Sun 20 Sep 07:15</b></span>
+            <span class="small dim">Mon 21 Sep &mdash; Yom Kippur, no run</span>
+            <span class="small"><b>Tue 22 Sep 07:15</b></span>
+            <span class="small"><b>Wed 23 Sep 07:15</b></span>
+            <span class="small"><b>Thu 24 Sep 07:15</b></span>
+          </div>
+        </div>
+      </div>
+
+     </div>
+    </div>
+
+    <div class="dlg__foot">
+      <a class="btn btn--text btn--sm" href="08-dry-run.html">Try it now</a>
+      <span class="spacer"></span>
+      <button class="btn btn--text btn--sm">Cancel</button>
+      <button class="btn btn--sm">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>14 &middot; New schedule &mdash; blinds on weekdays</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

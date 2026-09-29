@@ -1,0 +1,316 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Schedules</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* Scenario F: 40 schedules, 118 rules, 12 day sets.
+     The ordering decision is the whole screen: default sort is BY NEXT
+     OCCURRENCE, not alphabetical, and anything wrong is lifted out of the
+     order into a band at the top. A list sorted by name makes you read all
+     40 rows to find the one that matters. See FINDINGS.md, Q3. */
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+             margin-bottom: var(--al-gap); }
+  .toolbar .tf { flex: 1 1 260px; max-width: 420px; display: flex; align-items: center; gap: 8px; }
+
+  .grp { display: flex; align-items: center; gap: 8px; padding: 14px 16px 6px;
+         font-size: 12px; font-weight: 500; letter-spacing: .06em; text-transform: uppercase;
+         color: var(--al-text-2); }
+  .grp .line { flex: 1 1 auto; height: 1px; background: var(--al-divider); }
+
+  .srow { display: flex; align-items: center; gap: 12px; padding: 9px 16px;
+          border-top: 1px solid var(--al-divider); min-width: 0; }
+  .srow:first-child { border-top: 0; }
+  .srow__n { flex: 1 1 auto; min-width: 0; }
+  .srow__t { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .srow__s { font-size: 12px; color: var(--al-text-2); white-space: nowrap;
+             overflow: hidden; text-overflow: ellipsis; }
+  .srow__days { flex: 0 0 auto; width: 128px; }
+  .srow__next { flex: 0 0 auto; width: 132px; font-size: 12.5px; text-align: right;
+                color: var(--al-text-2); }
+  .srow__next b { display: block; color: var(--al-text); font-weight: 500; font-size: 13px; }
+  .srow__who { flex: 0 0 auto; width: 26px; }
+  .who { width: 24px; height: 24px; border-radius: 50%; display: inline-flex;
+         align-items: center; justify-content: center; font-size: 10.5px; font-weight: 600;
+         background: var(--al-tint-neutral); color: var(--al-text-2); }
+  .srow--off .srow__t, .srow--off .srow__s { color: var(--al-text-3); }
+
+  /* The attention band is a different surface, not a red row in the list —
+     it survives whatever sort or filter is applied. */
+  .attn { border-left: 3px solid var(--al-warn); }
+  .attn.attn--err { border-left-color: var(--al-err); }
+
+  @media (max-width: 870px) {
+    .srow__days, .srow__who { display: none; }
+    .srow__next { width: 96px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <header class="ha-header">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="ha-header__title">Almanac</div>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-search"></use></svg></button>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-dots"></use></svg></button>
+    </header>
+
+    <div class="ha-tabs">
+      <a class="ha-tab" href="01-timeline.html">Timeline</a>
+      <a class="ha-tab" href="05-schedule-list.html" data-on>Schedules</a>
+      <a class="ha-tab" href="06-dayset-editor.html">Day sets</a>
+      <a class="ha-tab" href="07-execution-log.html">Log</a>
+    </div>
+
+    <div class="ha-content ha-content--wide">
+
+      <div class="toolbar">
+        <label class="tf">
+          <svg class="ic ic--sm"><use href="#i-search"></use></svg>
+          <span class="ph">Search 40 schedules</span>
+        </label>
+        <span class="chip" data-on>All 40</span>
+        <span class="chip">Running 3</span>
+        <span class="chip">Off 5</span>
+        <span class="spacer"></span>
+        <span class="small dim">Group by</span>
+        <span class="sel" style="height:30px;font-size:13px">Area</span>
+        <button class="btn btn--sm"><svg class="ic ic--sm"><use href="#i-plus"></use></svg>Add</button>
+      </div>
+
+      <!-- ============ the attention band ============ -->
+      <section class="card attn attn--err" style="margin-bottom:var(--al-gap)">
+        <div class="card__header">
+          <svg class="ic ic--lg" style="color:var(--al-err)"><use href="#i-alert"></use></svg>
+          3 need attention
+          <span class="sub">lifted out of the sort, so they cannot be scrolled past</span>
+          <div class="spacer"></div>
+          <a class="btn btn--text btn--sm" href="07-execution-log.html">Open the log</a>
+        </div>
+        <div class="card__body--flush">
+          <div class="srow">
+            <span class="glyph st-failed">&times;</span>
+            <div class="srow__n">
+              <div class="srow__t">Boiler &mdash; Shabbat mode</div>
+              <div class="srow__s" style="color:var(--al-err)">water_heater.kitchen did not respond, 16:00 yesterday</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Shabbat</span></div>
+            <div class="srow__next"><b>Running</b>until 20:08</div>
+            <div class="srow__who"><span class="who">DP</span></div>
+            <span class="sw" data-on></span>
+          </div>
+          <div class="srow">
+            <span class="glyph st-unres">?</span>
+            <div class="srow__n">
+              <div class="srow__t">Evening PA &mdash; announcements</div>
+              <div class="srow__s" style="color:var(--al-warn)">sensor.zmanim_maariv has no value &mdash; next time unknown</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Every day</span></div>
+            <div class="srow__next"><b>&mdash;</b>unknown</div>
+            <div class="srow__who"><span class="who">RL</span></div>
+            <span class="sw" data-on></span>
+          </div>
+          <div class="srow">
+            <span class="glyph st-skipped">!</span>
+            <div class="srow__n">
+              <div class="srow__t">Kiddush setup</div>
+              <div class="srow__s" style="color:var(--al-warn)">Skipped 3 Fridays running &mdash; cleaning crew present</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Fridays</span></div>
+            <div class="srow__next"><b>Fri 15:30</b>in 6 days</div>
+            <div class="srow__who"><span class="who">MK</span></div>
+            <span class="sw" data-on></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ the list ============ -->
+      <section class="card">
+        <div class="card__body--flush">
+
+          <div class="grp">Sanctuary <span class="badge badge--ghost">9</span><span class="line"></span>
+            <span class="dim" style="text-transform:none;letter-spacing:0;font-weight:400">3 share the day set <b>Shabbat</b></span></div>
+
+          <div class="srow">
+            <span class="glyph st-fired">&#10003;</span>
+            <div class="srow__n">
+              <div class="srow__t">Shabbat &mdash; sanctuary</div>
+              <div class="srow__s">lights on 80%, heat to 22&deg;C &middot; from 45m before candle lighting until 30m after havdalah</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Shabbat</span></div>
+            <div class="srow__next"><b>Running</b>ends 20:08 tomorrow</div>
+            <div class="srow__who"><span class="who">DP</span></div>
+            <span class="sw" data-on></span>
+          </div>
+
+          <div class="srow">
+            <span class="glyph st-future">&#9679;</span>
+            <div class="srow__n">
+              <div class="srow__t">Corridor lights</div>
+              <div class="srow__s">on &middot; from sunset until 23:30</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Every day</span></div>
+            <div class="srow__next"><b>18:28</b>in 2 h</div>
+            <div class="srow__who"><span class="who">DP</span></div>
+            <span class="sw" data-on></span>
+          </div>
+
+          <div class="srow">
+            <span class="glyph st-future">&#9679;</span>
+            <div class="srow__n">
+              <div class="srow__t">Weekday morning warmup</div>
+              <div class="srow__s">heat to 20&deg;C &middot; at 06:30, if someone's home (else wait until 07:30)</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Weekdays</span></div>
+            <div class="srow__next"><b>Mon 06:30</b>in 2 days</div>
+            <div class="srow__who"><span class="who">DP</span></div>
+            <span class="sw" data-on></span>
+          </div>
+
+          <div class="srow">
+            <span class="glyph st-future">&#9679;</span>
+            <div class="srow__n">
+              <div class="srow__t">Shabbat &mdash; ner tamid check</div>
+              <div class="srow__s">notify &middot; at 20m before candle lighting</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Shabbat</span></div>
+            <div class="srow__next"><b>Fri 18:12</b>in 6 days</div>
+            <div class="srow__who"><span class="who">MK</span></div>
+            <span class="sw" data-on></span>
+          </div>
+
+          <div class="srow srow--off">
+            <span class="glyph st-outside">&#8212;</span>
+            <div class="srow__n">
+              <div class="srow__t">Summer cooling</div>
+              <div class="srow__s">cool to 24&deg;C &middot; from 11:00 until 17:00</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Weekdays</span></div>
+            <div class="srow__next"><b>&mdash;</b>turned off</div>
+            <div class="srow__who"><span class="who">DP</span></div>
+            <span class="sw"></span>
+          </div>
+
+          <div class="grp">Social hall <span class="badge badge--ghost">7</span><span class="line"></span></div>
+
+          <div class="srow">
+            <span class="glyph st-future">&#9679;</span>
+            <div class="srow__n">
+              <div class="srow__t">Social hall &mdash; off</div>
+              <div class="srow__s">everything off &middot; at 30m after havdalah</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Shabbat</span></div>
+            <div class="srow__next"><b>Sat 20:08</b>in 1 day</div>
+            <div class="srow__who"><span class="who">DP</span></div>
+            <span class="sw" data-on></span>
+          </div>
+
+          <div class="srow">
+            <span class="glyph st-future">&#9679;</span>
+            <div class="srow__n">
+              <div class="srow__t">Cleaning &mdash; lights and heat</div>
+              <div class="srow__s">lights on, heat to 19&deg;C &middot; from 08:00 for 4 hours</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Cleaning days</span></div>
+            <div class="srow__next"><b>Tue 08:00</b>in 3 days</div>
+            <div class="srow__who"><span class="who">MK</span></div>
+            <span class="sw" data-on></span>
+          </div>
+
+          <div class="srow">
+            <span class="glyph st-future">&#9679;</span>
+            <div class="srow__n">
+              <div class="srow__t">Kiddush &mdash; urn on</div>
+              <div class="srow__s">switch on &middot; at 2h before candle lighting</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Shabbat</span></div>
+            <div class="srow__next"><b>Fri 16:32</b>in 6 days</div>
+            <div class="srow__who"><span class="who">MK</span></div>
+            <span class="sw" data-on></span>
+          </div>
+
+          <div class="srow">
+            <span class="glyph st-future">&#9679;</span>
+            <div class="srow__n">
+              <div class="srow__t">Bins out</div>
+              <div class="srow__s">notify &middot; at 20:00</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Bin nights</span></div>
+            <div class="srow__next"><b>Sun 20:00</b>in 2 days</div>
+            <div class="srow__who"><span class="who">RL</span></div>
+            <span class="sw" data-on></span>
+          </div>
+
+          <div class="grp">Classrooms <span class="badge badge--ghost">11</span><span class="line"></span></div>
+
+          <div class="srow">
+            <span class="glyph st-future">&#9679;</span>
+            <div class="srow__n">
+              <div class="srow__t">Cheder &mdash; heating</div>
+              <div class="srow__s">heat to 21&deg;C &middot; from 08:30 until 13:00</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Term Sundays</span></div>
+            <div class="srow__next"><b>Sun 08:30</b>in 1 day</div>
+            <div class="srow__who"><span class="who">RL</span></div>
+            <span class="sw" data-on></span>
+          </div>
+
+          <div class="srow">
+            <span class="glyph st-future">&#9679;</span>
+            <div class="srow__n">
+              <div class="srow__t">Cheder &mdash; lights off after</div>
+              <div class="srow__s">off &middot; at 13:30</div>
+            </div>
+            <div class="srow__days"><span class="badge badge--neutral">Term Sundays</span></div>
+            <div class="srow__next"><b>Sun 13:30</b>in 1 day</div>
+            <div class="srow__who"><span class="who">RL</span></div>
+            <span class="sw" data-on></span>
+          </div>
+
+        </div>
+
+        <div class="card__footer">
+          <span class="small dim">Showing 12 of 40. <b>118 rules</b> across
+            <a href="06-dayset-editor.html">12 day sets</a>.</span>
+          <span class="spacer"></span>
+          <button class="btn btn--text btn--sm">Show all 40</button>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>05 &middot; Schedules at scale</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Configure the card</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* Requested set 1 — configuring the container card, "see how
+     scheduler-component ui does it".
+
+     I read it. scheduler-card @ 83b6dec82d3237fb2d85a70a2b861578165d13b6,
+     src/scheduler-card-editor.ts: a single flat scrolling form, NO tab strip,
+     sections in a fixed order, and — the part worth copying — radio pairs
+     drawn as two clickable rows rather than native inputs. Its tag control is
+     a multi-select whose options come from a `scheduler/tags` websocket call
+     returning every tag currently in use, with custom_value enabled so you
+     can also type a new one. That shape is kept here.
+
+     The dialog around it is HA's, measured from hui-dialog-edit-card.ts:
+     close button top LEFT, title beside it, help icon top right; one column
+     until 1000px and two equal columns above it, form first, preview second
+     and centred at 500px; footer is [Show code editor] … [Cancel] [Save],
+     the toggle pushed left with margin-right:auto. None of that is invented.
+     For a custom card in a masonry view no tab strip renders at all, so
+     there is none here.
+
+     FOUR THINGS CHANGED, AND EACH ONE IS A FINDING.
+
+     (a) MATCH MODE IS SHOWN. isIncludedSchedule() ORs the tag list —
+         `.some(e => filterTags.includes(e))`. A person who puts two tags in a
+         box means "and" about as often as "or", and nothing on screen says
+         which they got. almanac asks.
+
+     (b) THE STATE FILTER IS ITS OWN CONTROL. Upstream smuggles 'enabled',
+         'disabled' and 'none' into the same list as real tags, matched by
+         string literal — so a schedule genuinely tagged "enabled" is
+         indistinguishable from the pseudo-value, and no escape exists. Split
+         them and the collision cannot happen.
+
+     (c) A TAG THAT MATCHES NOTHING SAYS SO. custom_value lets you type
+         anything; a typo yields a card that is simply emptier, with no error,
+         because under OR a non-matching tag contributes nothing. The typo'd
+         chip below is deliberate.
+
+     (d) EXCLUSION IS IN THE EDITOR, NOT ONLY IN YAML. `exclude_tags` already
+         exists upstream — types.ts:20, honoured at is_included_schedule.ts:31
+         — but scheduler-card-editor.ts has no control for it, so anyone who
+         has not read the docs does not know it is there. Promoting it is not
+         a new feature; it is the same option, visible. (Its validator,
+         validate_config.ts:91, type-checks `config.tags` rather than
+         `config.exclude_tags` in both branches, so a malformed value is not
+         caught either.) */
+
+  .exp { border: 1px solid var(--al-divider); border-radius: var(--al-radius-sm); }
+  .exp__h { display: flex; align-items: center; gap: 10px; padding: 11px 12px;
+            font-size: 14px; }
+  .radiorow { display: flex; align-items: center; gap: 10px; padding: 6px 2px;
+              font-size: 14px; }
+  .cfgsec { margin-bottom: 18px; }
+  .cfgsec:last-child { margin-bottom: 0; }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <!-- the dashboard is in edit mode behind the dialog -->
+    <div class="lv-editbar">
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-close"></use></svg></button>
+      <div class="lv-editbar__title">Edit dashboard</div>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-dots"></use></svg></button>
+    </div>
+    <div class="lv-view lv-view--edit">
+      <div class="lv-cols" style="grid-template-columns:repeat(auto-fill,minmax(300px,340px))">
+        <div class="lv-col">
+          <section class="card lv-target" style="min-height:120px">
+            <div class="lv-edittools">
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-pencil"></use></svg></button>
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-copy"></use></svg></button>
+              <button class="iconbtn iconbtn--sm"><svg class="ic ic--sm"><use href="#i-dots"></use></svg></button>
+            </div>
+            <div class="card__header"><svg class="ic"><use href="#i-timeline"></use></svg>Sanctuary schedules</div>
+            <div class="card__body"><span class="dim small">&hellip;</span></div>
+          </section>
+          <div class="lv-addcard"><svg class="ic"><use href="#i-plus"></use></svg>ADD CARD</div>
+        </div>
+        <div class="lv-col">
+          <section class="card" style="min-height:96px"><div class="card__body">
+            <span class="dim small">Sanctuary climate</span></div></section>
+          <div class="lv-addcard"><svg class="ic"><use href="#i-plus"></use></svg>ADD CARD</div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- =================== hui-dialog-edit-card =================== -->
+<div class="dlg-scrim">
+  <div class="dlg dlg--wide">
+
+    <div class="dlg__head">
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-close"></use></svg></button>
+      <span>Almanac Schedules Card Configuration</span>
+      <span class="spacer"></span>
+      <button class="iconbtn"><svg class="ic ic--lg"><use href="#i-info"></use></svg></button>
+    </div>
+
+    <div class="dlg__body dlg__body--flush">
+      <div class="cfg">
+
+        <!-- ================= the form ================= -->
+        <div class="cfg__form">
+
+          <!-- 1. title — checkbox + text, exactly upstream's first row -->
+          <div class="cfgsec">
+            <div class="row" style="gap:10px">
+              <span class="cbx" data-on></span>
+              <div class="field" style="flex:1 1 auto">
+                <div class="tf tf--focus">Sanctuary schedules</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 2. the tag filter — the reason this card exists -->
+          <div class="cfgsec">
+            <div class="sect-title">Which schedules</div>
+
+            <div class="field" style="margin-bottom:10px">
+              <div class="field__label">Tags</div>
+              <div class="tags">
+                <button class="tag tag--pick" data-on>sanctuary
+                  <svg class="ic ic--sm"><use href="#i-close"></use></svg></button>
+                <button class="tag tag--pick" data-on>kiddush
+                  <svg class="ic ic--sm"><use href="#i-close"></use></svg></button>
+                <!-- typed by hand, matches nothing, and upstream would say
+                     nothing about it -->
+                <button class="tag tag--pick" data-on
+                        style="border-color:var(--al-warn);background:var(--al-tint-warn);color:var(--al-warn)">
+                  sanctury <svg class="ic ic--sm"><use href="#i-close"></use></svg></button>
+                <button class="tag tag--pick"><svg class="ic ic--sm"><use href="#i-plus"></use></svg>Add</button>
+              </div>
+            </div>
+
+            <div class="nudge nudge--warn" style="margin-bottom:12px">
+              <svg class="ic ic--sm"><use href="#i-alert"></use></svg>
+              <div><b>sanctury</b> isn&rsquo;t a tag on any schedule. Did you mean
+                <b>sanctuary</b>? &mdash; it is already in the list, so this one is doing
+                nothing.</div>
+            </div>
+
+            <!-- (a) the OR that upstream never states -->
+            <div class="field" style="margin-bottom:12px">
+              <div class="field__label">A schedule is shown when it has</div>
+              <label class="radiorow"><span class="radio" data-on></span>
+                any of these tags</label>
+              <label class="radiorow"><span class="radio"></span>
+                all of these tags</label>
+            </div>
+
+            <div class="field" style="margin-bottom:12px">
+              <div class="field__label">Except when tagged</div>
+              <div class="tags">
+                <button class="tag tag--pick" data-on>archived
+                  <svg class="ic ic--sm"><use href="#i-close"></use></svg></button>
+                <button class="tag tag--pick"><svg class="ic ic--sm"><use href="#i-plus"></use></svg>Add</button>
+              </div>
+            </div>
+
+            <!-- (b) state is not a tag -->
+            <div class="field">
+              <div class="field__label">Turned on or off</div>
+              <div class="sel" style="align-self:flex-start">Show both</div>
+            </div>
+          </div>
+
+          <!-- 3. presentation -->
+          <div class="cfgsec">
+            <div class="sect-title">Each row shows</div>
+            <label class="radiorow"><span class="radio" data-on></span>
+              Name and description</label>
+            <label class="radiorow"><span class="radio"></span>
+              Name and next run</label>
+          </div>
+
+          <!-- ha-form renders a schema node of type "expandable" as an
+               outlined ha-expansion-panel; order, the header toggle, the
+               per-row switches and the Add button live in here because none
+               of them is why anyone opened this dialog -->
+          <div class="exp">
+            <div class="exp__h">
+              <svg class="ic"><use href="#i-cog"></use></svg>
+              Order and appearance
+              <span class="spacer"></span>
+              <svg class="ic"><use href="#i-chevd"></use></svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- ================= the live preview ================= -->
+        <div class="cfg__prev">
+          <div class="cfg__prevbox">
+            <div class="cfg__prevlbl">Preview</div>
+
+            <section class="card">
+              <div class="card__header">
+                <svg class="ic"><use href="#i-timeline"></use></svg>Sanctuary schedules
+              </div>
+              <div class="card__body--flush">
+                <div class="schrow">
+                  <span class="entity__ic" data-on><svg class="ic ic--sm"><use href="#i-flame"></use></svg></span>
+                  <div class="schrow__b">
+                    <div class="schrow__n">Shabbat &mdash; sanctuary</div>
+                    <div class="schrow__d">Everything on before the room fills up, off once
+                      people have gone home.</div>
+                  </div>
+                  <div class="schrow__r"><b style="color:var(--al-accent)">Running</b>until 20:03 tomorrow</div>
+                </div>
+                <div class="schrow">
+                  <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-layers"></use></svg></span>
+                  <div class="schrow__b">
+                    <div class="schrow__n">Blinds up</div>
+                    <div class="schrow__d">At 07:15 on weekdays, except holidays.</div>
+                  </div>
+                  <div class="schrow__r"><b>Sun 07:15</b>in 2 days</div>
+                </div>
+                <div class="schrow">
+                  <span class="entity__ic"><svg class="ic ic--sm"><use href="#i-thermo"></use></svg></span>
+                  <div class="schrow__b">
+                    <div class="schrow__n">Kiddush setup</div>
+                    <div class="schrow__d">Fridays at 15:30, unless the cleaning crew
+                      is in.</div>
+                  </div>
+                  <div class="schrow__r"><b>Fri 15:30</b>in 7 days</div>
+                </div>
+              </div>
+              <div class="card__footer">
+                <span class="small dim">3 of 14 schedules</span>
+              </div>
+            </section>
+
+            <!-- the count is the whole point of a live preview here: a filter
+                 you cannot see the result of is a filter you will get wrong -->
+            <div class="nudge" style="margin-top:12px">
+              <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+              <div><b>3 of 14</b> schedules match. <b>1</b> is hidden by
+                <b>archived</b>.</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="dlg__foot">
+      <button class="btn btn--text btn--sm">Show code editor</button>
+      <span class="spacer"></span>
+      <button class="btn btn--text btn--sm">Cancel</button>
+      <button class="btn btn--sm">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>13 &middot; Configuring the card</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>

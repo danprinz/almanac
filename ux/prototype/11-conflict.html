@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>almanac · Two rules, one thermostat</title>
+<link rel="stylesheet" href="assets/tokens.css">
+<link rel="stylesheet" href="assets/app.css">
+<script src="assets/boot.js"></script>
+<style>
+  /* Scenario D, which DESIGN.md deliberately does not settle.
+     This screen does NOT invent a priority system. It renders what the model
+     as decided actually produces: `During` bodies are reconciled at the edges
+     (D28), so the last edge to fire owns the entity until the next edge. That
+     is last-writer-wins by construction, and the honest thing is to draw it.
+
+     The finding is not "there should be priorities". It is that `on_exit:
+     restore` (D3) captures state at ENTRY, so a rule that entered inside
+     another rule's live window restores a value that other rule owns, and
+     nothing ever corrects it. See FINDINGS.md, Scenario D. */
+
+  .ov { position: relative; height: 30px; border-radius: 6px;
+        background: var(--al-surface-2); margin: 6px 0 2px; }
+  .ovbar { position: absolute; top: 4px; height: 22px; border-radius: 5px;
+           display: flex; align-items: center; padding: 0 9px; font-size: 11.5px;
+           color: #fff; white-space: nowrap; overflow: hidden; }
+  .ovhatch { position: absolute; top: 0; bottom: 0; border-radius: 6px;
+             background: repeating-linear-gradient(135deg,
+               color-mix(in srgb, var(--al-err) 30%, transparent) 0 5px,
+               transparent 5px 10px);
+             border-left: 1px solid var(--al-err); border-right: 1px solid var(--al-err); }
+  .ovscale { position: relative; height: 16px; font-size: 11px; color: var(--al-text-3); }
+  .ovscale span { position: absolute; transform: translateX(-50%); }
+  .ovlbl { font-size: 12.5px; color: var(--al-text-2); margin-top: 8px; }
+
+  .outcome { display: flex; align-items: stretch; gap: 0; margin-top: 4px; }
+  .oseg { flex: 1 1 0; padding: 8px 10px; border-left: 1px solid var(--al-divider);
+          font-size: 12.5px; }
+  .oseg:first-child { border-left: 0; }
+  .oseg b { display: block; font-size: 15px; font-weight: 500; }
+  .oseg--bad { background: var(--al-tint-err); }
+  .oseg--bad b { color: var(--al-err); }
+
+  @media (max-width: 870px) { .cols { grid-template-columns: minmax(0,1fr); } }
+</style>
+</head>
+<body>
+
+<div class="ha">
+  <nav class="ha-sidebar">
+    <div class="ha-sidebar__header"><svg class="ic ic--lg"><use href="#i-home"></use></svg><span>Beit Knesset</span></div>
+    <ul class="ha-sidebar__list">
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-home"></use></svg>Overview</li>
+      <li class="ha-sidebar__item" aria-current="page"><svg class="ic"><use href="#i-timeline"></use></svg>Almanac</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-calendar"></use></svg>Calendar</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-history"></use></svg>History</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-eye"></use></svg>Logbook</li>
+      <li class="ha-sidebar__item"><svg class="ic"><use href="#i-code"></use></svg>Developer tools</li>
+    </ul>
+    <div class="ha-sidebar__spacer"></div>
+    <div class="ha-sidebar__footer">
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-cog"></use></svg>Settings</div>
+      <div class="ha-sidebar__item"><svg class="ic"><use href="#i-person"></use></svg>Daniel</div>
+    </div>
+  </nav>
+
+  <main class="ha-main">
+    <header class="ha-header">
+      <button class="iconbtn only-narrow"><svg class="ic ic--lg"><use href="#i-menu"></use></svg></button>
+      <div class="ha-header__title">Sanctuary climate</div>
+      <div class="spacer"></div>
+      <a class="btn btn--text btn--sm" href="01-timeline.html">Timeline</a>
+    </header>
+
+    <div class="ha-content ha-content--wide">
+
+      <div class="alert alert--warn" style="margin-bottom:var(--al-gap)">
+        <svg class="ic ic--sm"><use href="#i-alert"></use></svg>
+        <div><b>Two rules are both holding this thermostat</b> between 18:00 and 20:08 tomorrow,
+          and they want different things. almanac will not pick a winner for you &mdash; here is
+          what will actually happen.</div>
+      </div>
+
+      <div class="cols">
+        <div class="stack">
+
+          <!-- ============ what overlaps ============ -->
+          <section class="card">
+            <div class="card__header">The overlap
+              <span class="sub">Friday 17:00 &rarr; Saturday 21:00</span>
+            </div>
+            <div class="card__body">
+
+              <div class="ovlbl"><b>Shabbat &mdash; sanctuary</b> &mdash; heat to 22&deg;C, owned by Daniel</div>
+              <div class="ov">
+                <div class="ovbar" style="left:2%;width:82%;background:var(--state-climate-heat-color)">17:47 &rarr; Sat 20:08 &middot; 22&deg;C</div>
+                <!-- The hatch marks the contested COLUMN, so it is drawn on
+                     both rows. On one row it would read as an attribute of
+                     that rule rather than of the overlap. -->
+                <div class="ovhatch" style="left:8%;width:68%"></div>
+              </div>
+
+              <div class="ovlbl"><b>Boiler &mdash; Shabbat mode</b> &mdash; heat to 18&deg;C, owned by Miriam</div>
+              <div class="ov">
+                <div class="ovbar" style="left:8%;width:68%;background:var(--al-accent)">18:00 &rarr; Sat 18:30 &middot; 18&deg;C</div>
+                <div class="ovhatch" style="left:8%;width:68%"></div>
+              </div>
+
+              <div class="ovlbl" style="text-align:center;color:var(--al-err)">
+                both of them, for 24&frac12; hours</div>
+
+              <div class="hr"></div>
+
+              <div class="sect-title">What the thermostat will actually read</div>
+              <!-- Edges are the only moments anything is written (D28), so the
+                   state between two edges is whatever the earlier edge set. -->
+              <div class="outcome">
+                <div class="oseg"><b>22&deg;C</b>17:47 &rarr; 18:00<br><span class="dim">Shabbat set it</span></div>
+                <div class="oseg"><b>18&deg;C</b>18:00 &rarr; Sat 18:30<br><span class="dim">Boiler set it, last</span></div>
+                <div class="oseg"><b>18&deg;C</b>Sat 18:30 &rarr; 20:08<br><span class="dim">Boiler ended, left it alone</span></div>
+                <div class="oseg oseg--bad"><b>16&deg;C</b>after 20:08<br><span class="dim">Shabbat put back what it saw at 17:47</span></div>
+              </div>
+
+              <!-- This is the actual defect, and it is not about priority. -->
+              <div class="alert alert--err" style="margin-top:14px">
+                <svg class="ic ic--sm"><use href="#i-alert"></use></svg>
+                <div><b>The last step is wrong and nothing will correct it.</b>
+                  <b>Shabbat &mdash; sanctuary</b> will put the thermostat back to <b>16&deg;C</b> &mdash;
+                  the value it read at 17:47, before Boiler touched anything. Boiler is no longer
+                  running, so it will not set 18&deg;C again. Nobody asked for 16&deg;C at 20:08 on a
+                  Saturday night.</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ what you can do ============ -->
+          <section class="card">
+            <div class="card__header">What you can do about it
+              <span class="sub">almanac has no rule for this yet &mdash; these are the three honest options</span>
+            </div>
+            <div class="card__body">
+              <div class="stack stack--sm">
+                <label class="row row--top">
+                  <span class="radio" data-on></span>
+                  <span><b>Leave it.</b> Whichever rule wrote last holds the thermostat.
+                    <span class="dim">Predictable, and what happens today. The 16&deg;C above is
+                    part of what you are accepting.</span></span>
+                </label>
+                <label class="row row--top">
+                  <span class="radio"></span>
+                  <span><b>Put back what was there, not what I found.</b>
+                    <span class="dim">When <b>Shabbat</b> ends, hand the thermostat to <b>Boiler</b>
+                    if it is still holding it, and only fall back to 16&deg;C if nothing else is.</span></span>
+                </label>
+                <label class="row row--top">
+                  <span class="radio"></span>
+                  <span><b>Don't let them overlap.</b>
+                    <span class="dim">Shorten one of the two windows here and now.</span></span>
+                </label>
+              </div>
+
+              <div class="nudge">
+                <svg class="ic ic--sm"><use href="#i-info"></use></svg>
+                <div>Only the second option needs anything new: almanac would have to remember
+                  <b>who</b> set a value, not just <b>what</b> it was. That is a decision nobody has
+                  taken yet.</div>
+              </div>
+            </div>
+            <div class="card__footer">
+              <button class="btn btn--out btn--sm">Shorten Boiler's window</button>
+              <span class="spacer"></span>
+              <button class="btn btn--text btn--sm">Tell Miriam</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- ============ right ============ -->
+        <div class="stack">
+          <section class="card">
+            <div class="card__header">Who else touches this</div>
+            <div class="card__body">
+              <dl class="kv">
+                <dt>Entity</dt><dd><span class="mono">climate.sanctuary</span></dd>
+                <dt>Held by</dt><dd>2 rules, 2 owners</dd>
+                <dt>Also set by</dt><dd>3 automations outside almanac</dd>
+              </dl>
+              <div class="hr"></div>
+              <div class="row row--top">
+                <svg class="ic ic--sm dim"><use href="#i-info"></use></svg>
+                <span class="small dim">almanac does not own this thermostat. Anything outside
+                  almanac can change it at any moment, and almanac will not notice until the
+                  next edge.</span>
+              </div>
+            </div>
+          </section>
+
+          <section class="card">
+            <div class="card__header">Warn me earlier</div>
+            <div class="card__body">
+              <label class="row row--top">
+                <span class="cbx" data-on></span>
+                <span class="small">Say something when I save a rule that overlaps one
+                  already holding the same thing.</span>
+              </label>
+              <label class="row row--top" style="margin-top:8px">
+                <span class="cbx"></span>
+                <span class="small">Mark the overlap on the timeline.</span>
+              </label>
+            </div>
+          </section>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div class="proto-bar">
+  <b>almanac UX prototype</b>
+  <span>11 &middot; Two rules fighting</span>
+  <span class="spacer"></span>
+  <a href="index.html">all screens</a>
+  <a data-theme-toggle href="#">dark theme</a>
+</div>
+
+</body>
+</html>
