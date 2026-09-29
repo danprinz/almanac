@@ -411,10 +411,11 @@ _DATE_WINDOW_SCHEMA: Final = vol.Schema(
 _FINISHED_WHEN_SCHEMA: Final = cv.key_value_schemas(
     CONF_KIND,
     {
-        # `never` is not one of D46's five values; it is the absence of them.
-        # A daily schedule has no completion condition, and expressing that as
-        # an optional `completion` block would make the default invisible in
-        # the code view. See the note in the module docstring of `storage.py`.
+        # D83 — `never` is a value on this axis and is the default. It was not
+        # one of D46's original five, all of which presuppose the schedule
+        # eventually stops; a daily schedule has no completion condition and
+        # never acquires one. Expressing that as an absent `completion` block
+        # would leave the commonest case as the one with no representation.
         FINISHED_NEVER: vol.Schema({vol.Required(CONF_KIND): FINISHED_NEVER}),
         FINISHED_ONE_RULE_FIRED: vol.Schema(
             {vol.Required(CONF_KIND): FINISHED_ONE_RULE_FIRED}

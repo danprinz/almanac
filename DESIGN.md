@@ -703,7 +703,7 @@ for multi-slot schemes).
 
 | Axis | Values |
 | --- | --- |
-| **Finished when** | one rule fired · all rules fired once (a cycle) · N occurrences · a date · a condition became true |
+| **Finished when** | never (default, D83) · one rule fired · all rules fired once (a cycle) · N occurrences · a date · a condition became true |
 | **Then** | keep running · disable self · delete self · run an action |
 | **Counter increments on** | every scheduled occurrence · only those whose conditions passed · only those whose actions succeeded |
 
@@ -716,6 +716,18 @@ current interval, runs its exit path, then terminates.
 
 *Why:* otherwise a schedule can disable itself while holding the lights on and leave them on
 indefinitely. A schedule must not exit leaving the world in a state it created.
+
+**D83 — `never` is a value on the *Finished when* axis, and it is the default.** Added
+2026-09-29, after step 1 found the gap: D46 listed five terminal conditions and no way to say
+there is not one.
+
+*Why:* most schedules are perpetual. A daily blinds schedule has no completion condition and
+never acquires one, and under D46 as first written that had to be expressed by omission — which
+leaves the commonest case as the one with no representation. It also makes the axis unreadable
+in the editor, because every value on offer is a way to end something the user was not trying to
+end. Stating it explicitly gives the *Then* axis a defined value in the ordinary case instead of
+being inapplicable, and it means a schedule's completion can be read off the stored record rather
+than inferred from a missing key.
 
 ---
 
@@ -838,6 +850,35 @@ call each one's own helper. There is no registration hook (A.7). Our schedules w
 in an entity's Related tab without an upstream core PR. That PR is small and well-shaped, and is
 a good candidate contribution once this is public — but it cannot be a dependency, and the
 reverse index is needed internally anyway for D22's impact preview.
+
+---
+
+**D84 — the next-trigger sensor is `sensor.<object_id>_next_trigger`, with friendly name
+"<name> next trigger".** D55 settled that each schedule has one sensor carrying
+`device_class: timestamp`; it did not name it. The switch keeps the bare slug (D54); the sensor
+takes the suffix.
+
+*Why:* the same `object_id` in two domains gives the two entities an identical friendly name in
+every picker, search field and automation editor in Home Assistant — which is D54's
+discoverability failure reintroduced one domain over. The suffix goes on the sensor rather than
+the switch because the switch is the one a user reaches for, and the shorter name should be the
+one they reach for.
+
+**D85 — `integration_type` is `service`.** There is no `integration` value to choose: core's
+`Manifest` admits exactly `entity`, `device`, `hardware`, `helper`, `hub`, `service`, `system`
+and `virtual`, and the default when the key is absent is `hub`.
+
+*Why:* for a custom integration the placement is binary. `async_get_config_flows` buckets
+`helper` into the Helpers tab and **everything else** into the Add-integration dialog, so
+`service` already lands almanac where D54's discoverability argument wants it. Within that bucket
+the value is descriptive only, and `hub` — the default — would be wrong, because almanac brokers
+no devices. `helper` is arguably the truer description of what almanac is, and is rejected
+precisely because it moves the integration out of the dialog where people look for it.
+
+*Verified 2026-09-29* against `homeassistant/loader.py` in the pinned 2026.9.4 install: the
+`Literal` on `Manifest.integration_type`, the `("integration", "helper")` bucketing inside
+`async_get_config_flows`, and the `"hub"` fallback in the `integration_type` property. A name
+list and a branch — structural facts, which Appendix B treats as trustworthy.
 
 ---
 
