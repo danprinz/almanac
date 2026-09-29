@@ -920,8 +920,108 @@ stage shown as *outside the set* rather than omitted (D12).
 divergence between prediction and reality is visible rather than something the user has to go
 looking for.
 
-Detailed design goes to the UX designer once the feature list is complete; these three decisions
-are the constraints handed over, not a layout.
+Detailed design went to the UX designer on that basis, and `ux/FINDINGS.md` plus the prototype
+in `ux/prototype/` are what came back. D72–D80 are what that round settled. They *are* a layout,
+so the sentence that used to close this section — deferring layout entirely — no longer holds.
+
+### 16.1 The occurrence track
+
+The prototype authored schedules through a four-step wizard, and its read surfaces collapsed a
+multi-stage evening into a single line. Each is defensible alone; together they mean the occasion
+— *get the building ready for Shabbat* — is never drawn as one object with parts. The container
+itself was never missing: D1 puts `recurrence` on the Schedule, D54 and D55 give the schedule one
+switch and one sensor, and both the list card and the timeline already render one row and one
+lane per schedule, not per rule. What was missing is the middle.
+
+**D72 — the schedule editor is an anchor-relative track, not a wizard.** One rail per anchor,
+stages placed as markers at their offsets, the whole occurrence visible at once. Recurrence stays
+a separate control above the track, because D1 puts it on the Schedule rather than the rule.
+
+*Why:* the unit of thought is "the evening", and an evening is a set of moments defined relative
+to one or two events. A wizard makes the reader hold that shape in their head; a track puts it on
+the screen. It also renders D5's rationale instead of merely asserting it — with the stages drawn
+hanging off a shared spine, moving the anchor visibly moves all of them, which is the argument
+for `enter_actions`/`exit_actions` as a picture.
+
+**D73 — the track's axis is the anchor sequence, not the clock; gaps between anchors are
+compressed and labelled.** Each distinct anchor gets a rail at a fixed position. Offsets lay out
+linearly against a *local* scale per rail, sized to the widest offset at that anchor and rounded
+to a nice unit. Between rails sits a fixed-width break carrying the real elapsed duration as text.
+
+```
+     ┌── candle lighting ──┐                      ┌─ havdalah ─┐
+ ────●──────────●──────────┤≈≈≈ 25h 30m ≈≈≈≈≈≈≈≈≈─┼────●────────
+    −60m       −5m         0                      0   +30m
+    ACs on     lights on,                             all off
+               ACs to warm
+```
+
+*Why:* the flagship case spans 25½ hours, of which 55 minutes carry every stage but one. A linear
+time axis puts the two pre-lighting stages on the same pixel. Anchors are what stages are defined
+against, so anchors are what the axis should be; the elapsed gap is information, but not
+information that has earned proportional space. D63 already puts anchors on their own rails in
+the timeline, so this is one device at two scales. Adding a stage at a wider offset rescales that
+rail's local scale — animate the rescale, so the user sees it happen rather than seeing their
+work jump.
+
+**D74 — the same track renders at four sizes.** Full width in the editor; roughly 200px as a
+micro-track in a list row; as the lane in the timeline; as a strip in the next-runs list. Rails
+become ticks, stages become dots, labels fall away, the break becomes a hairline.
+
+*Why:* an editor is learnable when you author in the shape you will later read. One diagram at
+four sizes costs one design and is recognised everywhere it appears.
+
+**D75 — no surface renders a bare rule.** Every list, lane, log line and more-info panel renders
+the *schedule*; stages are a disclosure inside it, never a sibling row.
+
+*Why:* this is already true of everything drawn so far, and is written down so it survives the
+sixth screen. A rule has no name, no entity and no recurrence of its own, so rendering one as a
+peer of a schedule invents an object the model does not have.
+
+**D76 — rail order is computed from the next occurrence, and order instability is shown, not
+hidden.** Where two anchors do not hold a fixed order across the date window — sunset and 22:00
+swap across the year; candle lighting and havdalah never do — the track marks the pair and the
+next-runs list is the authority.
+
+*Why:* the order is a real property of the schedule, and the enumerable model is exactly what
+lets us detect it: compute the order at each of the next N occurrences and compare. That check is
+nearly free given D64's threaded `now`. Suppressing it would make the track lie about precisely
+the schedules that are hardest to reason about.
+
+**D77 — a schedule with any stage disabled never renders as plain *on*.** The row reads
+"2 of 3 stages armed", the micro-track draws the disabled stage as a hollow dot, and the
+next-runs list strikes that stage through.
+
+*Why:* half-armed is the state that produces a phone call asking why the lights came on and the
+air conditioning did not. It is worse than off, because off is legible.
+
+**D78 — the editor creates its references inline and states its footprint.** Day sets, anchors,
+scripts and entities are all creatable without leaving the editor, and a footprint block lists
+what the schedule touches, each entry a link.
+
+*Why:* this answers the other half of the complaint behind D72 — one goal, defined in several
+places. Nothing in the schema causes that; it is purely that finishing a thought meant leaving
+the screen. D57 obliges us to build the reverse index for discoverability anyway, so the
+footprint is a free consumer of it, and D22's impact preview is the same idea pointed the other
+way.
+
+**D79 — the list row's payload is the generated summary; the free-text description is an
+override.** `candle lighting −45m → havdalah +30m` is what a row shows by default, and a
+description replaces it only where someone wrote one. This reverses `ux/FINDINGS.md` finding 13,
+which had the description as the payload.
+
+*Why:* most schedules will carry no description, and a row whose primary slot is usually empty
+has no primary slot. The generated summary is always present, always accurate and cannot drift
+from the rule — which also shrinks the description-drift problem down to the rows where someone
+deliberately wrote something.
+
+**D80 — the pre-flight check is described as a check, never as a guarantee.** almanac reads a
+script's `mode` / `current` attributes before calling and records a skip, but the read and the
+call are not atomic. UI copy must not imply that they are.
+
+*Why:* closing that race needs engine work that is deliberately deferred to a later phase.
+Deferring the work is a decision; shipping copy that claims the work was done is not.
+`ux/prototype/15-new-shabbat-2.html` currently claims it, and is the thing to fix.
 
 ---
 
