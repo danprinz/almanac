@@ -58,10 +58,19 @@ class AlmanacDaySetBinarySensor(AlmanacCollectionEntity, BinarySensorEntity):
     _platform_domain = DAY_SET_PLATFORM_DOMAIN
     _attr_icon = "mdi:calendar-check"
 
-    def __init__(self, collection: Any, item: dict[str, Any]) -> None:
-        """Set up the entity with no opinion about the current instant."""
+    def __init__(
+        self, collection: Any, item: dict[str, Any], data: Any = None
+    ) -> None:
+        """Set up the entity with no opinion about the current instant.
+
+        `data` is accepted and ignored: D52's execution cache and D55's next
+        trigger are facts about a *schedule*, and a day set is neither. The
+        parameter is here because `async_setup_collection_platform` builds every
+        collection entity the same way, and a second construction path would be a
+        second place for the identity discipline in `entity.py` to drift.
+        """
         self._covers: bool | None = None
-        super().__init__(collection, item)
+        super().__init__(collection, item, data)
 
     @property
     def is_on(self) -> bool | None:

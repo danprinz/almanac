@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, cast
 
 import voluptuous as vol
@@ -34,14 +34,17 @@ from .const import (
     CONF_NAME,
     CONF_OBJECT_ID,
     RUNTIME_VERSION,
+    SCHEDULE_PLATFORM,
     SCHEMA_VERSION,
     SCHEMA_VERSION_MINOR,
     SENSOR_OBJECT_ID_SUFFIX,
+    SENSOR_PLATFORM,
     STORAGE_KEY_RUNTIME,
     STORAGE_KEY_SCHEDULES,
     WS_PREFIX_SCHEDULE,
 )
 from .engine import interval_problems
+from .events import ScheduleStatus
 from .resolver import ResolverRegistry
 from .schema import (
     CREATE_FIELDS,
@@ -63,8 +66,8 @@ _LOGGER = logging.getLogger(__name__)
 # is free in one and taken in the other is not usable, and finding that out
 # after the switch has been created is worse than refusing up front.
 _OCCUPIED_DOMAINS: tuple[tuple[str, str], ...] = (
-    ("switch", ""),
-    ("sensor", SENSOR_OBJECT_ID_SUFFIX),
+    (SCHEDULE_PLATFORM, ""),
+    (SENSOR_PLATFORM, SENSOR_OBJECT_ID_SUFFIX),
 )
 
 
@@ -193,6 +196,17 @@ class RuntimeStore:
         """
         self._data[schedule_id] = state
         self._store.async_delay_save(lambda: self._data, 10)
+
+    @callback
+    def async_ids(self) -> tuple[str, ...]:
+        """Every schedule this store holds state for, deleted ones included.
+
+        The tick iterates the *schedules*, so without this there is no way to
+        notice a record whose schedule is gone — which is the whole of the
+        orphan-release path in `tick.py`. A tuple rather than the live view,
+        because the caller discards records while iterating.
+        """
+        return tuple(self._data)
 
     @callback
     def async_discard(self, schedule_id: str) -> None:
@@ -348,6 +362,14 @@ class AlmanacData:
     # lives here rather than in `hass.data` so that the thing which resolves a
     # schedule's anchors has the same lifetime as the schedules themselves.
     resolvers: ResolverRegistry
+    # D52's display cache and D55's next-trigger value — what the engine has last
+    # told the entities. It lives here rather than on the tick because the
+    # platforms are forwarded *before* the tick is constructed (see
+    # `__init__.py`), so an entity subscribing in `async_added_to_hass` would
+    # otherwise have nothing to subscribe to. Built by default because it holds
+    # only in-memory display state: D48 is what keeps it out of the runtime store,
+    # so there is nothing to load and nothing to fail.
+    status: ScheduleStatus = field(default_factory=ScheduleStatus)
     # The running tick (D64's one clock reader), attached after the rest of the
     # data exists because it takes this object as its argument. Optional so that
     # the tests which build an `AlmanacData` to exercise storage or a platform in

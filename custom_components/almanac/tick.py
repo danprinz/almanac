@@ -89,6 +89,8 @@ from .actions import (
 from .completion import CompletionOutcome, CompletionState, async_settle, then_is_a_no_op
 from .const import (
     ANCHOR_RESOLVER,
+    ATTR_RULE_ID,
+    ATTR_SCHEDULE_ID,
     CONF_ACTIONS,
     CONF_ANCHOR,
     CONF_CONDITIONS,
@@ -98,6 +100,8 @@ from .const import (
     CONF_EXIT_ACTIONS,
     CONF_KEY,
     CONF_KIND,
+    CONF_NAME,
+    CONF_OBJECT_ID,
     CONF_ON_EXIT,
     CONF_RULES,
     CONF_START_ANCHOR,
@@ -116,6 +120,7 @@ from .engine.conditions import async_evaluate
 from .engine.plan import async_enumerate
 from .engine.transition import (
     EngineState,
+    ExitCause,
     HeldInterval,
     Transition,
     TransitionKind,
@@ -123,6 +128,7 @@ from .engine.transition import (
     async_plan_tick,
     next_transition_at,
 )
+from .events import async_fire_execution, async_fire_occurrence
 from .index import Usage, build_index
 from .resolver.contract import Window, absolute
 from .storage import AlmanacData
@@ -131,8 +137,11 @@ _LOGGER = logging.getLogger(__name__)
 
 SERVICE_RUN_NOW = "run_now"
 
-ATTR_SCHEDULE_ID = "schedule_id"
-ATTR_RULE_ID = "rule_id"
+# The service's field names are the event's field names, and deliberately: "run
+# this rule now" and "this rule ran" are the same two identifiers, so a person
+# reading the recorder and a person writing a service call should not have to
+# learn two spellings. They moved to `const.py` in step 6 because D48 makes the
+# event payload a compatibility surface; they are still importable from here.
 ATTR_BYPASS_CONDITIONS = "bypass_conditions"
 
 # D45's flag is explicit and defaults to off, which is the whole point: burying
@@ -194,6 +203,12 @@ _RT_ENGINE = "engine"
 _RT_COMPLETION = "completion"
 _RT_PROMISES = "promises"
 _RT_NEXT_AT = "next_at"
+# Enough of the schedule to describe an interval whose schedule no longer exists.
+# D49's payload needs a name and an entity_id, and after a deletion there is
+# nowhere else to read them from: the collection has dropped the item and D66's
+# `object_id` is a fact about the stored schedule rather than about the registry.
+# Written on every pass so that the copy is never staler than the last evaluation.
+_RT_IDENTITY = "identity"
 
 
 @dataclass(frozen=True, slots=True)
@@ -417,6 +432,7 @@ class AlmanacTick:
             # A.13 — `min` over aware datetimes compares them, and two instants
             # sharing a `ZoneInfo` object compare by wall clock rather than by
             # instant. Every comparison goes through `absolute`, here as the key.
+            await self._async_release_orphans(now)
             self._async_schedule_wake(min(wake, key=absolute) if wake else None, now)
             self._async_resubscribe()
 
@@ -503,12 +519,122 @@ class AlmanacTick:
                     if key in {_promise_key(held) for held in reconciliation.state.held}
                 },
                 _RT_NEXT_AT: next_at.isoformat() if next_at else None,
+                _RT_IDENTITY: {
+                    CONF_OBJECT_ID: schedule.get(CONF_OBJECT_ID),
+                    CONF_NAME: schedule.get(CONF_NAME),
+                },
             },
         )
+        # D55's sensor, told rather than asked (D64). The same instant is written
+        # to the runtime record above and published here: the record is what
+        # survives a restart and what the engine reasons about, this is what the
+        # entity renders, and they are set together so the two cannot drift.
+        self._data.status.async_set_next_at(schedule_id, next_at)
 
         if outcome.then is not None:
             terminations.append((schedule_id, outcome))
         return next_at
+
+    async def _async_release_orphans(self, now: datetime) -> None:
+        """Exit the intervals of schedules that no longer exist, then forget them.
+
+        D47 — "a schedule must not exit leaving the world in a state it created" —
+        is settled for the schedule that *ends itself*, because `completion.py`
+        defers the termination until nothing is held. It was not settled for the
+        schedule a person deletes from the UI. The loop in `async_tick` iterates
+        the surviving schedules, so a deleted one holding an interval was simply
+        never evaluated again: the lights it turned on stayed on, and the exit
+        promise it had every intention of honouring sat in the runtime store with
+        nothing left to read it.
+
+        Reached from the tick rather than from the collection listener, and that is
+        deliberate. A listener sees the deletion once. If Home Assistant is
+        restarted between the delete and the release — or the delete arrives while
+        the integration is not loaded at all, which a storage-file edit does — the
+        only thing that can still notice is a sweep that compares the two stores.
+        The listener path would be an optimisation on a case the sweep already
+        covers on the next pass.
+
+        `ExitCause.GONE` rather than a new cause. D101's promise exists precisely
+        because "the rule no longer exists" has to be survivable, and a deleted
+        schedule is that same sentence one level up — a reader of the logbook is
+        being told the thing that scheduled this is gone, which is what they need
+        to know either way.
+
+        Runs inside the lock. Unlike D46's *Then* it writes nothing through the
+        schedule collection, so it cannot re-enter the tick through A.14's awaited
+        listeners, and holding the lock is what stops a concurrent pass seeing a
+        half-released record.
+        """
+        for schedule_id in self._data.runtime.async_ids():
+            if schedule_id in self._data.schedules.data:
+                continue
+            record = self._data.runtime.async_get(schedule_id)
+            state = EngineState.from_dict(record.get(_RT_ENGINE) or {})
+            promises = {
+                key: _ExitPromise.from_dict(value)
+                for key, value in (record.get(_RT_PROMISES) or {}).items()
+            }
+            if state.held:
+                identity = record.get(_RT_IDENTITY) or {}
+                _LOGGER.info(
+                    "almanac is releasing %d interval(s) held by deleted schedule %s",
+                    len(state.held),
+                    identity.get(CONF_NAME) or schedule_id,
+                )
+                # Through `_async_execute` rather than straight to `_async_exit`, so
+                # that a released interval produces the same event, the same context
+                # and the same D52 cache entry as any other exit. An exit nobody can
+                # see is the half of this fix that would go wrong silently.
+                await self._async_execute(
+                    self._orphan_schedule(schedule_id, identity),
+                    tuple(
+                        self._orphan_exit(held, now) for held in sorted(
+                            state.held, key=lambda h: (h.rule_id, h.start_date)
+                        )
+                    ),
+                    promises,
+                )
+            self._data.runtime.async_discard(schedule_id)
+            self._data.status.async_discard(schedule_id)
+
+    @staticmethod
+    def _orphan_schedule(
+        schedule_id: str, identity: Mapping[str, Any]
+    ) -> dict[str, Any]:
+        """Enough of a deleted schedule for D49's payload to be well formed.
+
+        `object_id` falls back to the schedule id only for a record written before
+        `_RT_IDENTITY` existed. The resulting entity_id points at nothing, which is
+        the honest outcome: the alternative is a payload with no `entity_id` at all,
+        and A.4 says that one does not reach the recorder through the user's entity
+        filter — so the event that explains why their lights just changed would be
+        the one event they cannot find.
+        """
+        return {
+            CONF_ID: schedule_id,
+            CONF_OBJECT_ID: identity.get(CONF_OBJECT_ID) or schedule_id,
+            CONF_NAME: identity.get(CONF_NAME),
+            CONF_RULES: (),
+        }
+
+    @staticmethod
+    def _orphan_exit(held: HeldInterval, now: datetime) -> Transition:
+        """The EXIT the engine would have produced had the schedule survived.
+
+        `at` is `now` and not `held.end`: the interval is not ending because it
+        reached its end, and D49's `lateness` would otherwise report a delay that
+        says nothing about how promptly almanac acted.
+        """
+        return Transition(
+            kind=TransitionKind.EXIT,
+            schedule_id=held.schedule_id,
+            rule_id=held.rule_id,
+            start_date=held.start_date,
+            at=now,
+            held=held,
+            cause=ExitCause.GONE,
+        )
 
     async def _async_next_wake(
         self, schedule: dict[str, Any], state: EngineState, now: datetime
@@ -554,16 +680,44 @@ class AlmanacTick:
 
         Each transition gets a fresh `Context`. One per occurrence rather than one
         per tick, because D50's causation chain is per occurrence — "turned on by
-        *Shabbat Lights*" has to name the rule that did it — and step 6's D49 event
-        adopts this context as its parent so that the service calls read as caused
-        by the event rather than as siblings of it.
+        *Shabbat Lights*" has to name the rule that did it.
+
+        **The order in the loop is the observability decision, and step 5's note
+        here had it wrong.** That note said the D49 event would adopt this context
+        as its *parent*; the verification in `events.py` shows the logbook does not
+        work that way. The event is fired first, with the *same* context the
+        service calls get — which is core's own arrangement in
+        `components/automation/__init__.py` — because `_humanify` treats the
+        earliest row carrying a context id as the cause of every later row that
+        shares it. Fire the event last and the light is attributed to the
+        `light.turn_on` call that changed it, which is the uninformative line this
+        project exists to replace.
+
+        The occurrence event goes out before the rule is even looked up, because it
+        is a statement about the *decision*, and a decision the engine made about a
+        rule that has since been edited away is still a decision it made.
         """
         rules = {str(rule[CONF_ID]): rule for rule in schedule.get(CONF_RULES, ())}
         outcomes: list[tuple[Transition, ExecutionReport | None]] = []
         for transition in transitions:
+            context = Context()
+            async_fire_occurrence(self._hass, schedule, transition, context=context)
             report = await self._async_execute_one(
-                transition, rules.get(transition.rule_id), promises
+                transition, rules.get(transition.rule_id), promises, context=context
             )
+            if report is not None and report.attempted:
+                # D49's per-action results, which only exist now. Skipped when
+                # nothing was attempted: an occurrence that executed nothing has no
+                # results, and an event saying so would be a row per tick that only
+                # repeats what the occurrence event already said.
+                async_fire_execution(
+                    self._hass, schedule, transition, report, context=context
+                )
+            # D52's cache takes *every* transition, including the ones with no
+            # side effects. "Why did nothing happen at 17:00" is what a person
+            # opens the schedule to find out, and a cache listing only the times it
+            # did something cannot answer it.
+            self._data.status.async_record(transition.schedule_id, transition, report)
             outcomes.append((transition, report))
         return outcomes
 
@@ -572,10 +726,14 @@ class AlmanacTick:
         transition: Transition,
         rule: Mapping[str, Any] | None,
         promises: dict[str, _ExitPromise],
+        *,
+        context: Context,
     ) -> ExecutionReport | None:
-        """One transition's side effects, or `None` if it has none by design."""
-        context = Context()
+        """One transition's side effects, or `None` if it has none by design.
 
+        The context is the caller's, not one made here: D50 needs the event and
+        every service call this makes to carry the *same* one. See `_async_execute`.
+        """
         if transition.kind in (TransitionKind.MISSED, TransitionKind.SKIPPED):
             # Nothing to do, and that is the decision rather than an omission. D41
             # says a missed `At` occurrence is logged and not fired; D26 says a

@@ -535,6 +535,98 @@ async def test_the_exit_promise_survives_the_rule_being_deleted(
     assert engine_state(almanac_data, schedule_id)["held"] == []
 
 
+async def test_deleting_a_schedule_mid_interval_releases_what_it_was_holding(
+    hass: HomeAssistant, tick: AlmanacTick, almanac_data: AlmanacData, calls: list[str]
+) -> None:
+    """The other half of D47, and the half `completion.py` cannot reach.
+
+    A schedule that ends *itself* defers its termination until nothing is held, so
+    it never exits leaving the world in a state it created. A schedule a person
+    deletes from the UI had no such protection: `async_tick` iterates the surviving
+    schedules, so the deleted one was never evaluated again and the lights it turned
+    on stayed on — with the exit promise it fully intended to honour sitting in the
+    runtime store with nothing left to read it.
+
+    No explicit tick after the delete: the collection write is what re-evaluates.
+    """
+    hass.states.async_set(HALL, "off")
+    schedule_id = await create(
+        hass,
+        almanac_data,
+        "Deleted whole",
+        rules=[during_rule(state=hall_on(), on_exit={"kind": ON_EXIT_RESTORE})],
+    )
+
+    await prime(tick)
+    await tick.async_tick(ny(2027, 10, 2, 17, 30))
+    assert calls == ["light.turn_on"]
+
+    await almanac_data.schedules.async_delete_item(schedule_id)
+    await hass.async_block_till_done()
+
+    assert calls == ["light.turn_on", "light.turn_off"]
+    # And the record goes with it, rather than accumulating one orphan per
+    # schedule anybody has ever deleted.
+    assert almanac_data.runtime.async_get(schedule_id) == {}
+    assert schedule_id not in almanac_data.runtime.async_ids()
+
+
+async def test_a_deleted_schedule_holding_nothing_leaves_no_runtime_record(
+    hass: HomeAssistant, tick: AlmanacTick, almanac_data: AlmanacData, calls: list[str]
+) -> None:
+    """The sweep is not only for the held case.
+
+    Every evaluated schedule has a runtime record, held or not. If only the holding
+    ones were cleaned up, the store would still grow by one entry for every schedule
+    ever created and deleted — which is the same leak, arriving slowly.
+    """
+    schedule_id = await create(
+        hass,
+        almanac_data,
+        "Nothing held",
+        rules=[at_rule(actions=[service("notify.noop")])],
+    )
+
+    await prime(tick)
+    await tick.async_tick(ny(2027, 10, 2, 17, 30))
+    assert almanac_data.runtime.async_get(schedule_id) != {}
+
+    await almanac_data.schedules.async_delete_item(schedule_id)
+    await hass.async_block_till_done()
+
+    assert almanac_data.runtime.async_ids() == ()
+
+
+async def test_an_orphan_is_released_on_the_next_tick_after_a_restart(
+    hass: HomeAssistant, tick: AlmanacTick, almanac_data: AlmanacData, calls: list[str]
+) -> None:
+    """Why the sweep is in the tick and not in the collection listener.
+
+    A listener sees the deletion once. Delete a schedule while the integration is
+    not loaded — a restart landing between the two, or an edit to the storage file —
+    and the only thing that can still notice is a pass that compares the two stores.
+    Simulated here by discarding the schedule behind the collection's back, so no
+    change notification is ever delivered.
+    """
+    hass.states.async_set(HALL, "off")
+    schedule_id = await create(
+        hass,
+        almanac_data,
+        "Vanished",
+        rules=[during_rule(state=hall_on(), on_exit={"kind": ON_EXIT_RESTORE})],
+    )
+
+    await prime(tick)
+    await tick.async_tick(ny(2027, 10, 2, 17, 30))
+    assert calls == ["light.turn_on"]
+
+    almanac_data.schedules.data.pop(schedule_id)
+    await tick.async_tick(ny(2027, 10, 2, 17, 45))
+
+    assert calls == ["light.turn_on", "light.turn_off"]
+    assert almanac_data.runtime.async_ids() == ()
+
+
 async def test_a_missing_promise_leaves_the_world_alone(
     hass: HomeAssistant, tick: AlmanacTick, almanac_data: AlmanacData, calls: list[str]
 ) -> None:

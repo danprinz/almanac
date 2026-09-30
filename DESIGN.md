@@ -1030,6 +1030,72 @@ the right tool for a display cache, and it makes the idea cost essentially nothi
 > the user's recorder configuration — which is the user's call to make, and the right place for
 > it. This must be documented, not worked around.
 
+### 12.1 Gaps closed at step 6
+
+Recorded 2026-09-30, as implemented in step 6. D107 **refines D49** rather than replacing it, and
+the refinement was forced by a verified fact about how the logbook attributes causes.
+
+**D107 — two events per occurrence, not one: `almanac_occurrence` before execution and
+`almanac_execution` after.** The first is described to the logbook (D51), carries the `Context`
+that D50 propagates, and is the one row a person reads. The second is undescribed — recorded but
+producing no logbook row — and carries the per-action results.
+
+*Why D49's "one rich event" could not stand:* D50's causation chain requires the event to exist
+**before** the service calls, because `logbook/processor.py::_humanify` memoises the *first* row
+carrying a context id as the cause of every later row sharing it. Fire once, after execution, and
+the light is attributed to the `light.turn_on` that changed it — the uninformative line this
+project exists to replace. But D49's `result` does not exist until execution has finished. The two
+requirements cannot be met by one event.
+
+*Alternatives rejected:* (a) one post-execution event — verified to lose "triggered by *Shabbat
+Lights*" on the target entity's own logbook page, which is the whole of D50. (b) One
+pre-execution event with no results — a failed or dropped action would then be durably recorded
+nowhere, and D48 says the recorder *is* the audit trail. (c) A parent/child context pair —
+verified broken: a target entity's logbook page builds its context-id set from that entity's rows
+plus events whose JSON `entity_id` matches, and a parent event carrying the *schedule's*
+entity_id is not in it. (d) Backdating the single event with `time_fired` — needs a clock read,
+which D64's sweep forbids and rightly.
+
+*The cost, stated:* two event types to describe instead of one, and a reader of the recorder has
+to know that the pair belongs together. They share a `Context`, which is what makes the join
+possible. Core makes the same trade in `components/automation/__init__.py`, which passes one
+`trigger_context` to both `EVENT_AUTOMATION_TRIGGERED` and the action script.
+
+**D108 — D52's cache lives on the switch, and N is 5.** Not on the next-trigger sensor, whose
+`device_class: timestamp` more-info dialog would then be mostly about something other than its own
+value. Five because the whole list is re-serialised to every connected frontend on every
+occurrence, and the durable copy is the recorder's — the cache is a display convenience, and D48
+is explicit that it is not the audit trail.
+
+**D109 — `run_now` (D45) fires no occurrence event.** The `almanac.run_now` service call is
+already the logbook's cause for everything that follows it, and unlike an almanac-generated event
+it names the invoking user (A.9 — `Context.user_id` is the only user attribution that exists).
+An occurrence event fired alongside it would compete to be `_humanify`'s memoised first row and
+would win, replacing "*Daniel* ran this by hand" with "almanac decided this", which is the less
+true of the two sentences. *Rejected:* firing one for symmetry.
+
+**D110 — a schedule deleted while holding an interval has that interval released, and its runtime
+record discarded, by a sweep in the tick.** The exit runs from the stored promise (D101) with
+`ExitCause.GONE`, and produces the same event, context and D52 cache entry as any other exit.
+
+*Why:* D47 says a schedule must not exit leaving the world in a state it created, and
+`completion.py` guarantees that only for a schedule that ends *itself* — it defers the termination
+until nothing is held. A schedule a person deletes from the UI had no such protection: `async_tick`
+iterates the surviving schedules, so the deleted one was never evaluated again. The lights stayed
+on and the promise sat in the runtime store with nothing left to read it, which is also an
+unbounded leak — one record per schedule ever deleted.
+
+*Why a sweep rather than the collection listener:* a listener sees the deletion once. A restart
+landing between the delete and the release, or a deletion performed while the integration is not
+loaded, leaves nothing to notice it. Comparing the two stores on each pass covers the listener's
+case as well, so the listener would be an optimisation on ground already held. `ExitCause.GONE`
+rather than a new cause, because "the thing that scheduled this is gone" is what the reader needs
+to know at either level.
+
+*What it required:* the runtime record now carries the schedule's `object_id` and name, refreshed
+every pass. D49's payload needs both, and after a deletion there is nowhere else to read them
+from — D66 makes `object_id` a fact about the stored schedule rather than about the registry.
+
 ---
 
 ## 13. Identity and entity model

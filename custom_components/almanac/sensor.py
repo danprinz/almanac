@@ -4,12 +4,12 @@ The point of the device class is that templates, dashboards and automations get
 the instant as an instant, rather than digging it out of an attribute on the
 switch and parsing a string.
 
-The value is `None` until step 2 and step 3 exist: computing it means resolving
-anchors and pairing intervals, and both sit behind the resolver contract. The
-entity ships now because D37 wants the `unique_id` from the first commit — a
-unique_id added later cannot rename entities that already exist — and because
-its entity_id is settled at creation under D66, so it cannot be introduced later
-without either re-deriving a slug or inventing a second one.
+The value is the one the tick published for this schedule on its last pass, and
+that direction is D64's rather than a convenience: computing a next trigger means
+knowing the instant to compute it from, this entity has no clock, and so the
+engine tells it. `ScheduleStatus` in `events.py` is the channel, and the same
+number is persisted in the runtime record so the engine can reason about it
+across a restart.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import SENSOR_OBJECT_ID_SUFFIX
+from .const import SENSOR_OBJECT_ID_SUFFIX, SENSOR_PLATFORM
 from .entity import AlmanacScheduleEntity, async_setup_collection_platform
 from .storage import AlmanacData
 
@@ -37,9 +37,10 @@ async def async_setup_entry(
         await async_setup_collection_platform(
             hass,
             data.schedules,
-            "sensor",
+            SENSOR_PLATFORM,
             AlmanacNextTriggerSensor,
             async_add_entities,
+            data,
         )
     )
 
@@ -47,7 +48,7 @@ async def async_setup_entry(
 class AlmanacNextTriggerSensor(AlmanacScheduleEntity, SensorEntity):
     """When this schedule next does something."""
 
-    _platform_domain = "sensor"
+    _platform_domain = SENSOR_PLATFORM
     _object_id_suffix = SENSOR_OBJECT_ID_SUFFIX
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
@@ -55,18 +56,18 @@ class AlmanacNextTriggerSensor(AlmanacScheduleEntity, SensorEntity):
     def native_value(self) -> datetime | None:
         """The next instant at which this schedule fires.
 
-        Unimplemented until the rule engine lands (§15 step 3), and it stays
-        `None` rather than guessing — D13's *known / estimated / unknown* split
-        exists precisely so that not knowing is a state the product can render
-        honestly instead of a gap it papers over.
+        Read from what the tick published, never computed here. D64 is the whole
+        of it: the next trigger is a function of an instant, this entity has no
+        clock, and an entity that worked the answer out for itself would be a
+        second implementation of the engine that could disagree with the timeline
+        drawn from the same rules.
 
-        D64 constrains the eventual implementation: this cannot become a
-        property that reads the clock. The next trigger is a function of an
-        instant the tick supplies, so the engine computes it and writes it here;
-        the entity does not compute it for itself. Threading `now` in
-        afterwards is a rewrite, not a refactor.
+        `None` stays a real answer rather than a gap — D13's *unknown*. It is what
+        a schedule with nothing inside D44's ninety-day budget reports, and what
+        every schedule reports until the first tick has run.
         """
-        return None
+        status = self.status
+        return status.async_next_at(self.schedule_id) if status is not None else None
 
     def _friendly_name(self, schedule_name: str) -> str:
         """Distinguish this from the schedule's switch in a picker.

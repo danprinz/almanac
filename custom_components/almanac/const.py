@@ -363,7 +363,60 @@ COUNT_ON_SCHEDULED: Final = "scheduled"
 COUNT_ON_CONDITIONS_PASSED: Final = "conditions_passed"
 COUNT_ON_ACTIONS_SUCCEEDED: Final = "actions_succeeded"
 
+# --- observability (D48-D52) -----------------------------------------------
+
+# D48 puts the whole audit trail in the recorder, which makes these names a
+# compatibility surface in the strongest sense on this page: a history query, a
+# logbook filter and somebody else's automation trigger all name the event type
+# and its payload keys, and none of them can be migrated by us. Renaming one is
+# the same class of change as renaming a stored schedule field above.
+#
+# Two event types for one occurrence, which is a deviation from D49's "one rich
+# event per occurrence" and is argued — with the evidence from the installed
+# 2026.9.4 logbook — in `events.py`. The short version: D50's causation chain
+# requires the event to be fired *before* the side effects, and D49's per-action
+# results do not exist until after them.
+EVENT_OCCURRENCE: Final = f"{DOMAIN}_occurrence"
+EVENT_EXECUTION: Final = f"{DOMAIN}_execution"
+
+ATTR_ACTIONS: Final = "actions"
+ATTR_AT: Final = "at"
+ATTR_BLOCKING: Final = "blocking"
+ATTR_CAUSE: Final = "cause"
+ATTR_KIND: Final = "kind"
+ATTR_LATENESS: Final = "lateness"
+ATTR_RESULT: Final = "result"
+ATTR_RULE_ID: Final = "rule_id"
+ATTR_SCHEDULE_ID: Final = "schedule_id"
+
+# D49's `result` — the execution event's one-word summary of everything the
+# occurrence did. Three of the four values are D49's own; `nothing` is the case
+# D49 does not name and `ExecutionReport.attempted` already distinguishes: a rule
+# with no actions and no desired state, which is legal and is how a schedule that
+# exists only to be seen on the timeline is written. D49's fourth value,
+# `skipped`, is not here because a skipped occurrence executes nothing and so
+# never reaches an execution event — it is the *occurrence* event's `kind`.
+RESULT_FIRED: Final = "fired"
+RESULT_DROPPED: Final = "dropped"
+RESULT_FAILED: Final = "failed"
+RESULT_NOTHING: Final = "nothing"
+
+# D52 — how many executions the display cache keeps per schedule. Small on
+# purpose: this is an entity attribute, so every entry is re-serialised to every
+# connected frontend on every change, and the durable answer is the recorder's
+# (D48). **Provisional** — D52 says "last-N" without fixing N.
+EXECUTION_CACHE_SIZE: Final = 5
+
+ATTR_RECENT_EXECUTIONS: Final = "recent_executions"
+
 # --- entity naming ---------------------------------------------------------
+
+# D54 — the switch is the entity a schedule *is*, which makes its domain the one
+# name every other part of the integration uses for a schedule: `storage`
+# reserves the entity_id, `entity.py` builds it, and D49's event carries it so
+# that the logbook can attach the row to the schedule rather than to nothing.
+SCHEDULE_PLATFORM: Final = "switch"
+SENSOR_PLATFORM: Final = "sensor"
 
 # D55's sensor needs an object_id of its own, and it is derived from the
 # schedule's stored `object_id` rather than from its name, so D66 holds for it

@@ -20,7 +20,7 @@ deliberately ignorant of rules, recurrences and sources.
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.const import CONF_ID
 from homeassistant.core import HomeAssistant, callback
@@ -36,6 +36,10 @@ from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .const import CONF_ENABLED, CONF_NAME, CONF_OBJECT_ID, DOMAIN
+
+if TYPE_CHECKING:
+    from .events import ScheduleStatus
+    from .storage import AlmanacData
 
 
 class AlmanacCollectionEntity(Entity):
@@ -62,11 +66,23 @@ class AlmanacCollectionEntity(Entity):
     _object_id_suffix = ""
 
     def __init__(
-        self, collection: DictStorageCollection, item: dict[str, Any]
+        self,
+        collection: DictStorageCollection,
+        item: dict[str, Any],
+        data: AlmanacData | None = None,
     ) -> None:
-        """Set up an entity for a collection item."""
+        """Set up an entity for a collection item.
+
+        `data` is the config entry's runtime data, handed in so that an entity can
+        read what the engine has published about its item (D52's execution cache,
+        D55's next trigger) without reaching back through `hass` for it. Optional
+        because the tests that exercise an entity in isolation have no engine to
+        hand it, and because a platform that does not need it — the day set's
+        binary_sensor — should not have to pretend it does.
+        """
         self._collection = collection
         self._item = item
+        self._data = data
         self._attr_unique_id = item[CONF_ID]
         # D66's second half, and the reason this is a plain f-string rather than
         # a call to `async_generate_entity_id`: that helper dedupes by appending
@@ -120,6 +136,30 @@ class AlmanacScheduleEntity(AlmanacCollectionEntity):
         """Whether the schedule is armed. §2 puts `enabled` on the Schedule."""
         return bool(self._item[CONF_ENABLED])
 
+    @property
+    def status(self) -> ScheduleStatus | None:
+        """The engine's read-out for this schedule, if there is an engine.
+
+        `None` rather than an empty stand-in, so that "nothing has been computed
+        yet" and "the engine says nothing is scheduled" stay distinguishable —
+        which is D13's *unknown* versus *known*, one layer up.
+        """
+        return self._data.status if self._data is not None else None
+
+    async def async_added_to_hass(self) -> None:
+        """Track what the engine publishes about this schedule.
+
+        The tick writes a value and this writes the state, rather than the entity
+        polling for one: D64 means the entity cannot ask what time it is, so
+        anything time-dependent has to arrive as a push from the one thing that
+        can.
+        """
+        await super().async_added_to_hass()
+        if (status := self.status) is not None:
+            self.async_on_remove(
+                status.async_add_listener(self.schedule_id, self.async_write_ha_state)
+            )
+
 
 async def async_setup_collection_platform(
     hass: HomeAssistant,
@@ -127,6 +167,7 @@ async def async_setup_collection_platform(
     platform_domain: str,
     entity_class: type[AlmanacCollectionEntity],
     async_add_entities: AddConfigEntryEntitiesCallback,
+    data: AlmanacData | None = None,
 ) -> Callable[[], None]:
     """Keep one entity of `entity_class` alive per collection item.
 
@@ -138,7 +179,7 @@ async def async_setup_collection_platform(
 
     @callback
     def _add(item: dict[str, Any]) -> AlmanacCollectionEntity:
-        entity = entity_class(collection, item)
+        entity = entity_class(collection, item, data)
         entities[item[CONF_ID]] = entity
         entity.async_on_remove(lambda: entities.pop(item[CONF_ID], None))
         return entity
