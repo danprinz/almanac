@@ -157,15 +157,45 @@ class Window:
             dt_util.as_utc(self.start) + delta, dt_util.as_utc(self.end) + delta
         )
 
-    def days(self, zone: tzinfo) -> Iterator[date]:
+    def days(
+        self, zone: tzinfo, pad_before: int = 0, pad_after: int = 0
+    ) -> Iterator[date]:
         """Every local civil date the window touches, inclusive at both ends.
 
         Deliberately generous: a resolver computes per civil day and then filters
         by `contains`, so one spare date at each edge costs an arithmetic call
         and a missing one costs an occurrence.
+
+        **`pad_before` / `pad_after` — added at step 7, and the reason is a hole
+        the first three resolvers could not show.** `Span.overlaps` states that a
+        span already running at `window.start` is part of the answer, and
+        `BaseResolver.covers` is built on that promise: it forecasts the
+        instant's own civil day and asks whether any span contains the instant,
+        which is only correct if a span that began *yesterday evening* comes
+        back. Nothing kept that promise, because every span `clock`, `sun` and
+        `entity_time` produce is zero-length and is computed from the civil day
+        it lands on, so "the days the window touches" happened to be exactly the
+        days worth computing.
+
+        `hdate` breaks both halves of that coincidence. Its issur-melacha
+        interval starts on Friday evening and is still running at 10:00 on
+        Saturday, so a one-day window for Saturday has to reach back to Friday
+        to find it at all. And its zmanim, though zero-length, are computed *from
+        a civil date* and can land on the next one — `chatzot_halayla` for
+        6 October in New York is 7 October 00:44 — so a window covering only
+        7 October has to reach back to 6 October to compute it.
+
+        The padding is here rather than in `hdate` because both of those are
+        properties of the *contract*, not of the Jewish calendar: any resolver
+        whose spans have extent, and any resolver that computes per day rather
+        than per instant, has one or the other. A local loop in each
+        implementation would be the second place the engine and the timeline
+        could disagree about which days were considered.
         """
-        day = self.start.astimezone(zone).date()
-        last = self.end.astimezone(zone).date()
+        if pad_before < 0 or pad_after < 0:
+            raise ValueError("padding widens a window; it does not narrow one")
+        day = self.start.astimezone(zone).date() - timedelta(days=pad_before)
+        last = self.end.astimezone(zone).date() + timedelta(days=pad_after)
         while day <= last:
             yield day
             day += timedelta(days=1)
@@ -248,9 +278,18 @@ class Span:
         recovery (D41) blind to exactly the case it exists for.
         """
         low, high = self.bounds(zone)
+        # Absolutely, like every other comparison of two instants in this
+        # package (A.13). Found at step 7 and fixed there: this was the one
+        # method on `Span` that compared wall clock, and it was invisible while
+        # every span in the tree was zero-length. Both halves matter. `low ==
+        # high` is a wall-clock equality, so a span running from 01:30 EDT to
+        # 01:30 EST on the fall-back night — a real hour — read as an instant;
+        # and the overlap test itself puts a span that ends inside the repeated
+        # hour on the wrong side of a window edge.
+        low, high = absolute(low), absolute(high)
         if low == high:
             return window.contains(low)
-        return low < window.end and high > window.start
+        return low < absolute(window.end) and high > absolute(window.start)
 
 
 @dataclass(frozen=True, slots=True)
@@ -373,7 +412,7 @@ class Forecast:
     @property
     def fully_known(self) -> bool:
         """Whether the declared horizon covers the whole requested window."""
-        return self.known_through >= self.window.end
+        return absolute(self.known_through) >= absolute(self.window.end)
 
 
 def known_through(
@@ -385,15 +424,21 @@ def known_through(
     than a constant: a sensor holding one timestamp is authoritative up to that
     timestamp and mute after it, so knowledge ends where its single span ends —
     or at the start of the window when it holds nothing in range at all.
+
+    Every `min` and `max` below takes `key=absolute` (A.13). Ordering two
+    instants that share a `tzinfo` object is wall-clock ordering, and the whole
+    job of this function is to pick the earlier of two instants — which is
+    exactly the operation that goes backwards inside the repeated hour.
     """
     if horizon.kind is HorizonKind.UNBOUNDED:
         return window.end
     if horizon.kind is HorizonKind.UNTIL:
         assert horizon.bound is not None
-        return min(horizon.bound, window.end)
+        return min(horizon.bound, window.end, key=absolute)
     if not spans:
         return window.start
-    return min(max(span.bounds(zone)[1] for span in spans), window.end)
+    latest = max((span.bounds(zone)[1] for span in spans), key=absolute)
+    return min(latest, window.end, key=absolute)
 
 
 # --- the contract itself ---------------------------------------------------

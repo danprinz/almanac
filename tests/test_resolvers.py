@@ -513,21 +513,26 @@ async def test_both_edges_of_a_zero_length_span_agree(
     assert start.instants == end.instants
 
 
-async def test_an_anchor_for_a_resolver_that_is_not_built_yet_is_unresolved(
+async def test_an_anchor_for_a_resolver_that_is_not_present_is_unresolved(
     resolvers: ResolverRegistry,
 ) -> None:
     """The assumption `schema.py` states, checked against the registry that arrived.
 
-    A stored `hdate` anchor has to load and render as unresolved until step 7
-    ships. Failing the schedule instead would mean a resolver becoming
-    temporarily absent took unrelated schedules with it — the failure D17
-    rejects.
+    A stored anchor naming a domain this build does not have must load and render
+    as unresolved. Failing the schedule instead would mean one absent resolver
+    took unrelated schedules with it — the failure D17 rejects.
+
+    The example was `hdate` until step 7 shipped it, which is the point: the
+    schema deliberately does not consult the registry, so *any* domain can be
+    absent, including one a later step adds or an earlier one removes. Rewritten
+    to a domain nothing plans to build rather than deleted, because the property
+    outlives whichever resolver happens to be missing today.
     """
     window = ny_window(datetime(2026, 10, 2, 0, 0, tzinfo=NY), 1)
     anchor = {
         "kind": ANCHOR_RESOLVER,
-        "domain": "hdate",
-        "key": "candle_lighting",
+        "domain": "tides",
+        "key": "high_water",
         "offset": -2700,
         "edge": "start",
     }
@@ -549,7 +554,17 @@ async def test_an_anchor_of_no_known_kind_is_unresolved(
 
 
 async def test_the_config_entry_carries_a_registry(setup_almanac: object) -> None:
-    """D14 — one internal registry, with the same lifetime as the schedules."""
+    """D14 — one internal registry, with the same lifetime as the schedules.
+
+    Four domains since step 7, and two of them selectable: `async_offerings()`
+    lists only the resolvers with a pick-list (D86), so `clock` and `entity_time`
+    are absent from it by construction rather than by omission.
+    """
     data = setup_almanac.runtime_data  # type: ignore[attr-defined]
-    assert set(data.resolvers.async_domains()) == {"clock", "entity_time", "sun"}
-    assert set(data.resolvers.async_offerings()) == {"sun"}
+    assert set(data.resolvers.async_domains()) == {
+        "clock",
+        "entity_time",
+        "hdate",
+        "sun",
+    }
+    assert set(data.resolvers.async_offerings()) == {"hdate", "sun"}

@@ -53,7 +53,14 @@ from ..const import (
     RESOLVER_CLOCK,
     RESOLVER_ENTITY_TIME,
 )
-from .contract import Horizon, Span, Unresolved, UnresolvedReason, Window
+from .contract import (
+    Horizon,
+    Span,
+    Unresolved,
+    UnresolvedReason,
+    Window,
+    absolute,
+)
 from .registry import ResolverRegistry
 
 
@@ -82,7 +89,7 @@ class AnchorForecast:
         it is **unknown**, and *estimated* is what a v2 source with an `UNTIL`
         horizon gets to claim in between.
         """
-        return self.known_through >= self.window.end
+        return absolute(self.known_through) >= absolute(self.window.end)
 
 
 async def async_forecast_anchor(
@@ -120,7 +127,11 @@ async def async_forecast_anchor(
         window=window,
         instants=instants,
         horizon=forecast.horizon,
-        known_through=min(_shift(forecast.known_through, offset), window.end),
+        # `key=absolute` for A.13's reason: picking the earlier of two instants
+        # is the operation that reverses inside the repeated hour.
+        known_through=min(
+            _shift(forecast.known_through, offset), window.end, key=absolute
+        ),
     )
 
 

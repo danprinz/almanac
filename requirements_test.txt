@@ -4,3 +4,14 @@
 # hacs.json from this line rather than choosing a version beside it, so a version
 # bump is this line plus those two, and the test run is the evidence.
 pytest-homeassistant-custom-component==0.13.367
+
+# Step 7's resolver requirement, repeated here because the harness does not
+# install what `manifest.json` declares — it loads the integration in-process, so
+# an undeclared runtime dependency is simply an ImportError at collection.
+#
+# The pin matches core's `jewish_calendar/manifest.json` exactly, and that is the
+# rule rather than a coincidence: two integrations in one HA instance share one
+# site-packages, so a version that differed from core's would be resolved to
+# whichever loaded first. D81's argument about deriving versions from the harness
+# applies to anything core also ships.
+hdate[astral]==1.2.1

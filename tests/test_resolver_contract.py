@@ -24,6 +24,7 @@ from homeassistant.core import HomeAssistant
 
 from custom_components.almanac.resolver import (
     BaseResolver,
+    Forecast,
     Horizon,
     HorizonKind,
     InvalidationKind,
@@ -113,6 +114,38 @@ def test_days_is_generous_at_both_ends() -> None:
         date(2026, 10, 4),
         date(2026, 10, 5),
     ]
+
+
+def test_days_can_be_padded_at_either_end() -> None:
+    """Added at step 7, and the hole it closes is one the first three hid.
+
+    `Span.overlaps` promises that a span already running at `window.start` is
+    part of the answer, and `BaseResolver.covers` is built on that promise — it
+    forecasts the instant's own civil day and nothing before it. Nothing could
+    keep the promise, because every span `clock`, `sun` and `entity_time` produce
+    is zero-length *and* is computed from the civil day it lands on, so the two
+    halves of the bug cancelled. `hdate` breaks both: its issur-melacha interval
+    is still running at 10:00 on Saturday, and its `chatzot_halayla` for the 6th
+    lands on the 7th.
+
+    The padding lives here rather than in `hdate` because it is a property of the
+    contract — any source with extent needs it — and a loop copied into a
+    resolver is the first place two readings of a window diverge.
+    """
+    assert list(WINDOW.days(NY, 1, 0))[0] == date(2026, 10, 1)
+    assert list(WINDOW.days(NY, 0, 2))[-1] == date(2026, 10, 7)
+    assert list(WINDOW.days(NY, 0, 0)) == list(WINDOW.days(NY))
+
+
+def test_padding_only_ever_widens() -> None:
+    """Negative padding is refused rather than quietly narrowing the computation.
+
+    A resolver that narrowed its own working window would drop occurrences and
+    report the loss as a *known* empty answer, which §5.5 treats as the worst
+    outcome available.
+    """
+    with pytest.raises(ValueError, match="widens"):
+        list(WINDOW.days(NY, -1, 0))
 
 
 def test_shifting_a_window_is_absolute() -> None:
@@ -239,6 +272,52 @@ def test_a_span_covers_the_second_pass_through_a_repeated_instant() -> None:
     assert not span.covers(_ny(6, 45), NY)
 
 
+def test_a_real_hour_inside_the_fold_is_not_read_as_an_instant() -> None:
+    """`Span.overlaps` was the one method on `Span` still comparing wall clock.
+
+    01:30 EDT to 01:30 EST is a genuine hour, and by wall clock its two edges are
+    equal — so the zero-length branch fired and the span was tested for
+    *containment* of its own start instead of for overlap. A window sitting
+    inside that hour therefore saw nothing at all. Found at step 7, because
+    `hdate` is the first resolver whose spans have an interior to lose.
+    """
+    span = Span(_ny(5, 30), _ny(6, 30))
+    inside = Window(_ny(5, 50), _ny(6, 10))
+    assert span.overlaps(inside, NY)
+
+
+def test_known_through_takes_the_absolutely_latest_span() -> None:
+    """§5.5's headline number, which `max` was computing by wall clock.
+
+    Two zero-length spans forty-five minutes apart across the fold, under a
+    `NEXT_ONLY` horizon — the one kind whose answer is derived from the spans
+    rather than declared. Wall clock calls 01:30 EDT the later of the two, so the
+    forecast would have claimed knowledge only up to an instant it had already
+    passed, and §5.5's three-state rendering would show *unknown* over a stretch
+    the source had in fact computed.
+    """
+    window = Window(_ny(5, 0), _ny(8, 0))
+    spans = (Span(EDT_0130, EDT_0130), Span(EST_0115, EST_0115))
+    assert known_through(window, spans, Horizon.next_only(), NY) == EST_0115
+
+
+def test_fully_known_is_an_absolute_comparison() -> None:
+    """The summary and the number it summarises have to agree (A.13).
+
+    A `known_through` of 01:45 EDT against a window ending at 01:30 EST is wall-
+    clock "past the end" and absolutely forty-five minutes short of it. The
+    disagreeing pair is the worst version of the bug: the forecast reports a
+    horizon and then contradicts its own one-line summary of it.
+    """
+    forecast = Forecast(
+        window=Window(_ny(5, 0), _ny(6, 30)),
+        spans=(),
+        horizon=Horizon.unbounded(),
+        known_through=_ny(5, 45),
+    )
+    assert not forecast.fully_known
+
+
 # --- InvalidationSignal (D43) ----------------------------------------------
 
 
@@ -322,6 +401,15 @@ class _MissingResolver(_StubResolver):
         raise OfferingUnavailable("sensor.candle_lighting is unknown")
 
 
+class _FoldResolver(_StubResolver):
+    """Two instants either side of the fall-back fold, returned later-first."""
+
+    domain = "fold"
+
+    async def forecast(self, key: str, window: Window) -> list[Span]:
+        return [Span(EST_0115, EST_0115), Span(EDT_0130, EDT_0130)]
+
+
 class _ParametricResolver(_StubResolver):
     """A resolver with no pick-list, like `clock` and `entity_time`."""
 
@@ -353,6 +441,7 @@ def registry(hass: HomeAssistant) -> ResolverRegistry:
         _AngryResolver,
         _SlowResolver,
         _MissingResolver,
+        _FoldResolver,
         _ParametricResolver,
     ):
         registry.async_register(cls(hass))
@@ -478,6 +567,19 @@ async def test_the_registry_sorts_and_attaches_the_horizon(
     assert [span.start.day for span in forecast.spans] == [2, 3]
     assert forecast.horizon == Horizon.unbounded()
     assert forecast.fully_known
+
+
+async def test_the_registry_sorts_absolutely(registry: ResolverRegistry) -> None:
+    """The sort is load-bearing, and until step 7 it was a wall-clock sort.
+
+    `async_resolve_anchor_on_date` takes `spans[0]` as *the earliest*, so an
+    order that reverses inside the repeated hour is not a cosmetic defect: it
+    hands D1's recurrence the wrong instant. 01:15 EST is forty-five minutes
+    after 01:30 EDT and sorts before it by wall clock.
+    """
+    forecast = await registry.async_forecast("fold", "both", Window(_ny(5, 0), _ny(8, 0)))
+    assert not isinstance(forecast, Unresolved)
+    assert [span.start for span in forecast.spans] == [EDT_0130, EST_0115]
 
 
 async def test_candidate_dates_are_derived_from_forecast(

@@ -4,11 +4,13 @@
 puts D6's three storage shapes behind it, and the three resolvers that ship in
 this step: `clock`, `entity_time` and `sun`.
 
-`hdate` is step 7 and is not here. §15 places it there deliberately — a contract
-is not proven by the implementation it was designed around, and `hdate` is the
-one that exercises D10's date/datetime split and D11's two-stage day set, which
-none of the three below touch. If the abstraction is wrong, that is where it
-shows, and it is cheaper to find out before any UI depends on the offering list.
+`hdate` joined them at step 7. §15 placed it there deliberately — a contract is
+not proven by the implementation it was designed around, and `hdate` is the one
+that exercises D10's date/datetime split and D11's two-stage day set, which none
+of the other three touch. It is also the only resolver here with a third-party
+requirement (see `manifest.json`), and the only one that returns a span with an
+interior. The abstraction held; `Window.days` gained padding, and several
+comparisons that had quietly gone wall-clock were fixed where they stood (A.13).
 
 Everything exported here obeys D64: no clock is read, `now` never appears as an
 ambient value, and a `Window` is a parameter of every question.
@@ -42,6 +44,7 @@ from .contract import (
     known_through,
 )
 from .entity_time import EntityTimeResolver
+from .hdate import HDateResolver
 from .registry import ResolverRegistry, async_create_registry
 from .sun import SunResolver
 
@@ -51,6 +54,7 @@ __all__ = [
     "ClockResolver",
     "EntityTimeResolver",
     "Forecast",
+    "HDateResolver",
     "Horizon",
     "HorizonKind",
     "InvalidationKind",

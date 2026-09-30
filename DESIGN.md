@@ -207,7 +207,7 @@ span shape is what makes both additive rather than a future schema break.
 would invent a precision the source does not have, and the timeline would then render a
 fabricated boundary as fact.
 
-**Do not mirror core's all-day encoding.** `_all_day_event` builds
+**Do not mirror core's all-day encoding.** Core builds
 `CalendarEvent(start=target_date, end=target_date)` — a civil `date`, with **start equal to
 end**, so the span has zero extent and fails any overlap test (A.1). Our own date-typed spans
 are half-open over the local civil day. This is a second reason to compute from `hdate`
@@ -360,6 +360,124 @@ is a real case and refusing it would push the arithmetic into the user's configu
 
 *Step 7 confirms this against `hdate`*, which is the first resolver to return date-typed spans at
 all; `sun` returns none.
+
+### 5.7 Gaps closed at step 7
+
+Recorded 2026-09-30, as implemented in step 7. §15 places this step after the engine because *a
+contract is not proven by the implementation it was designed around*, and that is what it was:
+one hole in a promise the contract makes about itself, six places A.13 had not been applied, and
+five things that needed deciding.
+
+**D111 — `Window.days()` takes `pad_before` / `pad_after`, and the padding is how a resolver
+declares its own reach backwards.** `hdate` passes one day for a zman, six for an issur-melacha
+stretch, fourteen for a festival run, each stated in `const.py` beside the bound it comes from.
+
+*Why:* `Span.overlaps` promises that a span already running at `window.start` is part of the
+answer, and `BaseResolver.covers` is **built** on that promise — it forecasts the instant's own
+civil day and asks whether any span contains the instant. Nothing kept the promise. Every span
+`clock`, `sun` and `entity_time` produce is zero-length *and* is computed from the civil day it
+lands on, so "the days the window touches" and "the days worth computing" coincided and the two
+halves cancelled. `hdate` breaks both: its melacha interval is still running at 10:00 on Saturday
+having begun on Friday evening, and its `chatzot_halayla` for 6 October in New York lands at
+7 October 00:44. Before the fix, `covers("issur_melacha", Saturday 10:00)` returned **false** —
+the middle of Shabbat reported as not Shabbat. Verified by mutation: reverting the two lines
+fails eight tests.
+
+*Alternatives rejected:* (a) each resolver widening its own window before looping — a copied loop
+is the first place the engine and the timeline diverge about which days were considered, and the
+whole of D11 rests on both asking the same question. (b) A fixed generous pad inside `days()` —
+that charges every resolver the worst resolver's reach, so `sun` would compute two spare days on
+every call forever. (c) Declaring the reach on the `Offering` instead of at the call — the better
+shape if a caller ever needs the reach *without* calling `forecast`, and nothing does; deferred
+rather than refused.
+
+*The cost, stated:* a resolver that under-declares its pad gets a silently short answer rather
+than an error. What holds it down is that each number is written with the bound it derives from,
+and that `covers` is cross-checked against hdate's own predicate (below).
+
+**D112 — the holiday sets are date-typed, and the instant-precise reading is a separate
+offering.** `yom_tov`, `chol_hamoed`, `festival`, `fast_day` and `rosh_chodesh` return date-typed
+spans; `issur_melacha` returns a datetime span with real boundaries.
+
+*Why:* §5.3 says not to invent a precision the source lacks, and `hdate` assigns holidays to
+civil dates — there is no instant anywhere in its holiday table. A boundary would have to be
+synthesised from the zmanim, which works for yom tov and is **unimplementable** for most of this
+list: Purim, Chanukah and a fast day have no candle lighting and no havdalah, and Rosh Chodesh
+has neither by construction. *Rejected:* a datetime encoding for the subset that can carry one.
+That would make the type of a span depend on which holiday happened to fall in the window, so a
+rule would change shape between one festival and the next. The two offerings answer two different
+questions and §5.4's authoring guidance is where the editor says which is which.
+
+**D113 — a mid-chain candle lighting is passed through as an anchor occurrence, not suppressed.**
+On the second night of a two-day chag `hdate` reports the havdalah time under the
+candle-lighting name, because that is when the candles are lit.
+
+*Why:* *rejected* was suppressing it, so that `candle_lighting` would mean only "the start of a
+stretch". That reading is already available, exactly, as the `start` edge of `issur_melacha` —
+and suppression would make "twenty minutes before candle lighting" silently skip the night of the
+chag, which is the night it is most often wanted. Passing the library's answer through keeps the
+offering meaning what its name says.
+
+**D114 — `diaspora`, `candle_lighting_offset` and `havdalah_offset` are constructor arguments
+with core's defaults and no user surface. Provisional; this one needs a ruling.** `diaspora=None`
+infers from `hass.config.country == "IL"` or a timezone of `Asia/Jerusalem`, defaulting to
+diaspora.
+
+*Why provisional:* core's `jewish_calendar` asks for all three in its config flow and almanac has
+no options flow at all (D65). *Rejected:* (a) reading them off a loaded `jewish_calendar` config
+entry — best fidelity and no new surface, but D43's `InvalidationSignal` can say only
+*deterministic* or *watch these entities*, and neither describes "another integration's options
+changed", so the resolver would declare a horizon it could not keep and the cache would act on
+it. (b) Adding almanac options now — that is a UI surface, §15 puts the UI at step 9, and
+deciding its shape from inside a resolver is how a config key becomes permanent by accident (D9).
+
+*Not cosmetic:* diaspora moves Simchat Torah by a day. The inference defaults to diaspora because
+the extra day is a **superset** — a wrong guess adds an occurrence the user can see and remove,
+rather than removing one they never learn about — but a default chosen for its failure mode is
+still a default, and the ruling wanted is whether this becomes an options flow at step 9 or stays
+inferred.
+
+**D115 — a melacha stretch whose closing havdalah the library will not state is omitted, not
+closed at a guess.** The forward walk is bounded at six civil days (D17 — an unbounded search is
+how one resolver stalls an engine); if it finds no havdalah, the stretch is left out.
+
+*Why:* §5.3 again. A fabricated end renders on the timeline as fact and resolves as an `edge:
+end` anchor, so it is worse than a missing span, which at least reads as missing. *Rejected:*
+closing the stretch at the end of the walk.
+
+#### What the step found rather than decided
+
+Six places where A.13 — Python compares *and subtracts* two aware datetimes sharing a `tzinfo`
+**object** by wall clock — had not been applied. All were invisible while every span in the tree
+was zero-length. Each is fixed in place with a regression test, and each test was verified by
+mutation to fail without its fix.
+
+- **`Span.overlaps`** was the one method on `Span` still comparing wall clock. Both halves
+  mattered: `low == high` is a wall-clock equality, so a span running 01:30 EDT → 01:30 EST — a
+  real hour — read as an *instant* and took the zero-length branch.
+- **`ResolverRegistry.async_forecast`** sorted spans on a raw `bounds()` tuple. This one is
+  load-bearing rather than untidy: `async_resolve_anchor_on_date` takes `spans[0]` as "the
+  earliest", so inside the fold it handed D1's recurrence the wrong instant.
+- **`contract.known_through`**, **`Forecast.fully_known`**, **`AnchorForecast.fully_known`**,
+  **`anchor.py`'s `min(..., window.end)`** and **`plan.py`'s `fully_computed` / `fully_known`** —
+  bare `min`/`max` and bare comparisons. The last is the worst shape of the bug: the plan would
+  report a horizon and then contradict its own summary of it.
+
+#### What held
+
+D10's date/datetime split needed no change — three shapes come out of one `forecast` and the
+engine sees only `Span.is_all_day`. D11's two stages were inherited from `BaseResolver`
+**verbatim**; `engine/day_set.py` needed no change at all. D88 and D89 are confirmed against a
+real multi-day source: Sukkot 5787 comes back as `Span(date(2026, 9, 25), date(2026, 10, 5))` and
+`edge: end` on it resolves to 5 October 00:00 local. D14's internal registry cost step 7 exactly
+one changed line, which is what it was for. §5.1's role split did real work for the first time:
+a zman is anchor-only, and `issur_melacha` carries both roles.
+
+`hdate` ships `Zmanim.issur_melacha_in_effect`, an exact second implementation of D11's stage
+two. It is deliberately **not** used as an override of `covers` — a second implementation is a
+second thing to drift — and is instead a test: the derived `covers` agrees with it on 112
+instants across a fortnight spanning Sukkot, with no mismatches. That evidence exists only
+because the shortcut was refused.
 
 ---
 
@@ -1252,6 +1370,12 @@ around. Writing `hdate` before any UI depends on the resolver list is what surfa
 abstraction while it is still cheap to change — and it is the implementation that exercises
 D10's date/datetime split and D11's two-stage day set, neither of which `sun` touches.
 
+*It paid, and §5.7 records what it bought.* The contract made a promise about spans already
+running at a window's start that nothing in the tree kept, and the first three resolvers could
+not expose it because all their spans are zero-length. Had the UI been built first, the same hole
+would have been found through a screen showing the middle of Shabbat as not Shabbat — with a
+`Window.days()` signature that the timeline, the engine and a card had all been written against.
+
 **D60 — the importer is built last, deliberately.** Best-effort, flagging what it cannot map,
 with no compatibility layer and no constraint on the model. Brief Q3.
 
@@ -1550,8 +1674,8 @@ not pinned to a release here). Three entities: `daily_events`, `yearly_events`,
 `learning_schedule` (disabled by default).
 
 - `candle_lighting` and `havdalah` are **timed, zero-length** events —
-  `_timed_event` builds `CalendarEvent(start=zman.utc, end=zman.utc)`.
-- All-day events use the **civil date with zero extent** — `_all_day_event` builds
+  the event is built as `CalendarEvent(start=zman.utc, end=zman.utc)`.
+- All-day events use the **civil date with zero extent** — the event is built as
   `CalendarEvent(start=target_date, end=target_date)` where `target_date` is a `date`. Both the
   evening-to-evening boundary and the conventional exclusive end are lost. The facts behind D10
   and D11.
@@ -1560,6 +1684,18 @@ not pinned to a release here). Three entities: `daily_events`, `yearly_events`,
 - Events carry no machine-readable type, and `summary` is a **translated** string (`set_language`
   is re-applied per request) — the fact behind D8. Stable machine keys do exist, in `const.py`:
   `DailyCalendarEventType`, `YearlyCalendarEventType`, `LearningScheduleEventType`.
+
+*Re-checked at step 7 against the installed `homeassistant==2026.9.4`.* Every encoding claim
+above holds. The two helper names this entry used to cite — `_timed_event` and `_all_day_event` —
+**no longer exist**: `calendar.py` now builds events in `_create_daily_event`,
+`_create_yearly_event` and `_create_learning_event`. The names are removed rather than updated,
+because what the design depends on is the encoding and the encoding is what was re-verified.
+
+D8 turns out to be stronger in practice than this entry states. `hdate.translator` holds one
+**process-global** language, which core's `jewish_calendar` coordinator sets from *its own*
+config entry — so a resolver matching on rendered text would break because an unrelated
+integration was configured in Hebrew. Nothing in `resolver/hdate.py` reads `str(holiday)`;
+`Holiday.name` only.
 
 **A.2 — sun sensors.** Six `sensor.sun_next_*` entities — dawn, dusk, midnight, noon, rising,
 setting — all `device_class: timestamp` and **enabled by default** (only solar elevation and

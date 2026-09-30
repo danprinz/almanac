@@ -39,6 +39,7 @@ from .contract import (
     Unresolved,
     UnresolvedReason,
     Window,
+    absolute,
     known_through,
 )
 
@@ -171,7 +172,20 @@ class ResolverRegistry:
             return result
 
         zone = self.zone
-        spans = tuple(sorted(result, key=lambda span: span.bounds(zone)))
+        # Sorted absolutely (A.13). `span.bounds(zone)` is a pair of aware
+        # datetimes sharing one interned `ZoneInfo`, so sorting on the tuple
+        # directly is a wall-clock sort, and on the fall-back night it puts
+        # 01:15 EST before 01:30 EDT although it is forty-five minutes later.
+        # That matters beyond tidiness: `async_resolve_anchor_on_date` takes
+        # `spans[0]` as "the earliest", so the order here is load-bearing.
+        # Fixed at step 7 — the one sort in the package that was not going
+        # through `absolute`.
+        spans = tuple(
+            sorted(
+                result,
+                key=lambda span: tuple(absolute(edge) for edge in span.bounds(zone)),
+            )
+        )
         return Forecast(
             window=window,
             spans=spans,
@@ -311,15 +325,21 @@ def async_create_registry(hass: HomeAssistant) -> ResolverRegistry:
     The import is local to keep `contract` importable without dragging the
     implementations in — step 7 adds `hdate` to this function and to nowhere
     else, which is the test of whether D14's internal registry was worth having.
+    It passed: the only line step 7 changed here is the registration below, and
+    the only reason the import matters more than the others is that it is the
+    first one that pulls in a third-party requirement (`hdate`, declared in the
+    manifest the way core's `jewish_calendar` declares it).
     """
     from .clock import ClockResolver  # noqa: PLC0415
     from .entity_time import EntityTimeResolver  # noqa: PLC0415
+    from .hdate import HDateResolver  # noqa: PLC0415
     from .sun import SunResolver  # noqa: PLC0415
 
     registry = ResolverRegistry(hass)
     registry.async_register(ClockResolver(hass))
     registry.async_register(EntityTimeResolver(hass))
     registry.async_register(SunResolver(hass))
+    registry.async_register(HDateResolver(hass))
     return registry
 
 

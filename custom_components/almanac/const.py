@@ -165,6 +165,128 @@ SUN_SUNSET: Final = "sunset"
 SUN_DUSK: Final = "dusk"
 SUN_MIDNIGHT: Final = "midnight"
 
+# --- hdate offerings (D8, D9, D15, D16 — build step 7) ----------------------
+#
+# D9 again, and it bites harder here than it does for `sun`: these keys go into
+# stored schedules and can never be renamed silently. Three separate name spaces
+# feed the list below and they are kept apart deliberately.
+#
+# 1. **The zmanim keys are hdate's own**, taken from the dict
+#    `hdate.zmanim.Zmanim.zmanim` publishes, because that dict is what the
+#    lookup is done against. Inventing our own spelling would put a translation
+#    table between a stored schedule and the library, which is one more place a
+#    version bump can break quietly; `test_hdate_resolver.py` asserts instead
+#    that every key here is present in the installed library, so a rename
+#    upstream fails a test rather than a schedule.
+# 2. **`candle_lighting` and `havdalah` are core's**, matching
+#    `jewish_calendar/const.py::YearlyCalendarEventType`. They are *not* members
+#    of hdate's zmanim dict — they are computed properties that fold in the
+#    candle-lighting and havdalah offsets and the yom-tov chain — so agreeing
+#    with core's spelling costs nothing and makes the two integrations legible
+#    side by side. D8 is the reason we match the enum *value* and never the
+#    `summary`, which core translates at render time (A.1).
+# 3. **`issur_melacha` and the five holiday sets are ours**, because neither
+#    hdate nor core names the shapes the resolver contract needs: an *interval*
+#    (§5.4's Shabbat case) and a *date-granular set* (D10's all-day span).
+
+HDATE_ALOT_HASHACHAR: Final = "alot_hashachar"
+HDATE_TALIT_AND_TEFILLIN: Final = "talit_and_tefillin"
+HDATE_NETZ_HACHAMA: Final = "netz_hachama"
+HDATE_SOF_ZMAN_SHEMA_MGA: Final = "sof_zman_shema_mga"
+HDATE_SOF_ZMAN_SHEMA_GRA: Final = "sof_zman_shema_gra"
+HDATE_SOF_ZMAN_TFILLA_MGA: Final = "sof_zman_tfilla_mga"
+HDATE_SOF_ZMAN_TFILLA_GRA: Final = "sof_zman_tfilla_gra"
+HDATE_CHATZOT_HAYOM: Final = "chatzot_hayom"
+HDATE_MINCHA_GEDOLA: Final = "mincha_gedola"
+HDATE_MINCHA_GEDOLA_30MIN: Final = "mincha_gedola_30min"
+HDATE_MINCHA_KETANA: Final = "mincha_ketana"
+HDATE_PLAG_HAMINCHA: Final = "plag_hamincha"
+HDATE_SHKIA: Final = "shkia"
+HDATE_TSET_HAKOHAVIM: Final = "tset_hakohavim"
+HDATE_TSET_HAKOHAVIM_TSOM: Final = "tset_hakohavim_tsom"
+HDATE_TSET_HAKOHAVIM_SHABBAT: Final = "tset_hakohavim_shabbat"
+HDATE_TSET_HAKOHAVIM_RABEINU_TAM: Final = "tset_hakohavim_rabeinu_tam"
+HDATE_CHATZOT_HALAYLA: Final = "chatzot_halayla"
+
+# All eighteen, which is the same argument the `sun` resolver makes about dawn,
+# dusk and noon (A.3): upstream's whitelist excluded anchors the source already
+# computed, and the exclusion is the complaint rather than the design. Four
+# spellings of nightfall look like clutter until somebody's community holds by
+# Rabbeinu Tam, at which point a whitelist of two is the bug.
+HDATE_ZMANIM: Final = (
+    HDATE_ALOT_HASHACHAR,
+    HDATE_TALIT_AND_TEFILLIN,
+    HDATE_NETZ_HACHAMA,
+    HDATE_SOF_ZMAN_SHEMA_MGA,
+    HDATE_SOF_ZMAN_SHEMA_GRA,
+    HDATE_SOF_ZMAN_TFILLA_MGA,
+    HDATE_SOF_ZMAN_TFILLA_GRA,
+    HDATE_CHATZOT_HAYOM,
+    HDATE_MINCHA_GEDOLA,
+    HDATE_MINCHA_GEDOLA_30MIN,
+    HDATE_MINCHA_KETANA,
+    HDATE_PLAG_HAMINCHA,
+    HDATE_SHKIA,
+    HDATE_TSET_HAKOHAVIM,
+    HDATE_TSET_HAKOHAVIM_TSOM,
+    HDATE_TSET_HAKOHAVIM_SHABBAT,
+    HDATE_TSET_HAKOHAVIM_RABEINU_TAM,
+    HDATE_CHATZOT_HALAYLA,
+)
+
+# The two transition instants, spelled as core spells them.
+HDATE_CANDLE_LIGHTING: Final = "candle_lighting"
+HDATE_HAVDALAH: Final = "havdalah"
+
+# The interval §5.4 is written about: from a candle lighting to the havdalah
+# that closes the same stretch, chag chains included. Named for what it *is*
+# rather than "shabbat", because a Thursday-to-Saturday Rosh Hashanah stretch is
+# one span of this offering and is not Shabbat for two of its three days.
+HDATE_ISSUR_MELACHA: Final = "issur_melacha"
+
+# The date-granular sets (D10's `date`-typed span). Keyed by hdate's own
+# `HolidayTypes` member names, lowercased, except `festival` — a union of three
+# of them, and therefore a name that has to be chosen here or nowhere.
+HDATE_YOM_TOV: Final = "yom_tov"
+HDATE_CHOL_HAMOED: Final = "chol_hamoed"
+HDATE_FESTIVAL: Final = "festival"
+HDATE_FAST_DAY: Final = "fast_day"
+HDATE_ROSH_CHODESH: Final = "rosh_chodesh"
+
+# D15's tuning. Core exposes both as config-flow options
+# (`candle_lighting_minutes_before_sunset`, `havdalah_minutes_after_sunset`) and
+# these are the same defaults its `const.py` carries, which are in turn hdate's
+# own. **Provisional**: almanac has no options flow (D65 — single config entry,
+# nothing per-instance), so they are constructor arguments on the resolver with
+# these defaults and no user surface yet. Whether they become almanac options or
+# are borrowed from a loaded `jewish_calendar` entry is an owner ruling; D43's
+# invalidation vocabulary has no way to say "another integration's options
+# changed", which is why borrowing was not done silently.
+HDATE_DEFAULT_CANDLE_LIGHTING_OFFSET: Final = 18
+HDATE_DEFAULT_HAVDALAH_OFFSET: Final = 0
+
+# How far either side of a window the resolver has to look to find a span that
+# *overlaps* it (§5.3's `Span.overlaps`: an interval already running at
+# `window.start` is part of the answer). Three numbers, because the three shapes
+# have genuinely different reaches and each is stated rather than guessed:
+#
+# - a zmanim span is zero-length but is computed *from a civil date*, and the
+#   result can land on the next local day — `chatzot_halayla` for 6 October in
+#   New York is 7 October 00:44 — so one day either side is both enough and
+#   necessary;
+# - an issur-melacha stretch reaches at most Wednesday evening to Saturday night
+#   (a two-day chag running into Shabbat), which is four civil days; six is that
+#   bound with slack;
+# - a festival stretch reaches erev Sukkot to Simchat Torah, ten civil days in
+#   the diaspora; fourteen is that bound with slack.
+#
+# Truncating instead would not lose a span, it would *shorten* one — and a
+# shortened span is worse than a missing one, because `edge: end` would then
+# resolve to the window's own edge and render as fact.
+HDATE_ZMAN_PAD_DAYS: Final = 1
+HDATE_MELACHA_PAD_DAYS: Final = 6
+HDATE_HOLIDAY_PAD_DAYS: Final = 14
+
 # D17 — timeouts live in the contract, not in each implementation. Nothing
 # in-tree goes near this: `sun` is arithmetic and `entity_time` is a state read.
 # It is here for the resolver somebody writes later, so that the first slow one

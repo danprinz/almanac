@@ -116,12 +116,18 @@ class Plan:
     @property
     def fully_computed(self) -> bool:
         """Whether D44's budget covered the whole window that was asked for."""
-        return self.computed_through >= self.window.end
+        return absolute(self.computed_through) >= absolute(self.window.end)
 
     @property
     def fully_known(self) -> bool:
-        """Whether every anchor's declared horizon covers the window (D13)."""
-        return self.known_through >= self.window.end
+        """Whether every anchor's declared horizon covers the window (D13).
+
+        Compared absolutely, like the `min` that produced `known_through` a few
+        hundred lines below (A.13). The two disagreeing would be the worst
+        version of this bug: the plan would report a horizon and then contradict
+        its own summary of it.
+        """
+        return absolute(self.known_through) >= absolute(self.window.end)
 
     def runnable(self) -> tuple[Occurrence, ...]:
         """The occurrences that are expected to do something."""

@@ -9,7 +9,8 @@
   "integration_type": "service",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/danprinz/almanac/issues",
-  "requirements": [],
+  "loggers": ["hdate"],
+  "requirements": ["hdate[astral]==1.2.1"],
   "single_config_entry": true,
   "version": "0.1.0"
 }

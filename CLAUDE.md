@@ -9,13 +9,18 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 
 ## Status — 2026-09-30
 
-**Build steps 1–5 of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
+**Build steps 1–7 of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
 resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
-and — at step 5 — actions, desired state, scripts, completion and the tick that drives them.
-431 tests pass. Remote is `git@github.com:danprinz/almanac.git`.
+actions and completion and the tick that drives them, observability, and — at step 7 — the
+`hdate` resolver. 493 tests pass. Remote is `git@github.com:danprinz/almanac.git`.
 
-Decisions now run D1–D106. Each build step closes the gaps it found in its own subsection
-(`DESIGN.md` §5.6, §7.4, §10.6a, §11.1) rather than editing the decision it refines.
+Decisions now run D1–D115. Each build step closes the gaps it found in its own subsection
+(`DESIGN.md` §5.6, §5.7, §7.4, §10.6a, §11.1, §12.1) rather than editing the decision it refines.
+
+**Step 7 added the project's first third-party runtime dependency:** `hdate[astral]==1.2.1`, in
+`manifest.json` and repeated in `requirements_test.txt` because the harness does not install what
+the manifest declares. The pin matches core's `jewish_calendar/manifest.json` exactly and must
+keep matching it — two integrations in one instance share one `site-packages`.
 
 | File | Contains |
 | --- | --- |
@@ -32,10 +37,16 @@ the first commit; anything added since takes the next free number and lives in t
 belongs to. Do **not** renumber to tidy the sequence — see the convention note at the top of
 `DESIGN.md`.
 
-**Next step:** `DESIGN.md` §15 build order, step 6 — observability (D48–D52). Then 7 (`hdate`
-resolver), 8 (timeline and dry run), 9 (UI), 10 (importer, last — D60). The `almanac` namespace
-check is **done** — clear in core, in the HACS default list, and in a GitHub manifest-domain
-search (`DESIGN.md` "Remaining checks").
+**Next step:** `DESIGN.md` §15 build order, step 8 — the timeline and the dry run (D12, D44,
+D63). Then 9 (UI), 10 (importer, last — D60). The `almanac` namespace check is **done** — clear in
+core, in the HACS default list, and in a GitHub manifest-domain search (`DESIGN.md` "Remaining
+checks").
+
+**Five judgement calls are flagged for the owner** and are marked as such where they are
+recorded: D91 (disarming mid-interval exits immediately), D97 (an unreadable condition changes
+nothing), D104 (the re-enumeration period when D44's horizon comes back empty), D109 (`run_now`
+fires no occurrence event) and D114 (`diaspora` and the two candle-lighting offsets have no user
+surface — this one moves Simchat Torah by a day if the inference is wrong).
 
 **Two things a reader of the code needs before touching the engine.** A.13 — Python compares
 *and subtracts* two aware datetimes sharing a `tzinfo` object by wall clock, so every instant
