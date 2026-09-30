@@ -56,7 +56,7 @@ from custom_components.almanac.const import (
 from custom_components.almanac.logbook import async_describe_events
 from custom_components.almanac.storage import AlmanacData
 from custom_components.almanac.switch import AlmanacScheduleSwitch
-from custom_components.almanac.tick import AlmanacTick
+from custom_components.almanac.tick import SERVICE_RUN_NOW, AlmanacTick
 
 NY = ZoneInfo("America/New_York")
 
@@ -253,6 +253,101 @@ async def test_the_occurrence_event_precedes_the_service_calls_it_explains(
     await tick.async_tick(ny(2027, 10, 2, 17, 30))
 
     assert timeline.steps == [EVENT_OCCURRENCE, "notify.fired", EVENT_EXECUTION]
+
+
+async def test_a_manual_run_records_its_execution_and_announces_no_occurrence(
+    hass: HomeAssistant,
+    tick: AlmanacTick,
+    almanac_data: AlmanacData,
+    timeline: Timeline,
+) -> None:
+    """D116 and D109, which pull in opposite directions and are both satisfied.
+
+    D109 refuses the *occurrence* event for a manual run, and the reason is about
+    the logbook: `_humanify` memoises the first row carrying a context id, so an
+    occurrence event would win that slot and overwrite "*Daniel* ran this by hand"
+    with "almanac decided this". That argument is about one row and one memo, and
+    it does not reach the execution event, which has no logbook description at all.
+
+    D116 is the other half. `run_now` ran real actions against real devices, and
+    with neither event fired it left no trace in the one place D63 built to show
+    what actually happened — so the single kind of occurrence the engine genuinely
+    did not predict was the one kind the view for unpredicted things could not
+    draw. One event, not two: the cause named honestly, the effect recorded.
+
+    The ordered list is the assertion because the ordering is the property. The
+    execution event goes out *after* the actions, exactly as it does on the
+    scheduled path, so the `call_service` row stays the earliest row under this
+    context and keeps the logbook attribution D109 is protecting.
+    """
+    schedule_id = await create(
+        hass,
+        almanac_data,
+        "Run me",
+        rules=[at_rule(actions=[service("notify.fired")])],
+    )
+
+    await hass.services.async_call(
+        DOMAIN, SERVICE_RUN_NOW, {"schedule_id": schedule_id}, blocking=True
+    )
+
+    assert timeline.steps == ["notify.fired", EVENT_EXECUTION]
+    assert EVENT_OCCURRENCE not in timeline.steps
+    assert timeline.executions[0][ATTR_SCHEDULE_ID] == schedule_id
+    assert timeline.executions[0][ATTR_RESULT] == RESULT_FIRED
+
+
+async def test_a_manual_run_that_did_nothing_fires_no_event(
+    hass: HomeAssistant,
+    tick: AlmanacTick,
+    almanac_data: AlmanacData,
+    timeline: Timeline,
+) -> None:
+    """The `attempted` gate, which D116 inherits rather than invents.
+
+    `_async_execute` skips the execution event when nothing was attempted, because
+    an occurrence that ran no actions has no results and the event would repeat
+    what the occurrence event already said. A manual run has no occurrence event to
+    repeat, but the reasoning that matters survives: a rule with no actions did
+    nothing, and a row saying nothing happened is a row per manual run that says
+    nothing. D52's cache still takes it — see the next test.
+    """
+    schedule_id = await create(hass, almanac_data, "Empty", rules=[at_rule()])
+
+    await hass.services.async_call(
+        DOMAIN, SERVICE_RUN_NOW, {"schedule_id": schedule_id}, blocking=True
+    )
+
+    assert timeline.steps == []
+
+
+async def test_a_manual_run_reaches_the_status_cache(
+    hass: HomeAssistant,
+    tick: AlmanacTick,
+    almanac_data: AlmanacData,
+    timeline: Timeline,
+) -> None:
+    """D52's cache takes every transition, and a manual run is one.
+
+    "Why did the light come on at 14:32" is the question this cache is opened to
+    answer, and "someone ran it by hand" is an answer. Leaving it out would make
+    the more-info dialog contradict the timeline, which reads the same fact from
+    the recorder — two surfaces showing *actual*, disagreeing.
+    """
+    schedule_id = await create(
+        hass,
+        almanac_data,
+        "Run me",
+        rules=[at_rule(actions=[service("notify.fired")])],
+    )
+
+    await hass.services.async_call(
+        DOMAIN, SERVICE_RUN_NOW, {"schedule_id": schedule_id}, blocking=True
+    )
+
+    entries = almanac_data.status.async_recent(schedule_id)
+    assert len(entries) == 1
+    assert entries[0][ATTR_RESULT] == RESULT_FIRED
 
 
 async def test_the_event_and_the_service_calls_share_one_context(

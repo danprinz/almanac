@@ -122,6 +122,7 @@ from .engine.transition import (
     EngineState,
     ExitCause,
     HeldInterval,
+    Reconciliation,
     Transition,
     TransitionKind,
     async_plan_recovery,
@@ -447,6 +448,65 @@ class AlmanacTick:
         for schedule_id, outcome in terminations:
             await self._async_terminate(schedule_id, outcome)
 
+    async def async_dry_run(
+        self,
+        *,
+        at: datetime,
+        schedule_ids: Sequence[str] | None = None,
+        live: bool = True,
+    ) -> dict[str, Reconciliation]:
+        """Evaluate every schedule at a hypothetical instant, changing nothing.
+
+        This is the feature D64 was decided for — the brief's *"show me this Friday
+        without waiting for Friday"* — and it is deliberately thin, because being
+        thin is the whole claim. It reads the same runtime state `_async_evaluate_one`
+        reads, calls the same `_async_reconcile`, and then stops. It does not
+        execute, does not settle completion, does not write the runtime record, does
+        not touch the status cache and does not fire an event. Everything it skips is
+        a side effect; nothing it skips is a *decision*. So a dry run and a live tick
+        at the same instant produce the same `Reconciliation` by construction, and
+        there is no second implementation to drift.
+
+        The lock is taken, briefly, for the same reason the tick takes it: the
+        runtime store is read here, and reading it while a tick is halfway through
+        writing it would give the engine a state that never existed.
+
+        **What a dry run at a *future* instant is, precisely.** It is one evaluation
+        at that instant, starting from the engine state as it stands *now* — not a
+        replay of every tick in between. That matters for `During` rules: an interval
+        currently held will still be in the held set, so a dry run at Friday evening
+        sees Wednesday's held interval and reports the exit it is owed, which is true
+        of that single evaluation and is not what Friday will actually look like. For
+        "what will happen on Friday" the answer is the timeline (D63), which
+        enumerates rather than evaluates. **Provisional, and worth an owner's
+        ruling** on which of the two the UI's *dry run* button should call.
+
+        *The alternative rejected* was stepping the engine forward from now to `at`,
+        feeding each reconciliation's state into the next, so that the held set is
+        the one Friday would really have. It was rejected for two reasons. It needs a
+        loop over `next_at` — that is `async_tick`'s scheduling logic, written a
+        second time in a module that must not have a second copy of it, which is
+        precisely the divergence D64 exists to prevent. And it would not be more
+        true: every condition in every intervening step would still be evaluated
+        against *today's* entity state, so the result would be exactly as
+        hypothetical and considerably more confident-looking.
+
+        `live` is D41's distinction, offered here so that the recovery path — the one
+        whose asymmetry is hardest to reason about and least often exercised — can be
+        inspected without restarting Home Assistant.
+        """
+        results: dict[str, Reconciliation] = {}
+        async with self._lock:
+            for schedule_id, schedule in list(self._data.schedules.data.items()):
+                if schedule_ids is not None and schedule_id not in schedule_ids:
+                    continue
+                record = self._data.runtime.async_get(schedule_id)
+                state = EngineState.from_dict(record.get(_RT_ENGINE) or {})
+                results[schedule_id] = await self._async_reconcile(
+                    schedule, state, now=at, live=live
+                )
+        return results
+
     async def _async_evaluate_one(
         self,
         schedule_id: str,
@@ -469,13 +529,8 @@ class AlmanacTick:
             for key, value in (record.get(_RT_PROMISES) or {}).items()
         }
 
-        planner = async_plan_tick if live else async_plan_recovery
-        reconciliation = await planner(
-            self._data.resolvers,
-            schedule,
-            state,
-            now=now,
-            day_sets=self._data.day_sets,
+        reconciliation = await self._async_reconcile(
+            schedule, state, now=now, live=live
         )
 
         outcomes = await self._async_execute(
@@ -534,6 +589,37 @@ class AlmanacTick:
         if outcome.then is not None:
             terminations.append((schedule_id, outcome))
         return next_at
+
+    async def _async_reconcile(
+        self,
+        schedule: Mapping[str, Any],
+        state: EngineState,
+        *,
+        now: datetime,
+        live: bool,
+    ) -> Reconciliation:
+        """Ask the engine what this schedule should be doing at `now`.
+
+        One line of substance, and it exists so that there is exactly one of it.
+        D64's promise is that "the timeline, the dry run and the live engine are one
+        code path evaluated at three different instants" — and a promise of that
+        shape is kept by there being one call site for the planner, not by two call
+        sites that currently agree. `async_dry_run` and `_async_evaluate_one` both
+        come through here, so a change to how the engine is invoked cannot reach one
+        and miss the other.
+
+        Nothing is written and nothing is fired. Every side effect in this class
+        happens *after* this returns, which is what makes the dry run the same call
+        with the tail cut off rather than a reimplementation of the head.
+        """
+        planner = async_plan_tick if live else async_plan_recovery
+        return await planner(
+            self._data.resolvers,
+            schedule,
+            state,
+            now=now,
+            day_sets=self._data.day_sets,
+        )
 
     async def _async_release_orphans(self, now: datetime) -> None:
         """Exit the intervals of schedules that no longer exist, then forget them.
@@ -1061,8 +1147,17 @@ class AlmanacTick:
                 return
 
         if rule.get(CONF_KIND) == RULE_AT:
-            await async_run_actions(
+            actions = await async_run_actions(
                 self._hass, rule.get(CONF_ACTIONS, ()), context=context
+            )
+            self._async_announce_manual_run(
+                schedule,
+                schedule_id,
+                rule_id,
+                TransitionKind.FIRE,
+                ExecutionReport(actions=actions),
+                now=now,
+                context=context,
             )
             return
 
@@ -1095,8 +1190,17 @@ class AlmanacTick:
                 "enter actions only and leaving state alone",
                 rule_id,
             )
-            await async_run_actions(
+            actions = await async_run_actions(
                 self._hass, rule.get(CONF_ENTER_ACTIONS, ()), context=context
+            )
+            self._async_announce_manual_run(
+                schedule,
+                schedule_id,
+                rule_id,
+                TransitionKind.ENTER,
+                ExecutionReport(actions=actions),
+                now=now,
+                context=context,
             )
             return
 
@@ -1119,10 +1223,22 @@ class AlmanacTick:
                 restore=capture_state(self._hass, desired) if desired is not None else (),
             )
 
-        if desired is not None:
+        applied = (
             await async_apply_state(self._hass, desired, context=context)
-        await async_run_actions(
+            if desired is not None
+            else ()
+        )
+        actions = await async_run_actions(
             self._hass, rule.get(CONF_ENTER_ACTIONS, ()), context=context
+        )
+        self._async_announce_manual_run(
+            schedule,
+            schedule_id,
+            rule_id,
+            TransitionKind.ENTER,
+            ExecutionReport(actions=actions, state=tuple(applied)),
+            now=now,
+            context=context,
         )
 
         if already:
@@ -1146,6 +1262,63 @@ class AlmanacTick:
                 },
             },
         )
+
+    @callback
+    def _async_announce_manual_run(
+        self,
+        schedule: Mapping[str, Any],
+        schedule_id: str,
+        rule_id: str,
+        kind: TransitionKind,
+        report: ExecutionReport,
+        *,
+        now: datetime,
+        context: Context,
+    ) -> None:
+        """D116 — leave the execution half of D107's pair behind a manual run.
+
+        A `run_now` changed the world, and until this existed it changed the world
+        invisibly: the timeline's past half (D63) is a recorder query for D107's
+        two events, so a run that fired neither drew nothing, and the one kind of
+        occurrence the engine genuinely did *not* predict was the one kind the view
+        built to show unpredicted things could not show.
+
+        **Only the execution event, and D109 is why.** D109 refuses the occurrence
+        event because it would win `_humanify`'s memoisation and overwrite "*Daniel*
+        ran this by hand" with "almanac decided this" — a logbook argument, about a
+        row the logbook picks by context. `events.py` describes no `logbook.py` for
+        the execution event, so it is not a candidate for that row and none of
+        D109's reasoning reaches it. The two decisions want the same thing: the
+        cause named honestly, and the effect recorded.
+
+        The asymmetry is deliberate and is carried on the wire.
+        `PastOccurrence.as_dict` emits `announced: false` for exactly these rows, so
+        a renderer can draw a manual run as the unpredicted thing it is instead of
+        as a prediction that came true.
+
+        The `Transition` is synthesised here rather than enumerated. `at` is `now`,
+        with no `lateness`, because a manual run is not late for anything — the
+        instant it was asked for is the instant it happened, which is the one case
+        where the two instants D107 keeps apart genuinely coincide.
+
+        D52's cache takes it either way, matching `_async_execute`: "why did the
+        light come on at 14:32" is the question that cache exists to answer, and
+        "someone ran it by hand" is an answer. The *event* is gated on `attempted`
+        for the same reason it is there — a rule with no actions did nothing, and
+        an event saying nothing happened is a row per manual run that says nothing.
+        """
+        transition = Transition(
+            kind=kind,
+            schedule_id=schedule_id,
+            rule_id=rule_id,
+            start_date=now.date(),
+            at=now,
+        )
+        if report.attempted:
+            async_fire_execution(
+                self._hass, schedule, transition, report, context=context
+            )
+        self._data.status.async_record(schedule_id, transition, report)
 
 
 def _around(now: datetime) -> Window:

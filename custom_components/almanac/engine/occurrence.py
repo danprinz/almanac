@@ -27,6 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, tzinfo
 from enum import StrEnum
+from typing import Any
 
 from ..const import RULE_AT, RULE_DURING
 from ..resolver import Unresolved, Window
@@ -141,6 +142,43 @@ class Occurrence:
         if not self.will_run or self.start is None or self.end is None:
             return False
         return absolute(self.start) <= absolute(instant) < absolute(self.end)
+
+    def as_dict(self) -> dict[str, Any]:
+        """The wire form, for the timeline and the dry run (D63).
+
+        Here rather than in `timeline.py` for the same reason `HeldInterval` and
+        `EngineState` carry theirs: the type owns what it looks like on the wire,
+        and a query layer that invented its own spelling would be a second
+        definition of an occurrence that could drift from this one. Step 8 is the
+        first consumer, which is why this is only being written now — but a
+        consumer is not the right owner.
+
+        Every field is emitted, including the ones that are `None` and the ones
+        that say the occurrence will not happen. That is D12 at the serialisation
+        boundary: an occurrence dropped by D11's precise stage has to reach the
+        renderer *as dropped*, so `status` is never a reason to omit a row and
+        `problem` is never a reason to omit its explanation.
+
+        `start_date` is a civil date and is emitted as one (D10). It is not
+        `start.date()` — see this module's docstring — so a reader must not
+        reconstruct one from the other.
+        """
+        return {
+            "schedule_id": self.schedule_id,
+            "rule_id": self.rule_id,
+            "kind": self.kind,
+            "start_date": self.start_date.isoformat(),
+            "status": str(self.status),
+            "armed": self.armed,
+            "will_run": self.will_run,
+            "start": self.start.isoformat() if self.start is not None else None,
+            "end": self.end.isoformat() if self.end is not None else None,
+            "problem": (
+                {"reason": str(self.problem.reason), "detail": self.problem.detail}
+                if self.problem is not None
+                else None
+            ),
+        }
 
     def overlaps(self, window: Window, zone: tzinfo) -> bool:
         """Whether this occurrence has anything to do with `window`.

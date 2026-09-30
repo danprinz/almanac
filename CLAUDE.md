@@ -9,13 +9,21 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 
 ## Status — 2026-09-30
 
-**Build steps 1–7 of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
+**Build steps 1–8 of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
 resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
-actions and completion and the tick that drives them, observability, and — at step 7 — the
-`hdate` resolver. 493 tests pass. Remote is `git@github.com:danprinz/almanac.git`.
+actions and completion and the tick that drives them, observability, the `hdate` resolver, and —
+at step 8 — the timeline query and the dry run, with the two websocket commands step 9's panel is
+built on. 525 tests pass. Remote is `git@github.com:danprinz/almanac.git`.
 
-Decisions now run D1–D115. Each build step closes the gaps it found in its own subsection
-(`DESIGN.md` §5.6, §5.7, §7.4, §10.6a, §11.1, §12.1) rather than editing the decision it refines.
+Decisions now run D1–D121. Each build step closes the gaps it found in its own subsection
+(`DESIGN.md` §5.6, §5.7, §7.4, §10.6a, §11.1, §12.1, §12.2) rather than editing the decision it
+refines.
+
+**Step 8 fixed the engine, which is the part worth knowing.** `Plan` was reporting one fact where
+D44 says there are two: `_Horizons` was built over the window *after* the ninety-day clamp, so
+past the budget `known_through` collapsed onto `computed_through` and `fully_known` went false
+however unbounded every source had declared itself. `Plan.solid_through` is now where the two are
+recombined, deliberately, and they arrive uncombined. See §12.2.
 
 **Step 7 added the project's first third-party runtime dependency:** `hdate[astral]==1.2.1`, in
 `manifest.json` and repeated in `requirements_test.txt` because the harness does not install what
@@ -37,16 +45,26 @@ the first commit; anything added since takes the next free number and lives in t
 belongs to. Do **not** renumber to tidy the sequence — see the convention note at the top of
 `DESIGN.md`.
 
-**Next step:** `DESIGN.md` §15 build order, step 8 — the timeline and the dry run (D12, D44,
-D63). Then 9 (UI), 10 (importer, last — D60). The `almanac` namespace check is **done** — clear in
+**Next step:** `DESIGN.md` §15 build order, step 9 — the UI (D61, D62, D72 onward), built on
+the two websocket commands step 8 left: `almanac/timeline` and `almanac/dry_run`. Their wire form
+is `as_dict()` on `Timeline`, `Plan`, `Occurrence`, `Transition` and `Reconciliation`, and D70 has
+to be read before any card code is written, because the always-loaded-stub constraint cannot be
+retrofitted. Then 10 (importer, last — D60). The `almanac` namespace check is **done** — clear in
 core, in the HACS default list, and in a GitHub manifest-domain search (`DESIGN.md` "Remaining
 checks").
 
-**Five judgement calls are flagged for the owner** and are marked as such where they are
+**Seven judgement calls are flagged for the owner** and are marked as such where they are
 recorded: D91 (disarming mid-interval exits immediately), D97 (an unreadable condition changes
 nothing), D104 (the re-enumeration period when D44's horizon comes back empty), D109 (`run_now`
 fires no occurrence event) and D114 (`diaspora` and the two candle-lighting offsets have no user
-surface — this one moves Simchat Torah by a day if the inference is wrong).
+surface — this one moves Simchat Torah by a day if the inference is wrong), plus step 8's two:
+D119 (§5.5's third coverage state, *estimated*, has no producer and is not synthesised — the
+alternative is a fourth `HorizonKind`, which is a contract change) and D120 (a dry run is one
+evaluation at one instant, not a replay of the interval leading to it).
+
+D116 is the one decision step 8 made that changes existing behaviour rather than adding to it:
+`run_now` now fires `almanac_execution`, so a manual run appears on the timeline's past half.
+D109 still holds — no occurrence event — and §12.2 has why the two do not conflict.
 
 **Two things a reader of the code needs before touching the engine.** A.13 — Python compares
 *and subtracts* two aware datetimes sharing a `tzinfo` object by wall clock, so every instant

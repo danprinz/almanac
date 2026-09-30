@@ -1,6 +1,7 @@
 {
   "domain": "almanac",
   "name": "almanac",
+  "after_dependencies": ["recorder"],
   "codeowners": ["@danprinz"],
   "config_flow": true,
   "dependencies": ["websocket_api"],

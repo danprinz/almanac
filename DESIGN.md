@@ -1214,6 +1214,136 @@ to know at either level.
 every pass. D49's payload needs both, and after a deletion there is nowhere else to read them
 from — D66 makes `object_id` a fact about the stored schedule rather than about the registry.
 
+### 12.2 Gaps closed at step 8
+
+Step 8 built the timeline query (D63) and the dry run (D64's promise cashed in) — `timeline.py`,
+`websocket.py`, and `AlmanacTick.async_dry_run`. It is the first code in the package that *reads*
+the engine's output rather than producing it, and reading is what exposed the places where two
+facts had been quietly collapsed into one.
+
+**D116 — a manual run (D45) fires `almanac_execution` and, per D109, still fires no
+`almanac_occurrence`.** The asymmetry reaches the wire: `PastOccurrence.as_dict` emits
+`announced: false` for a row with no occurrence half, so a renderer can draw a manual run as the
+unpredicted thing it is rather than as a prediction that came true.
+
+*Why:* `run_now` ran real actions against real devices and left no trace anywhere the timeline
+reads, because the past half is a recorder query for D107's two events and a run that fired
+neither drew nothing. D63's claim is that "divergence between prediction and reality is visible
+rather than something the user has to go looking for", and a run nobody predicted is the purest
+divergence there is — the one kind of occurrence the engine genuinely did not foresee was the one
+kind the view built for unforeseen things could not show.
+
+*Why it does not contradict D109:* D109 refuses the *occurrence* event, and every word of its
+reasoning is about the logbook — an occurrence event would win `_humanify`'s memoised first row
+and overwrite "*Daniel* ran this by hand" with "almanac decided this". The execution event has no
+logbook description in `events.py`, so it is not a candidate for that row and none of the argument
+reaches it. The event goes out *after* the actions, exactly as on the scheduled path, which is
+what keeps the `call_service` row earliest under that context and D109's attribution intact.
+*Rejected:* leaving the manual run invisible, which is what it was.
+
+**D117 — D52's status cache takes a manual run too, gated differently from the event.** The cache
+records every manual transition; the event is skipped when nothing was attempted, inheriting
+`_async_execute`'s gate.
+
+*Why:* "why did the light come on at 14:32" is the question the more-info dialog is opened to
+answer and "someone ran it by hand" is an answer. Leaving it out would put two surfaces that both
+show *actual* — the cache and the timeline — in disagreement. The event's gate survives for its
+own reason: a rule with no actions did nothing, and an event saying nothing happened is a row per
+manual run that says nothing.
+
+**D118 — an execution event with no occurrence partner is rendered, not dropped.** It is placed
+from its own payload, at its own `at`, with `announced: false`.
+
+*Why:* after D116 an unpaired execution is the *normal* shape of a manual run rather than a
+damaged pair. It also arrives a second way — a window whose start falls between D107's two events
+clips the first of them — and a view that states it omits nothing (D12) may not lose that row. The
+drop had been justified on the grounds that an orphan "has no `kind` and no `at` and cannot be
+placed", which was simply wrong about the payload: `execution_payload` repeats `schedule_id`,
+`entity_id`, `rule_id`, `kind` and `at` deliberately, "rather than expecting a reader to join on
+the context id".
+
+**D119 — the timeline's coverage states are *known*, *not computed* and *unknown*.** Section 5.5
+names the third one *estimated*; nothing in the engine can produce it, and this is a gap step 8
+found rather than one it invented.
+
+*Why:* `HorizonKind` is `UNBOUNDED` / `UNTIL` / `NEXT_ONLY` and `Plan` reduces the lot to one
+instant, `known_through`. One instant gives you *before it* and *after it*; there is no third
+region, because no declaration means "we can see this far and then it gets vague". So the states
+are **known**, **not computed** (D44 — our own budget ran out and we declined to look) and
+**unknown** (D13 — we looked and the source would not commit). The first two are different
+sentences with different remedies, which is precisely why §10.6 keeps the two limits as separate
+facts: a renderer that collapsed them would tell a user to fix their sensor when the answer is to
+widen the window. Ties go to *not computed*, because that is the one the user can change — D44's
+ninety days is a setting, a resolver's horizon is a property of the world.
+
+*Rejected:* mapping `NEXT_ONLY`'s tail to *estimated* so §5.5's three words are used verbatim. It
+would make *estimated* mean "one real value and then guesswork" — a silent forward projection of a
+sensor's current value, in the situation where being wrong is most visible, which is the lying
+§5.5 exists to forbid. **Flagged for the owner:** the other reading available is a fourth
+`HorizonKind` that a resolver may declare, which is a contract change rather than a rendering one
+and is therefore not being made here.
+
+**D120 — a dry run is one evaluation of every schedule at one hypothetical instant, not a replay
+of the interval between now and then.** It takes the tick's lock, reads the stored engine state,
+and returns `Reconciliation` per schedule, executing nothing and writing nothing.
+
+*Why:* the value D64 promised is that the dry run and the live tick are the same code path, and
+they are — `_async_reconcile` is one function with one call site, chosen by the `live` flag (D41),
+so the two cannot drift. Stepping the engine forward over successive `next_at` values would be a
+second copy of `async_tick`'s scheduling loop, and the moment there are two the answer the dry run
+gives stops being evidence about the one that runs. **Flagged for the owner:** "what will the
+state be on Friday night" is a reasonable question this does not answer, and the honest answer to
+it is the timeline, which enumerates the whole window.
+
+**D121 — every instant crossing the websocket is a required field of the message, and a naive one
+is refused rather than defaulted.** `start`, `end` and `at` are all mandatory; an aware instant is
+converted to the resolver registry's zone.
+
+*Why:* D64 gives this package one clock reader, `tick.py`, and `tests/test_design_constraints.py`
+enforces that by an AST sweep whose allow-list is the definition of the constraint. A handler
+sampling `dt_util.now()` for a default would break the sweep for the right reason: the moment the
+backend has a second opinion about what time it is, the timeline and the dry run stop being the
+same code path at three instants. The frontend is also the component that knows — the browser's
+clock is the one the user is reading the screen by. Core agrees: `history` and `logbook`'s
+websocket APIs both take their bounds from the message. The conversion to a real zone rather than
+a fixed offset is load-bearing separately: D44's budget is added in *civil* days, and civil
+arithmetic on a `…+01:00` offset silently ignores the DST transition inside the window.
+
+*Rejected:* (a) widening the sweep's allow-list, when a read surface is the least defensible place
+to do it; (b) calling `async_refresh()` and reading the instant off the engine — opening a
+timeline would then fire schedules; (c) reusing the last `now` the tick was handed, which is stale
+by up to a whole idle wake, so an occurrence from ten minutes ago would render in the future half.
+
+#### What the step found rather than decided
+
+**`known_through` was pinned to the compute budget, and that is now fixed.** `_Horizons` was built
+over the *clamped* window, so for any window wider than D44's ninety days `known_through` could
+not exceed `computed_through` and `fully_known` was false however unbounded every source had
+declared itself. D44 already settles the question in as many words — "one is our compute budget,
+the other is the source's honesty" — so this was a defect against a decision already recorded, not
+a new ruling. `Plan` now reports the two independently and `Plan.solid_through` is where they are
+deliberately recombined. The `span is None` early return was carrying the same conflation and is
+fixed the same way: nothing was asked, so nothing declared a limit, and `known_through` is
+`window.end`.
+
+**The timeline read is one recorder query for the whole set, not one per schedule**, filtered on
+the indexed `Events.time_fired_ts` rather than on the payload's `at`. The two differ by `lateness`,
+and after a restart D41's recovery pass can record an occurrence materially later than the instant
+it is about. Filtering on the payload would need a JSON predicate against an unindexed column;
+filtering on the row's own time keeps the index and costs a bounded skew the caller can *see*,
+because both instants survive into the result. Rows are ordered by the payload's `at`, because on
+a timeline a row belongs where the occurrence was due.
+
+**`Timeline.recorded` is `False`, not an empty list, when there is no recorder.** `manifest.json`
+declares no hard dependency on it — almanac schedules things whether or not anything writes
+history down — so a user who turned the recorder off has no past, and a blank left-hand half would
+read as "nothing happened". Same argument `Plan` makes for the future half, applied backwards.
+
+**The dry run is admin-only and the timeline is not.** The dry run takes the tick's lock, so a
+caller can make the live scheduler wait; the ability to create that contention is not something to
+hand to every session. The timeline is a read of what the schedule list already exposes, and core
+treats its own history and logbook queries the same way.
+
 ---
 
 ## 13. Identity and entity model

@@ -29,6 +29,7 @@ from .day_sets import async_setup_day_sets
 from .resolver import async_create_registry
 from .storage import AlmanacData, RuntimeStore, async_setup_collection
 from .tick import SERVICE_RUN_NOW, AlmanacTick, async_register_services
+from .websocket import async_register_websocket
 
 type AlmanacConfigEntry = ConfigEntry[AlmanacData]
 
@@ -71,6 +72,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: AlmanacConfigEntry) -> b
     entry.runtime_data.tick = tick
     await tick.async_start()
     async_register_services(hass, tick)
+
+    # D63's timeline and D64's dry run, after the tick because the dry run is a
+    # method on it. Registered rather than unregistered on unload, like the CRUD
+    # commands `helpers/collection.py` installs: websocket commands live in one
+    # per-`hass` table with no removal API, the handlers look the entry up per call
+    # and answer "almanac is not loaded" when it is not, and re-registering on a
+    # reload simply replaces the entry in that table.
+    async_register_websocket(hass)
     return True
 
 

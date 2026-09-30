@@ -374,6 +374,57 @@ class Transition:
         """What identifies the occurrence this transition is about."""
         return (self.rule_id, self.start_date)
 
+    def as_dict(self) -> dict[str, Any]:
+        """The wire form, for the dry run (D64).
+
+        Deliberately close to `events.occurrence_payload`, because a dry run's
+        whole claim is that it shows what the live engine would have done, and a
+        reader comparing a dry-run row against the recorder row it predicts should
+        not have to translate between two spellings of the same transition. It is
+        not identical: `occurrence_payload` is addressed to the logbook and so
+        carries the schedule's name and entity_id, which the dry run's caller
+        already has from the envelope, and it flattens `conditions` to D24's
+        blocking labels alone. Here the outcome is carried whole, because "the
+        conditions could not be read" (`determined` false) is a different sentence
+        from "this condition said no", and a dry run exists precisely to show the
+        difference before it happens.
+
+        `lateness` is emitted in seconds, matching `occurrence_payload`. In a dry
+        run it is almost always zero — the hypothetical instant is the instant the
+        engine is told about, so nothing is behind — and it is emitted anyway so
+        that the recovery-pass case (`live=False`, D41) has somewhere to say so.
+        """
+        return {
+            "kind": str(self.kind),
+            "schedule_id": self.schedule_id,
+            "rule_id": self.rule_id,
+            "start_date": self.start_date.isoformat(),
+            "at": self.at.isoformat(),
+            "lateness": self.lateness.total_seconds(),
+            "occurrence": (
+                self.occurrence.as_dict() if self.occurrence is not None else None
+            ),
+            "held": self.held.as_dict() if self.held is not None else None,
+            "cause": str(self.cause) if self.cause is not None else None,
+            "conditions": (
+                {
+                    "passed": self.conditions.passed,
+                    "determined": self.conditions.determined,
+                    "blocking": list(self.conditions.blocking),
+                    "problem": (
+                        {
+                            "reason": str(self.conditions.problem.reason),
+                            "detail": self.conditions.problem.detail,
+                        }
+                        if self.conditions.problem is not None
+                        else None
+                    ),
+                }
+                if self.conditions is not None
+                else None
+            ),
+        }
+
 
 @dataclass(frozen=True, slots=True)
 class Reconciliation:
@@ -389,6 +440,27 @@ class Reconciliation:
     transitions: tuple[Transition, ...] = ()
     state: EngineState = field(default_factory=EngineState)
     next_at: datetime | None = None
+
+    def as_dict(self) -> dict[str, Any]:
+        """The wire form — what a dry run at one instant returns for one schedule.
+
+        The plan comes with it rather than being a separate query. D63 wants one
+        view, and the transitions alone do not answer "and what else is in this
+        window" — an occurrence that is neither due nor held produces no
+        transition at all, and is exactly the row a person opened the dry run to
+        see.
+
+        `next_at` here is `transition.py`'s own answer over the plan it was given,
+        which is a narrower window than the tick's `_async_next_wake` searches. It
+        is emitted as what this evaluation concluded, not as a promise about the
+        live scheduler's next wake.
+        """
+        return {
+            "plan": self.plan.as_dict(),
+            "transitions": [transition.as_dict() for transition in self.transitions],
+            "state": self.state.as_dict(),
+            "next_at": self.next_at.isoformat() if self.next_at is not None else None,
+        }
 
 
 class _Conditions:

@@ -133,6 +133,50 @@ class Plan:
         """The occurrences that are expected to do something."""
         return tuple(occ for occ in self.occurrences if occ.will_run)
 
+    @property
+    def solid_through(self) -> datetime:
+        """The instant past which this plan stops being a statement of fact.
+
+        The earlier of the two limits, because they bound the answer
+        independently: past `computed_through` we declined to look (D44), and past
+        `known_through` we looked and the source would not commit (D13). A
+        renderer needs one instant to draw the edge at and then needs to know
+        *which* of the two it is — `fully_computed` and `fully_known` are how it
+        asks, and `timeline.py` is where the three-state rendering of §5.5 turns
+        the pair into a word.
+
+        A.13 — `min` over two aware datetimes compares them, so it goes through
+        `absolute` as the key like every other comparison in this file.
+        """
+        return min(self.computed_through, self.known_through, key=absolute)
+
+    def as_dict(self) -> dict[str, Any]:
+        """The wire form (D63).
+
+        Both limits are emitted separately and neither is collapsed into the
+        other, which is the whole of §10.6's insistence that they are different
+        facts: one is our compute budget and the other is the source's honesty,
+        and a consumer told only "the timeline stops here" cannot tell the user
+        which of the two to do something about.
+        """
+        return {
+            "schedule_id": self.schedule_id,
+            "window": {
+                "start": self.window.start.isoformat(),
+                "end": self.window.end.isoformat(),
+            },
+            "occurrences": [occ.as_dict() for occ in self.occurrences],
+            "computed_through": self.computed_through.isoformat(),
+            "known_through": self.known_through.isoformat(),
+            "fully_computed": self.fully_computed,
+            "fully_known": self.fully_known,
+            "problem": (
+                {"reason": str(self.problem.reason), "detail": self.problem.detail}
+                if self.problem is not None
+                else None
+            ),
+        }
+
 
 async def async_enumerate(
     registry: ResolverRegistry,
@@ -173,7 +217,14 @@ async def async_enumerate(
     if span is None:
         # The date window (§2) closes before the requested window opens. Not a
         # failure and not an unknown: the schedule provably does nothing here.
-        return Plan(schedule_id, window, (), computed_through, computed_through)
+        #
+        # `known_through` is `window.end` and not `computed_through` for the same
+        # reason as above: no anchor was consulted, so nothing declared a limit, and
+        # an empty set of declarations means knowledge is unlimited — which is what
+        # `_Horizons.known_through` returns by default on the path that does run.
+        # Saying `computed_through` here would claim a source stopped talking when
+        # no source was asked.
+        return Plan(schedule_id, window, (), computed_through, window.end)
 
     first, last = span
     # D11's first stage. A day-set recurrence generates its candidate dates from
@@ -212,7 +263,20 @@ async def async_enumerate(
         )
 
     armed = bool(schedule.get(CONF_ENABLED, True))
-    horizons = _Horizons(computed, zone)
+    # Over the **requested** window, not the clamped one. D44 is explicit that
+    # our compute budget and a resolver's declared horizon are "different facts —
+    # one is our compute budget, the other is the source's honesty", and the plan
+    # carries two fields so that a renderer can tell them apart. Built over
+    # `computed`, `known_through` could never exceed `computed_through`, so for any
+    # window wider than ninety days `fully_known` was false however unbounded every
+    # source had declared itself — reporting a source that ran out when in truth we
+    # declined to look. `solid_through` is where the two are deliberately combined,
+    # and it can only do that job if they arrive uncombined.
+    #
+    # Nothing else changes: instants are only ever noted from inside `computed`, so
+    # widening the window widens what `note` accepts without there being anything
+    # extra to accept.
+    horizons = _Horizons(window, zone)
     occurrences: list[Occurrence] = []
 
     for rule in rules:

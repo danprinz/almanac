@@ -56,6 +56,15 @@ CONFIG_ENTRY_VERSION: Final = 1
 WS_PREFIX_SCHEDULE: Final = f"{DOMAIN}/schedule"
 WS_PREFIX_DAY_SET: Final = f"{DOMAIN}/day_set"
 
+# D63's view and D64's dry run — the two reads step 9's panel is built on. Both
+# take the instant they are about as a field rather than sampling a clock for it,
+# which is D64 reaching the API boundary: the backend has exactly one clock reader
+# and it is the tick. Core's own read APIs are shaped the same way
+# (`history/history_during_period` and `logbook/event_stream` both take
+# `start_time` from the frontend).
+WS_TIMELINE: Final = f"{DOMAIN}/timeline"
+WS_DRY_RUN: Final = f"{DOMAIN}/dry_run"
+
 # --- schedule fields -------------------------------------------------------
 
 CONF_COMPLETION: Final = "completion"
