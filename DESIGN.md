@@ -311,6 +311,56 @@ behind a plugin boundary, defeating the very non-goal the contract exists to enf
 per-call isolation live in the contract, not in each implementation. An unresolved anchor
 surfaces on the timeline and in the log; it does not take down unrelated schedules.
 
+### 5.6 Gaps closed at step 2
+
+Four questions the contract could not be written without, none of them settled by D6–D17.
+Recorded 2026-09-30, all four as implemented in step 2.
+
+**D86 — a resolver is *selectable* or *parametric*, and the protocol says which.** D16 gives
+users a fixed list to pick from; that cannot describe `clock`, whose key is a time of day, or
+`entity_time`, whose key is an entity_id. A parametric resolver returns an empty `offerings()`
+and answers `offering(key)` for any key it can parse. A selectable resolver — `sun`, and `hdate`
+at step 7 — enumerates.
+
+*Why:* D16's purpose is to stop a resolver becoming a templating surface, and that purpose is
+served by the *set of resolvers* being closed, not by every key being enumerable. A time of day
+and an entity_id are both already constrained elsewhere — by the schema, and by the entity
+registry — so a parametric key smuggles in no expressiveness. The split is in the protocol rather
+than a convention because a UI listing offerings has to know which resolvers have none to list.
+
+**D87 — `forecast` returns a `Forecast`, not a bare list of spans.** It carries the declared
+horizon (D13) and a computed `known_through`.
+
+*Why:* an empty list is two different answers — *nothing is scheduled in this window* and *my
+knowledge stops before this window* — and the timeline has to draw them differently. D13 already
+requires the horizon to reach the timeline; putting it on the return value means it arrives with
+the data it qualifies, rather than being fetched separately and possibly going stale against it.
+
+**D88 — a date-typed span's `end` is exclusive.** The whole of 2 October is
+`Span(date(2026, 10, 2), date(2026, 10, 3))`. An eight-day festival starting 2 October ends
+`date(2026, 10, 10)`.
+
+*Why:* either convention is workable and the cost of the choice is entirely in its being
+*unstated*. A resolver author guessing wrong makes every span one day short or one day long, and
+the error is invisible in the common case of a single-day span, where inclusive and exclusive
+encodings differ by nothing a test would notice unless it tests adjacency. Exclusive is the half
+chosen because it makes `bounds()` a pair of midnights and adjacency an equality — the day after
+2 October begins exactly where 2 October ends — and because inclusive would have put the
+zero-extent encoding of A.1, which D10 exists to reject, back within one off-by-one of being
+correct-looking.
+
+**D89 — the `end` edge of a date-typed span is the exclusive midnight.** "The end of
+2 October" is `2026-10-03 00:00` local, not the last instant of 2 October.
+
+*Why:* this is not an independent choice; it is D88 applied to anchors. An anchor names a span
+and one of its edges, and if `end` means one thing to `bounds()` and another to an anchor then
+"during the festival" and "at the end of the festival" disagree about where the festival stops.
+The alternative — forbidding anchors on all-day edges — was rejected because "the evening before"
+is a real case and refusing it would push the arithmetic into the user's configuration.
+
+*Step 7 confirms this against `hdate`*, which is the first resolver to return date-typed spans at
+all; `sun` returns none.
+
 ---
 
 ## 6. Day sets
