@@ -479,6 +479,76 @@ second thing to drift — and is instead a test: the derived `covers` agrees wit
 instants across a fortnight spanning Sukkot, with no mismatches. That evidence exists only
 because the shortcut was refused.
 
+### 5.8 Open — a day set and a setup window cannot both be had
+
+*Measured 2026-09-30, at the start of step 9. `tests/test_flagship.py` is the measurement, and
+it is in the suite. **This is a ruling, not a decision — it is not being made here.***
+
+The UX round's first finding was marked blocking and claimed that Scenario A — *start 45 minutes
+before candle lighting, end 30 minutes after havdalah, on Shabbat*, the rule `PRODUCT_BRIEF.md`
+says must be effortless or the product has failed — never runs. It was written before step 7, so
+it was an argument about the design. Steps 7 and 8 make it checkable. It is right.
+
+**The measurement.** October 2026, New York, against the real `hdate` resolver, `issur_melacha`
+as the day set:
+
+| setup window | occurrences that run |
+| --- | --- |
+| none (offset 0) | all five Fridays |
+| one second | none of them |
+| forty-five minutes | none of them |
+
+The boundary is not near zero, it **is** zero, and the cliff is one second wide. `hdate` puts the
+first instant of `issur_melacha` on the candle-lighting instant exactly, so the unshifted anchor
+clears D11's stage two by nothing at all, and *any* negative offset falls off. This is not a
+setup window that is too long; no shorter one helps. **A day-set recurrence and a negative offset
+are categorically incompatible under D11 as written**, and starting before the day starts is what
+a setup window is for.
+
+**Why it is D11 and not a bug.** D11's stage two re-checks *the rule's resolved anchor*, which is
+the offset instant. That is exactly right for its motivating example — "on Shabbat, at 22:00"
+must fire Friday and not Saturday, and only an instant-granular test gets that — and exactly
+wrong here. The day set cannot be both things at once. §5.4's own authoring guidance already
+gestures at the tension by pushing evening-to-evening periods towards a `During` interval on the
+span's two edges; Scenario A *is* that interval, and it still fails, because it also carries the
+day-set recurrence that says which days to build it on.
+
+**What it costs, and what D12 does not cover.** The row is not omitted — D12 holds — so the
+timeline can draw it. But it draws `outside_set`, whose honest reading is "you asked for a day
+this is not on", and that is not what happened. The user is told the truth about a question they
+did not ask. D12 was written to stop an occurrence vanishing between authoring and rendering; it
+does not stop one being mislabelled, and this is the door it left open.
+
+**There is also a false positive, which is why this survived to step 9.** Across a festival,
+`issur_melacha` is one continuous span — 2 Oct 18:18 to 4 Oct 19:14, Shabbat running without a
+break into Shemini Atzeret — and it contains a *second* candle lighting, well inside it, which
+survives the offset. So Scenario A is not silent. It produces exactly one occurrence a month, on
+a day nobody asked about, running twenty-five hours. Any check that asked "did anything run"
+would have reported it healthy.
+
+**The fork.** The UX round proposed two, and the measurement says something about both:
+
+- **(a) evaluate the day set at the anchor's own instant**, before the offset is applied. The
+  zero-offset column above is what this produces for every offset, so it is *sufficient* — the
+  five Fridays come back, and the festival row is absorbed as `overlaps_previous` rather than
+  becoming a second occurrence. It is the smaller change. It needs a name in the schema, because
+  it cannot be the silent default: "on Shabbat, at 22:00" must keep testing 22:00, or D11's
+  motivating example breaks and the Saturday firing comes back.
+- **(b) `hdate` publishes a date-granular Shabbat alongside the instant-granular one**, and the
+  user picks. Strictly more expressive, and strictly more to explain: two sets called Shabbat,
+  differing in a way that is invisible until a rule is offset. It also does not generalise — the
+  next resolver has to make the same choice again, whereas (a) is a property of the rule.
+
+A third reading exists and should be ruled on at the same time: **Scenario A may simply be the
+wrong shape**, and what the user means is "every week, on the evening candle lighting happens" —
+a recurrence derived from the anchor itself, which is a sixth `RECUR_*` kind and not a day set at
+all. That is the largest change of the three and the only one that makes the day set unnecessary
+rather than fixing it.
+
+**Until this is ruled on, step 9's UI is building on a rule model that cannot express the
+scenario it is being built for**, which is why the measurement was taken before the first line of
+frontend code rather than after it.
+
 ---
 
 ## 6. Day sets

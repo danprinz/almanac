@@ -13,7 +13,7 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
 actions and completion and the tick that drives them, observability, the `hdate` resolver, and —
 at step 8 — the timeline query and the dry run, with the two websocket commands step 9's panel is
-built on. 525 tests pass. Remote is `git@github.com:danprinz/almanac.git`.
+built on. 528 tests pass, plus one `xfail` that is the flagship scenario and is meant to fail. Remote is `git@github.com:danprinz/almanac.git`.
 
 Decisions now run D1–D121. Each build step closes the gaps it found in its own subsection
 (`DESIGN.md` §5.6, §5.7, §7.4, §10.6a, §11.1, §12.1, §12.2) rather than editing the decision it
@@ -45,11 +45,24 @@ the first commit; anything added since takes the next free number and lives in t
 belongs to. Do **not** renumber to tidy the sequence — see the convention note at the top of
 `DESIGN.md`.
 
-**Next step:** `DESIGN.md` §15 build order, step 9 — the UI (D61, D62, D72 onward), built on
-the two websocket commands step 8 left: `almanac/timeline` and `almanac/dry_run`. Their wire form
-is `as_dict()` on `Timeline`, `Plan`, `Occurrence`, `Transition` and `Reconciliation`, and D70 has
+**Step 9 is blocked on a ruling, and the block is the rule model rather than the UI.**
+`DESIGN.md` §5.8 has it in full and `tests/test_flagship.py` is the measurement. The brief's
+Scenario A — *45 minutes before candle lighting, 30 after havdalah, on Shabbat* — does not run.
+Not "runs wrongly": a day-set recurrence and a negative offset are categorically incompatible
+under D11, because stage two tests the *offset* instant and a setup window puts it before the day
+begins. Measured in October 2026: offset 0 schedules all five Fridays, offset **one second**
+schedules none. The cliff is one second wide, so no shorter setup window helps. It also is not
+silent — across a festival one occurrence a month does run, on a day nobody asked about, which is
+why nothing caught it before now. Three candidate fixes, none taken: evaluate the set at the
+anchor's own instant (smallest, and the measurement says it is sufficient), publish both
+granularities from `hdate`, or derive the recurrence from the anchor and drop the day set.
+
+**Next step, once that is ruled on:** step 9 — the UI (D61, D62, D72 onward), built on the two
+websocket commands step 8 left: `almanac/timeline` and `almanac/dry_run`. Their wire form is
+`as_dict()` on `Timeline`, `Plan`, `Occurrence`, `Transition` and `Reconciliation`, and D70 has
 to be read before any card code is written, because the always-loaded-stub constraint cannot be
-retrofitted. Then 10 (importer, last — D60). The `almanac` namespace check is **done** — clear in
+retrofitted. The other 17 UX findings in `ux/FINDINGS.md` are also all still unapplied. Then 10
+(importer, last — D60). The `almanac` namespace check is **done** — clear in
 core, in the HACS default list, and in a GitHub manifest-domain search (`DESIGN.md` "Remaining
 checks").
 
