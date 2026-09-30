@@ -26,6 +26,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import CONFIG_ENTRY_VERSION, PLATFORMS
+from .day_sets import async_setup_day_sets
 from .resolver import async_create_registry
 from .storage import AlmanacData, RuntimeStore, async_setup_collection
 
@@ -35,12 +36,19 @@ type AlmanacConfigEntry = ConfigEntry[AlmanacData]
 async def async_setup_entry(hass: HomeAssistant, entry: AlmanacConfigEntry) -> bool:
     """Set up almanac from its one config entry (D65)."""
     schedules = await async_setup_collection(hass)
+    # Loaded before the schedules are ever enumerated, because a day-set
+    # reference the engine cannot resolve degrades every occurrence that uses it
+    # (D12). Two collections rather than one object graph: D18 makes a day set
+    # first-class, and the two stores are independent so that a schedule edit
+    # cannot rewrite a definition several other schedules share.
+    day_sets = await async_setup_day_sets(hass)
 
     runtime = RuntimeStore(hass)
     await runtime.async_load()
 
     entry.runtime_data = AlmanacData(
         schedules=schedules,
+        day_sets=day_sets,
         runtime=runtime,
         # D14 keeps the registry internal for v1, which is why it is built here
         # rather than discovered: the moment a third party can ship a resolver,

@@ -37,6 +37,7 @@ promise that it would not.
 from __future__ import annotations
 
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, time, timedelta, tzinfo
 from typing import Any
@@ -53,11 +54,13 @@ from ..const import (
     CONF_KIND,
     CONF_OFFSET,
     CONF_RECURRENCE,
+    CONF_DAY_SET_ID,
     CONF_RULES,
     CONF_START_ANCHOR,
     CONF_UNTIL,
     END_DURATION,
     ENUMERATION_HORIZON_DAYS,
+    RECUR_DAY_SET,
     RULE_AT,
     RULE_DURING,
 )
@@ -71,6 +74,12 @@ from ..resolver import (
     anchor_horizon,
     async_resolve_anchor_on_date,
     known_through as horizon_known_through,
+)
+from .day_set import (
+    DaySetLookup,
+    async_candidate_dates as async_day_set_dates,
+    async_covers as async_day_set_covers,
+    day_window,
 )
 from .occurrence import Occurrence, OccurrenceStatus, absolute
 from .recurrence import recurrence_period, start_dates
@@ -120,7 +129,11 @@ class Plan:
 
 
 async def async_enumerate(
-    registry: ResolverRegistry, schedule: dict[str, Any], window: Window
+    registry: ResolverRegistry,
+    schedule: dict[str, Any],
+    window: Window,
+    *,
+    day_sets: DaySetLookup | None = None,
 ) -> Plan:
     """Enumerate one schedule over one window. The whole engine, as a value.
 
@@ -129,10 +142,21 @@ async def async_enumerate(
     the clock, mutate anything, or fire anything. What to *do* about the result is
     `transition.py`'s question, and keeping the two apart is what lets the dry run
     use this one unchanged.
+
+    `day_sets` is how D11's two stages reach their definitions, and it is optional
+    so that a schedule with an ordinary recurrence needs nothing at all. A day-set
+    recurrence enumerated without it produces a plan carrying an `Unresolved`
+    problem rather than raising, because a plan is a value and a missing collection
+    is still something the timeline has to be able to draw (D12).
     """
     zone = registry.zone
     schedule_id = schedule.get(CONF_ID, "")
-    computed_through = min(window.end, window.start + _BUDGET)
+    # `+ _BUDGET` is wall-clock on purpose, unlike almost every other sum in this
+    # package. D44's budget is ninety *days*, and a timeline that says "not computed
+    # past 30 December" should stop at the civil boundary rather than an hour before
+    # it because a DST transition fell in between. `key=absolute` is still right for
+    # the comparison itself (A.13) — only the arithmetic is civil.
+    computed_through = min(window.end, window.start + _BUDGET, key=absolute)
     computed = Window(window.start, computed_through)
 
     recurrence = schedule[CONF_RECURRENCE]
@@ -146,7 +170,33 @@ async def async_enumerate(
         return Plan(schedule_id, window, (), computed_through, computed_through)
 
     first, last = span
-    dates = start_dates(recurrence, first, last)
+    # D11's first stage. A day-set recurrence generates its candidate dates from
+    # the set rather than from the four date generators, and the *second* stage --
+    # `stage_two` below -- runs per resolved anchor instant, which is the only
+    # place it can run. "Is this instant inside the set" is not a question about a
+    # date.
+    #
+    # The branch is here rather than inside `start_dates` on purpose. Day sets are
+    # composable and can reference a resolver, so evaluating one is `async` and
+    # needs the registry, and folding that into the pure date generator would make
+    # every caller of `start_dates` -- including the day-set evaluator itself --
+    # depend on the whole engine. That is a genuine import cycle rather than a
+    # stylistic worry, so `recurrence.start_dates` keeps a guard branch pointing
+    # here.
+    if recurrence[CONF_KIND] == RECUR_DAY_SET:
+        day_set_id = recurrence[CONF_DAY_SET_ID]
+        dates = await async_day_set_dates(
+            registry, day_sets, day_set_id, day_window(first, last, zone)
+        )
+        if isinstance(dates, list):
+            # Clipped to the search range, so that a generous candidate set cannot
+            # widen the enumeration past the padding `_search_range` computed.
+            dates = [day for day in dates if first <= day <= last]
+        stage_two = _stage_two(registry, day_sets, day_set_id)
+    else:
+        dates = start_dates(recurrence, first, last)
+        stage_two = None
+
     if isinstance(dates, Unresolved):
         # The recurrence itself could not be evaluated, so no rule has a date to
         # begin on. Reported once, on the plan, rather than copied onto an
@@ -170,6 +220,7 @@ async def async_enumerate(
                 period=period,
                 zone=zone,
                 horizons=horizons,
+                stage_two=stage_two,
             )
         )
 
@@ -232,8 +283,14 @@ async def _async_enumerate_rule(
     period: timedelta | None,
     zone: tzinfo,
     horizons: _Horizons,
+    stage_two: _StageTwo | None = None,
 ) -> list[Occurrence]:
-    """One rule's occurrences, one per recurrence date that resolves."""
+    """One rule's occurrences, one per recurrence date that resolves.
+
+    `stage_two` is D11's precise filter, applied to the resolved *start* instant
+    of every occurrence -- which is what §5.4 specifies, and what makes "on
+    Shabbat, at 22:00" produce one occurrence out of two candidate days.
+    """
     rule_id = rule.get(CONF_ID) or ""
     kind = rule[CONF_KIND]
     if kind == RULE_AT:
@@ -269,6 +326,41 @@ async def _async_enumerate_rule(
             # there is nothing the user could fix.
             continue
         horizons.note(rule_id, "start", resolved)
+
+        if stage_two is not None:
+            covered = await stage_two(resolved)
+            if isinstance(covered, Unresolved):
+                out.append(
+                    Occurrence(
+                        schedule_id=schedule_id,
+                        rule_id=rule_id,
+                        kind=kind,
+                        start_date=day,
+                        status=OccurrenceStatus.UNRESOLVED,
+                        armed=armed,
+                        start=resolved,
+                        problem=covered,
+                    )
+                )
+                continue
+            if not covered:
+                # D12 -- kept, with its resolved start, marked as filtered out.
+                # The start is retained deliberately: "Saturday 22:00 was dropped
+                # because Shabbat had already ended" is the sentence the timeline
+                # needs, and it cannot be written without the instant that failed
+                # the test.
+                out.append(
+                    Occurrence(
+                        schedule_id=schedule_id,
+                        rule_id=rule_id,
+                        kind=kind,
+                        start_date=day,
+                        status=OccurrenceStatus.OUTSIDE_SET,
+                        armed=armed,
+                        start=resolved,
+                    )
+                )
+                continue
 
         if kind == RULE_AT:
             out.append(
@@ -315,6 +407,38 @@ async def _async_enumerate_rule(
         )
 
     return _mark_overlaps(out)
+
+
+type _StageTwo = Callable[[datetime], Awaitable[bool | Unresolved]]
+
+
+def _stage_two(
+    registry: ResolverRegistry, day_sets: DaySetLookup | None, day_set_id: str
+) -> _StageTwo:
+    """D11's second stage as a one-argument callable, memoised per enumeration.
+
+    A closure rather than three more parameters on `_async_enumerate_rule`,
+    because the rule enumerator has no business knowing what a day set is. It
+    knows only that some recurrences arrive with a filter on the resolved instant.
+
+    The memo matters more than it looks. Every rule of the schedule is tested
+    against the same candidate dates, and a day set built on a resolver offering
+    re-derives a forecast on each call, so without it the cost is rules-times-dates
+    resolver calls for an answer that cannot change inside one enumeration. Keyed
+    on the absolute instant (A.13), because two instants that compare equal by wall
+    clock across a DST fold are different instants and must not share an answer.
+    """
+    memo: dict[datetime, bool | Unresolved] = {}
+
+    async def _covers(instant: datetime) -> bool | Unresolved:
+        key = absolute(instant)
+        if key not in memo:
+            memo[key] = await async_day_set_covers(
+                registry, day_sets, day_set_id, instant
+            )
+        return memo[key]
+
+    return _covers
 
 
 async def _async_pair_end(
@@ -543,7 +667,9 @@ class _Horizons:
             )
             for key, horizon in self._declared.items()
         ]
-        return min(limits, default=self._window.end)
+        # `key=absolute` because two declared horizons can fall inside the
+        # repeated hour, where `<` on this zone's instants is wall-clock (A.13).
+        return min(limits, default=self._window.end, key=absolute)
 
 
 def _when(occ: Occurrence, zone: tzinfo) -> datetime:

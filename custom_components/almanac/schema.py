@@ -18,7 +18,7 @@ another, and the asymmetry only surfaces after a restart.
 
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import Any, Final, cast
 
 import voluptuous as vol
 
@@ -32,9 +32,17 @@ from .const import (
     ANCHOR_CLOCK,
     ANCHOR_ENTITY_TIME,
     ANCHOR_RESOLVER,
+    COMPARISON_OPERATORS,
+    COMPOSE_INTERSECT,
+    COMPOSE_MINUS,
+    COMPOSE_UNION,
+    CONDITION_COMPARISON,
+    CONDITION_DAY_SET,
+    CONDITION_GROUP,
     CONF_ACTIONS,
     CONF_ANCHOR,
     CONF_AT,
+    CONF_ATTRIBUTE,
     CONF_COMPLETION,
     CONF_CONDITION_POLICY,
     CONF_CONDITIONS,
@@ -51,25 +59,34 @@ from .const import (
     CONF_ENABLED,
     CONF_END,
     CONF_ENTER_ACTIONS,
+    CONF_ENTITY_ID,
     CONF_EXIT_ACTIONS,
     CONF_FINISHED_WHEN,
+    CONF_FOR,
     CONF_FROM,
     CONF_GRACE,
     CONF_INTERVAL,
     CONF_KEY,
     CONF_KIND,
+    CONF_LABEL,
     CONF_LATCH,
+    CONF_MEMBERS,
     CONF_NAME,
+    CONF_NEGATE,
     CONF_NTH,
     CONF_OBJECT_ID,
     CONF_OFFSET,
     CONF_ON_EXIT,
+    CONF_OPERATOR,
+    CONF_OWNER,
     CONF_RECURRENCE,
     CONF_RULES,
+    CONF_SOURCE,
     CONF_START_ANCHOR,
     CONF_STATE,
     CONF_THEN,
     CONF_UNTIL,
+    CONF_VALUE,
     CONF_WEEKDAY,
     COUNT_ON_ACTIONS_SUCCEEDED,
     COUNT_ON_CONDITIONS_PASSED,
@@ -84,9 +101,14 @@ from .const import (
     FINISHED_NEVER,
     FINISHED_OCCURRENCES,
     FINISHED_ONE_RULE_FIRED,
+    GROUP_AND,
+    GROUP_OR,
+    LIST_OPERATORS,
     ON_EXIT_APPLY,
     ON_EXIT_LEAVE,
     ON_EXIT_RESTORE,
+    OPERAND_CONSTANT,
+    OPERAND_ENTITY,
     POLICY_SKIP,
     POLICY_WAIT_UNTIL,
     RECUR_DATES,
@@ -96,6 +118,8 @@ from .const import (
     RECUR_WEEKDAYS,
     RULE_AT,
     RULE_DURING,
+    SOURCE_COMPOSITION,
+    SOURCE_OFFERING,
     THEN_ACTION,
     THEN_DELETE,
     THEN_DISABLE,
@@ -193,7 +217,7 @@ _CLOCK_ANCHOR_SCHEMA: Final = vol.Schema(
 _ENTITY_TIME_ANCHOR_SCHEMA: Final = vol.Schema(
     {
         vol.Required(CONF_KIND): ANCHOR_ENTITY_TIME,
-        vol.Required("entity_id"): cv.entity_id,
+        vol.Required(CONF_ENTITY_ID): cv.entity_id,
         vol.Optional(CONF_OFFSET, default=0): _signed_seconds,
     }
 )
@@ -223,10 +247,179 @@ ANCHOR_SCHEMA: Final = cv.key_value_schemas(
 )
 
 
-# --- conditions, actions, desired state ------------------------------------
-# Present, empty, and owned by later steps. See `_reserved_for`.
+# --- conditions (D23, D24, §7.1) -------------------------------------------
+#
+# **D23 — structured only. No templates, ever.** The reason is D34 turned
+# inside out: a template field is a field the editor cannot render or explain,
+# so it violates §9.1's parity rule by construction rather than by omission. The
+# escape hatch is better than the thing it replaces — the user defines a
+# template `binary_sensor` once, in HA's own UI, and references it here by
+# entity, at which point it is named, reusable, visible in the entity list,
+# present in D57's reverse index, and renders on the timeline as *"unless more
+# than 2 rooms occupied"* instead of as a wall of Jinja.
+#
+# So the shapes below are not a subset of what a condition could be. They are
+# the whole of it, and each row of D23's table maps onto exactly one of them.
 
-CONDITIONS_SCHEMA: Final = _reserved_for("4", "conditions (D23-D26)")
+
+def _scalar(value: Any) -> bool | float | int | str:
+    """One JSON scalar, with the type left alone.
+
+    `cv.string` would be wrong here in a way that only shows up later: it
+    *coerces*, so a threshold of `20` would be stored as `"20"` and a comparison
+    against a numeric sensor would then be a string comparison in which `"9" >
+    "20"`. The stored value keeps the type the user typed, and the evaluator
+    decides how to compare (see `engine/conditions.py`).
+    """
+    if isinstance(value, bool | int | float | str):
+        return value
+    raise vol.Invalid(f"expected a number, string or boolean, got {value!r}")
+
+
+_OPERAND_SCHEMA: Final = cv.key_value_schemas(
+    CONF_KIND,
+    {
+        OPERAND_CONSTANT: vol.Schema(
+            {
+                vol.Required(CONF_KIND): OPERAND_CONSTANT,
+                # A list is admitted because `in` / `not_in` need one; which
+                # operators may carry one is checked below, on the comparison,
+                # because it is a relation between two fields.
+                vol.Required(CONF_VALUE): vol.Any(
+                    _scalar, vol.All(cv.ensure_list, [_scalar], vol.Length(min=1))
+                ),
+            }
+        ),
+        OPERAND_ENTITY: vol.Schema(
+            {
+                vol.Required(CONF_KIND): OPERAND_ENTITY,
+                vol.Required(CONF_ENTITY_ID): cv.entity_id,
+                vol.Optional(CONF_ATTRIBUTE, default=None): vol.Any(None, cv.string),
+                # D23's "± offset". Signed, and its unit depends on what the two
+                # sides turn out to be: seconds when they are timestamps, plain
+                # units when they are numbers. That is decided at evaluation
+                # because the entity's type is not knowable at authoring time —
+                # `sensor.candle_lighting` is a timestamp today and the schema
+                # has no business asserting it will be one tomorrow.
+                vol.Optional(CONF_OFFSET, default=0): vol.Any(int, float),
+            }
+        ),
+    },
+)
+
+
+def _comparison(value: Any) -> dict[str, Any]:
+    """A comparison, with the one cross-field relation its operators imply.
+
+    `in` and `not_in` take a list and nothing else takes one. Enforced here
+    rather than tolerated, because `gt: [1, 2]` has no reading an editor could
+    render and the evaluator would have to invent one — which is the class of
+    silent reinterpretation this whole project is a response to.
+    """
+    validated = cast(dict[str, Any], _COMPARISON_FIELDS(value))
+    operand = validated[CONF_VALUE]
+    wants_list = validated[CONF_OPERATOR] in LIST_OPERATORS
+    if operand[CONF_KIND] != OPERAND_CONSTANT:
+        if wants_list:
+            # An entity holds one value, so "state in <that one value>" is
+            # equality written confusingly. Refused rather than quietly treated
+            # as equality, so that the editor never offers a shape whose meaning
+            # it would have to explain in a footnote.
+            raise vol.Invalid(
+                f"{validated[CONF_OPERATOR]!r} compares against a list of "
+                "constants, not against another entity"
+            )
+        return validated
+    if isinstance(operand[CONF_VALUE], list) is not wants_list:
+        raise vol.Invalid(
+            f"{validated[CONF_OPERATOR]!r} takes "
+            f"{'a list of values' if wants_list else 'a single value'}"
+        )
+    return validated
+
+
+_COMPARISON_FIELDS: Final = vol.Schema(
+    {
+        vol.Required(CONF_KIND): CONDITION_COMPARISON,
+        vol.Required(CONF_ENTITY_ID): cv.entity_id,
+        # D23's attribute picker. `None` means the entity's state, which is a
+        # different thing from an attribute called `state`.
+        vol.Optional(CONF_ATTRIBUTE, default=None): vol.Any(None, cv.string),
+        vol.Required(CONF_OPERATOR): vol.In(COMPARISON_OPERATORS),
+        vol.Required(CONF_VALUE): _OPERAND_SCHEMA,
+        # D23's "state held for a duration". Whole seconds, like every other
+        # duration in this schema, because a `timedelta` does not survive the
+        # round trip through `.storage` as itself.
+        vol.Optional(CONF_FOR, default=None): vol.Any(
+            None, vol.All(_signed_seconds, vol.Range(min=1))
+        ),
+        vol.Optional(CONF_LABEL, default=None): vol.Any(None, cv.string),
+    }
+)
+
+_DAY_SET_CONDITION_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_KIND): CONDITION_DAY_SET,
+        vol.Required(CONF_DAY_SET_ID): cv.string,
+        # "…unless it is a holiday" is the commonest form this condition takes,
+        # and a `not` group to express it would be a second level of nesting
+        # that §7.1 does not have. A flag on the leaf keeps the one-line summary
+        # readable, which is the property D19 is protecting in the set algebra
+        # and which applies just as much here.
+        vol.Optional(CONF_NEGATE, default=False): cv.boolean,
+        vol.Optional(CONF_LABEL, default=None): vol.Any(None, cv.string),
+    }
+)
+
+# §7.1 — "and/or groups, one level of nesting, evaluated as a whole." A group's
+# members are leaves, never groups, which is what "one level" means; and the
+# rule's own `conditions` list is the AND at the top, so a group is what an OR
+# is spelled with.
+_LEAF_CONDITION_SCHEMA: Final = cv.key_value_schemas(
+    CONF_KIND,
+    {
+        CONDITION_COMPARISON: _comparison,
+        CONDITION_DAY_SET: _DAY_SET_CONDITION_SCHEMA,
+    },
+)
+
+_GROUP_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_KIND): CONDITION_GROUP,
+        vol.Required(CONF_OPERATOR): vol.In([GROUP_AND, GROUP_OR]),
+        # Two, minimum. A group of one is the leaf it contains, and storing it
+        # as a group gives the editor a node with no reading and the summary a
+        # word that means nothing.
+        vol.Required(CONF_CONDITIONS): vol.All(
+            cv.ensure_list, [_LEAF_CONDITION_SCHEMA], vol.Length(min=2)
+        ),
+        vol.Optional(CONF_LABEL, default=None): vol.Any(None, cv.string),
+    }
+)
+
+CONDITION_SCHEMA: Final = cv.key_value_schemas(
+    CONF_KIND,
+    {
+        CONDITION_COMPARISON: _comparison,
+        CONDITION_DAY_SET: _DAY_SET_CONDITION_SCHEMA,
+        CONDITION_GROUP: _GROUP_SCHEMA,
+    },
+)
+
+# The list is an AND (§7.1's "evaluated as a whole"), and that is stated here
+# because it is the only place it *can* be stated — there is no top-level
+# operator field, deliberately. Adding one would put a word on every rule that
+# reads "and" in almost every case, and combined with groups it would give two
+# levels of nesting rather than one. The cost is that a disjunction of
+# conjunctions — *(A and B) or (C and D)* — is not expressible; D23's last row
+# is the escape hatch for it, and it is a better one, because that expression is
+# exactly what a named helper entity should be called something.
+CONDITIONS_SCHEMA: Final = vol.All(cv.ensure_list, [CONDITION_SCHEMA])
+
+
+# --- actions, desired state ------------------------------------------------
+# Present, empty, and owned by step 5. See `_reserved_for`.
+
 ACTIONS_SCHEMA: Final = _reserved_for("5", "actions (D27, D30-D32)")
 DESIRED_STATE_SCHEMA: Final = _reserved_for("5", "desired state (D28)")
 
@@ -346,49 +539,60 @@ RULE_SCHEMA: Final = cv.key_value_schemas(
 # D1: recurrence selects the dates on which rules *begin*, never occurrences.
 # A 23:00 -> 02:00 interval is therefore one occurrence beginning on one date.
 
+# The four date-generating shapes are a module-level mapping rather than a literal
+# inside the recurrence union, because D20 says a day set is usable as recurrence
+# *and* as condition, and the cheapest way to keep that true is for both to be the
+# same schema object. "Every Tuesday" typed into a schedule and "every Tuesday"
+# typed into a day set then cannot drift into two spellings the engine has to
+# special-case, which is the drift D20 exists to forbid. The keys are the `RECUR_*`
+# strings, and `const.py`'s `SOURCE_*` aliases are the same strings for the same
+# reason.
+DATE_SOURCE_SCHEMAS: Final[dict[str, vol.Schema]] = {
+    RECUR_WEEKDAYS: vol.Schema(
+        {
+            vol.Required(CONF_KIND): RECUR_WEEKDAYS,
+            vol.Required(RECUR_WEEKDAYS): vol.All(
+                cv.ensure_list, [vol.In(WEEKDAYS)], vol.Length(min=1)
+            ),
+        }
+    ),
+    RECUR_DATES: vol.Schema(
+        {
+            vol.Required(CONF_KIND): RECUR_DATES,
+            vol.Required(RECUR_DATES): vol.All(
+                cv.ensure_list, [_iso_date], vol.Length(min=1)
+            ),
+        }
+    ),
+    RECUR_NTH_WEEKDAY: vol.Schema(
+        {
+            vol.Required(CONF_KIND): RECUR_NTH_WEEKDAY,
+            # -1 is the last such weekday of the month. 0 has no reading.
+            vol.Required(CONF_NTH): vol.All(
+                _whole_number, vol.Range(min=-1, max=5), vol.NotIn([0])
+            ),
+            vol.Required(CONF_WEEKDAY): vol.In(WEEKDAYS),
+        }
+    ),
+    RECUR_EVERY_N: vol.Schema(
+        {
+            vol.Required(CONF_KIND): RECUR_EVERY_N,
+            # Days, counted from `from` — which is required, because "every
+            # third day" has no meaning without a day to count from.
+            vol.Required(CONF_INTERVAL): vol.All(_whole_number, vol.Range(min=1)),
+            vol.Required(CONF_FROM): _iso_date,
+        }
+    ),
+}
+
 _RECURRENCE_SCHEMA: Final = cv.key_value_schemas(
     CONF_KIND,
     {
-        RECUR_WEEKDAYS: vol.Schema(
-            {
-                vol.Required(CONF_KIND): RECUR_WEEKDAYS,
-                vol.Required(RECUR_WEEKDAYS): vol.All(
-                    cv.ensure_list, [vol.In(WEEKDAYS)], vol.Length(min=1)
-                ),
-            }
-        ),
-        RECUR_DATES: vol.Schema(
-            {
-                vol.Required(CONF_KIND): RECUR_DATES,
-                vol.Required(RECUR_DATES): vol.All(
-                    cv.ensure_list, [_iso_date], vol.Length(min=1)
-                ),
-            }
-        ),
-        RECUR_NTH_WEEKDAY: vol.Schema(
-            {
-                vol.Required(CONF_KIND): RECUR_NTH_WEEKDAY,
-                # -1 is the last such weekday of the month; 0 has no reading.
-                vol.Required(CONF_NTH): vol.All(
-                    _whole_number, vol.Range(min=-1, max=5), vol.NotIn([0])
-                ),
-                vol.Required(CONF_WEEKDAY): vol.In(WEEKDAYS),
-            }
-        ),
-        RECUR_EVERY_N: vol.Schema(
-            {
-                vol.Required(CONF_KIND): RECUR_EVERY_N,
-                # Days, counted from `from` — which is required, because "every
-                # third day" has no meaning without a day to count from.
-                vol.Required(CONF_INTERVAL): vol.All(_whole_number, vol.Range(min=1)),
-                vol.Required(CONF_FROM): _iso_date,
-            }
-        ),
+        **DATE_SOURCE_SCHEMAS,
         # D20 — a day set is usable as recurrence and as condition, and D11's
-        # two-stage evaluation is what keeps those the same object. The set
-        # itself is a separate collection item, built in step 4; here it is a
-        # reference, and a dangling one renders as unresolved rather than
-        # failing the load.
+        # two-stage evaluation is what keeps those the same object. The set itself
+        # is a separate collection item. Here it is a reference, and a dangling one
+        # renders as unresolved rather than failing the load.
         RECUR_DAY_SET: vol.Schema(
             {
                 vol.Required(CONF_KIND): RECUR_DAY_SET,
@@ -578,3 +782,104 @@ def suggested_object_id(name: str) -> str:
     other makes the user compromise whichever they care about less.
     """
     return slugify(name)
+
+
+# --- day sets (D18-D22) ------------------------------------------------------
+#
+# A day set is a first-class stored object, not a field of a schedule (D18). It
+# gets its own CREATE / UPDATE / STORAGE trio for the same reason the schedule
+# does, and its `object_id` obeys the same D66 discipline -- CREATE only, never
+# re-derived -- because D21 gives every day set a `binary_sensor` and an
+# entity_id that moves on rename is the failure D66 exists to prevent.
+#
+# `owner` is recorded and not enforced, which is D18 exactly. It says who created
+# the set -- a person, or an integration that shipped it -- so that a UI can warn
+# before an edit whose blast radius the user did not author. Making it a
+# permission would mean inventing an authorisation model HA does not have: the
+# entity registry records *when* something changed and never *who* (A.11).
+
+_OFFERING_SOURCE_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_KIND): SOURCE_OFFERING,
+        vol.Required(CONF_DOMAIN): cv.slug,
+        vol.Required(CONF_KEY): cv.slug,
+    }
+)
+
+# D19 -- one level of set algebra, and the nesting ban cannot be expressed here.
+# Whether a member is itself a composition is a fact about *another* stored item,
+# so the check lives in the collection (`day_sets.py`) where the other items are
+# reachable, and again in the evaluator (`engine/day_set.py`) for a store written
+# by hand. Two members minimum because a union of one is the thing it contains.
+_COMPOSITION_SOURCE_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_KIND): SOURCE_COMPOSITION,
+        vol.Required(CONF_OPERATOR): vol.In(
+            [COMPOSE_UNION, COMPOSE_INTERSECT, COMPOSE_MINUS]
+        ),
+        vol.Required(CONF_MEMBERS): vol.All(
+            cv.ensure_list, [cv.string], vol.Length(min=2)
+        ),
+    }
+)
+
+# The four date generators are the *same* schemas the recurrence uses, by
+# reference. That is what makes D20 true rather than aspirational: "the first
+# Monday of the month" cannot mean one thing as a recurrence and another as a day
+# set, because there is one definition and one generator behind it.
+DAY_SET_SOURCE_SCHEMA: Final = cv.key_value_schemas(
+    CONF_KIND,
+    {
+        **DATE_SOURCE_SCHEMAS,
+        SOURCE_OFFERING: _OFFERING_SOURCE_SCHEMA,
+        SOURCE_COMPOSITION: _COMPOSITION_SOURCE_SCHEMA,
+    },
+)
+
+_DAY_SET_BODY: dict[str, Any] = {
+    CONF_DESCRIPTION: "",
+    CONF_OWNER: "",
+}
+
+
+def _day_set_body(*, defaults: bool) -> VolDictType:
+    """The day set's optional fields, with or without their defaults.
+
+    The same split as `_body_fields`, for the same reason: an update carries only
+    what changed, so filling a default here would turn "rename this day set" into
+    "rename it and clear its description".
+    """
+    fields: VolDictType = {}
+    for key, default in _DAY_SET_BODY.items():
+        marker = (
+            vol.Optional(key, default=default) if defaults else vol.Optional(key)
+        )
+        fields[marker] = cv.string
+    return fields
+
+
+DAY_SET_CREATE_FIELDS: VolDictType = {
+    vol.Required(CONF_NAME): vol.All(cv.string, vol.Length(min=1)),
+    vol.Optional(CONF_OBJECT_ID): cv.slug,
+    vol.Required(CONF_SOURCE): DAY_SET_SOURCE_SCHEMA,
+    **_day_set_body(defaults=True),
+}
+
+DAY_SET_UPDATE_FIELDS: VolDictType = {
+    vol.Optional(CONF_NAME): vol.All(cv.string, vol.Length(min=1)),
+    vol.Optional(CONF_SOURCE): DAY_SET_SOURCE_SCHEMA,
+    **_day_set_body(defaults=False),
+}
+
+DAY_SET_CREATE_SCHEMA: Final = vol.Schema(DAY_SET_CREATE_FIELDS)
+DAY_SET_UPDATE_SCHEMA: Final = vol.Schema(DAY_SET_UPDATE_FIELDS)
+
+DAY_SET_STORAGE_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_ID): cv.string,
+        vol.Required(CONF_NAME): vol.All(cv.string, vol.Length(min=1)),
+        vol.Required(CONF_OBJECT_ID): cv.slug,
+        vol.Required(CONF_SOURCE): DAY_SET_SOURCE_SCHEMA,
+        **_day_set_body(defaults=True),
+    }
+)

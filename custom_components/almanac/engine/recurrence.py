@@ -102,16 +102,23 @@ def start_dates(
         return dates
 
     if kind == RECUR_DAY_SET:
-        # D20 makes a day set usable as recurrence, and D11's two stages are what
-        # keep it honest: `candidate_dates` generates and `covers` filters, so
-        # "at 22:00 on Shabbat" fires once on Friday rather than twice. Neither
-        # stage can run before the day-set collection exists, and inventing a
-        # one-stage approximation in the meantime would ship precisely the
-        # wrong-time firing §5.4 is about.
+        # A guard, not a gap. D20 makes a day set usable as a recurrence and D11's
+        # two stages are what keep it honest -- `candidate_dates` generates and
+        # `covers` filters, so "at 22:00 on Shabbat" fires once on Friday rather
+        # than twice -- but both stages need the day-set collection and the
+        # resolver registry, which makes evaluating one `async`. And
+        # `engine/day_set.py` calls back into *this* function for the four date
+        # generators D20 shares with it, so putting the day-set branch here would
+        # be a genuine import cycle rather than a stylistic worry.
+        #
+        # So the branch lives in `engine/day_set.py` and `plan.async_enumerate`
+        # routes to it directly. Reaching this line means a caller bypassed that
+        # routing, which is a programming error reported as a value rather than
+        # raised, because this function's contract is that it always returns one.
         return Unresolved(
-            UnresolvedReason.NOT_IMPLEMENTED,
-            "day sets land in build step 4 (DESIGN.md §15); D11's two stages "
-            "cannot be approximated by one",
+            UnresolvedReason.ERROR,
+            "a day-set recurrence is evaluated by engine/day_set.py, which needs "
+            "the day-set collection -- see plan.async_enumerate",
         )
 
     return Unresolved(

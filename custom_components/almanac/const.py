@@ -13,9 +13,13 @@ from homeassistant.const import Platform
 
 DOMAIN: Final = "almanac"
 
-# D54 and D55: one switch and one sensor per schedule. Day sets get their own
-# binary_sensor under D21, which lands with the day-set collection in step 4.
-PLATFORMS: Final[list[Platform]] = [Platform.SENSOR, Platform.SWITCH]
+# D54 and D55: one switch and one sensor per schedule. D21: one binary_sensor
+# per day set, whose state is whether the set covers *now*.
+PLATFORMS: Final[list[Platform]] = [
+    Platform.BINARY_SENSOR,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
 # D37 — the schema version exists from the first commit so that the first
 # migration is arithmetic rather than archaeology. It is carried as the store's
@@ -25,6 +29,15 @@ SCHEMA_VERSION: Final = 1
 SCHEMA_VERSION_MINOR: Final = 1
 
 STORAGE_KEY_SCHEDULES: Final = f"{DOMAIN}.schedules"
+
+# D18 — a day set is a first-class object, so it gets its own store rather than
+# living inside the schedules that reference it. That is the whole of D18: a set
+# edited in one place changes every schedule using it, which is impossible if
+# each schedule carries its own copy. The schema version is shared with the
+# schedule store because it versions *the integration's* storage shape; two
+# independently drifting numbers would make the first cross-store migration
+# guesswork of exactly the kind D37 exists to prevent.
+STORAGE_KEY_DAY_SETS: Final = f"{DOMAIN}.day_sets"
 
 # D35 — definition and runtime state are separate stores, not separate keys in
 # one object. Counters and `last_fired` are written by the engine on a hot path;
@@ -41,6 +54,7 @@ CONFIG_ENTRY_VERSION: Final = 1
 # Websocket CRUD (D33). The prefix is part of the frontend's contract with the
 # integration, so it is a constant rather than a literal at the call site.
 WS_PREFIX_SCHEDULE: Final = f"{DOMAIN}/schedule"
+WS_PREFIX_DAY_SET: Final = f"{DOMAIN}/day_set"
 
 # --- schedule fields -------------------------------------------------------
 
@@ -102,6 +116,7 @@ ANCHOR_RESOLVER: Final = "resolver"
 CONF_AT: Final = "at"
 CONF_DOMAIN: Final = "domain"
 CONF_EDGE: Final = "edge"
+CONF_ENTITY_ID: Final = "entity_id"
 CONF_KEY: Final = "key"
 CONF_OFFSET: Final = "offset"
 
@@ -170,6 +185,90 @@ CONF_NTH: Final = "nth"
 CONF_WEEKDAY: Final = "weekday"
 
 WEEKDAYS: Final = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
+
+# --- day sets (D18-D22) ----------------------------------------------------
+#
+# D18's source list is `Weekdays | Dates | NthWeekday | EveryN |
+# ResolverOffering | Composition`, and the first four are spelled with the same
+# strings the recurrence uses. That is not a saving of four constants — it is
+# what makes D20 true. A day set usable "as recurrence and as condition" has to
+# mean the same thing in both places, and two vocabularies for "every Tuesday"
+# is how they drift apart.
+
+SOURCE_WEEKDAYS: Final = RECUR_WEEKDAYS
+SOURCE_DATES: Final = RECUR_DATES
+SOURCE_NTH_WEEKDAY: Final = RECUR_NTH_WEEKDAY
+SOURCE_EVERY_N: Final = RECUR_EVERY_N
+SOURCE_OFFERING: Final = "offering"
+SOURCE_COMPOSITION: Final = "composition"
+
+CONF_MEMBERS: Final = "members"
+CONF_OPERATOR: Final = "operator"
+CONF_OWNER: Final = "owner"
+CONF_SOURCE: Final = "source"
+
+# D19 — one level of union / intersect / minus, and no nesting. The three
+# operators are the whole of the set algebra, deliberately: a deeply composed
+# set is not enumerable in bounded time and cannot be explained in the one-line
+# summary trigger honesty depends on.
+COMPOSE_UNION: Final = "union"
+COMPOSE_INTERSECT: Final = "intersect"
+COMPOSE_MINUS: Final = "minus"
+
+# --- conditions (D23-D26) --------------------------------------------------
+#
+# D23 — structured only, no templates, ever. These are the three shapes the
+# editor has to be able to render, which under D34 is the same statement as
+# "these are the three shapes that may be stored".
+
+CONDITION_COMPARISON: Final = "comparison"
+CONDITION_DAY_SET: Final = "day_set"
+CONDITION_GROUP: Final = "group"
+
+CONF_ATTRIBUTE: Final = "attribute"
+CONF_FOR: Final = "for"
+CONF_LABEL: Final = "label"
+CONF_NEGATE: Final = "negate"
+CONF_VALUE: Final = "value"
+
+# The right-hand side of a comparison. D23's table gives two forms — a constant
+# and another entity with an optional offset — and they are a tagged union
+# rather than "a scalar, unless it looks like an entity_id", because guessing
+# from the shape of a string is how `sensor.foo` becomes a comparison against
+# the literal text.
+OPERAND_CONSTANT: Final = "constant"
+OPERAND_ENTITY: Final = "entity"
+
+CMP_EQUAL: Final = "eq"
+CMP_NOT_EQUAL: Final = "ne"
+CMP_ABOVE: Final = "gt"
+CMP_AT_LEAST: Final = "gte"
+CMP_BELOW: Final = "lt"
+CMP_AT_MOST: Final = "lte"
+CMP_IN: Final = "in"
+CMP_NOT_IN: Final = "not_in"
+
+# `in` and `not_in` take a list; everything else takes a scalar. Kept as a
+# separate tuple so the schema can enforce that relation rather than leaving the
+# evaluator to decide what `gt: [1, 2]` means.
+COMPARISON_OPERATORS: Final = (
+    CMP_EQUAL,
+    CMP_NOT_EQUAL,
+    CMP_ABOVE,
+    CMP_AT_LEAST,
+    CMP_BELOW,
+    CMP_AT_MOST,
+    CMP_IN,
+    CMP_NOT_IN,
+)
+LIST_OPERATORS: Final = (CMP_IN, CMP_NOT_IN)
+
+# §7.1 — and/or groups, one level of nesting. The rule's `conditions` list is
+# itself an AND, so a group is only ever needed for the OR; `and` is offered
+# anyway because a group the user typed and then changed their mind about should
+# not have to be rebuilt.
+GROUP_AND: Final = "and"
+GROUP_OR: Final = "or"
 
 # --- the engine (D38, D39, D44) --------------------------------------------
 

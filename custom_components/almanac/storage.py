@@ -15,8 +15,9 @@ because a store written without a version makes the first migration guesswork.
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import voluptuous as vol
 
@@ -50,6 +51,9 @@ from .schema import (
     UPDATE_SCHEMA,
     suggested_object_id,
 )
+
+if TYPE_CHECKING:
+    from .day_sets import DaySetCollection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -114,18 +118,7 @@ class ScheduleCollection(DictStorageCollection):
         finds out in the form rather than after a half-created schedule.
         """
         validated = cast(dict[str, Any], self.CREATE_SCHEMA(data))
-        # HA's `slugify` never returns an empty string for a non-empty name: a
-        # name made entirely of punctuation comes back as "unknown". That is a
-        # poor entity_id, and it is deliberately not special-cased here — D66
-        # puts the fix in the form, where the user can see the suggestion and
-        # overwrite it, rather than in a rule that silently invents a better one
-        # than they asked for. The second such schedule collides and is refused,
-        # which is the behaviour a name carrying no letters deserves.
-        object_id = validated.get(CONF_OBJECT_ID) or suggested_object_id(
-            validated[CONF_NAME]
-        )
-        _async_check_object_id_free(self.hass, object_id)
-        validated[CONF_OBJECT_ID] = object_id
+        async_settle_object_id(self.hass, validated, occupied_entity_ids)
         _check_intervals(validated)
         return validated
 
@@ -208,8 +201,44 @@ class RuntimeStore:
 
 
 @callback
-def _async_check_object_id_free(hass: HomeAssistant, object_id: str) -> None:
-    """Refuse an object_id that any of the schedule's entity_ids would collide with.
+def async_settle_object_id(
+    hass: HomeAssistant,
+    validated: dict[str, Any],
+    occupied: Callable[[str], list[str]],
+) -> None:
+    """D66's create path, in one place, for every collection that claims entity_ids.
+
+    Both collections — schedules (D54, D55) and day sets (D21) — need the same
+    three steps in the same order: take the typed slug or suggest one from the
+    name, refuse it if anything it would claim is taken, and store it. Shared
+    rather than repeated because `test_object_id_is_settled_in_exactly_one_place`
+    is not being careful about duplication, it is asserting that there is exactly
+    one place a name can turn into an identifier. A second copy of these three
+    lines would satisfy the letter of D66 and give the next collection somewhere
+    to get it subtly wrong.
+
+    `occupied` is what differs: a schedule claims a switch and a sensor, a day set
+    claims one binary_sensor.
+
+    HA's `slugify` never returns an empty string for a non-empty name: a name made
+    entirely of punctuation comes back as "unknown". That is a poor entity_id, and
+    it is deliberately not special-cased — D66 puts the fix in the form, where the
+    user can see the suggestion and overwrite it, rather than in a rule that
+    silently invents a better one than they asked for. The second such item
+    collides and is refused, which is what a name carrying no letters deserves.
+    """
+    object_id = validated.get(CONF_OBJECT_ID) or suggested_object_id(
+        validated[CONF_NAME]
+    )
+    async_check_entity_ids_free(hass, occupied(object_id))
+    validated[CONF_OBJECT_ID] = object_id
+
+
+@callback
+def async_check_entity_ids_free(
+    hass: HomeAssistant, entity_ids: Sequence[str]
+) -> None:
+    """Refuse a slug if any entity_id it would claim is already taken.
 
     D66 says the only constraint on the suggestion is collision. Note what is
     *not* done here: nothing appends `_2` to make room. Core's
@@ -217,9 +246,13 @@ def _async_check_object_id_free(hass: HomeAssistant, object_id: str) -> None:
     id and wrong for one a person typed — silently storing `shabbat_lights_2`
     when they asked for `shabbat_lights` produces exactly the un-findable entity
     D54 exists to eliminate.
+
+    All of an item's entity_ids are checked before any is created, so a slug that
+    is free as a switch and taken as a sensor is refused in the form rather than
+    discovered half-way through a create.
     """
     registry = er.async_get(hass)
-    for entity_id in occupied_entity_ids(object_id):
+    for entity_id in entity_ids:
         if hass.states.get(entity_id) is not None or registry.async_is_registered(
             entity_id
         ):
@@ -305,6 +338,10 @@ class AlmanacData:
     """
 
     schedules: ScheduleCollection
+    # D18 — day sets are a collection of their own, not a field of a schedule.
+    # Typed through TYPE_CHECKING because `day_sets.py` imports this module for
+    # D66's shared slug path, and a runtime import in both directions is a cycle.
+    day_sets: DaySetCollection
     runtime: RuntimeStore
     # D14 — one internal registry per config entry, with no discovery hook. It
     # lives here rather than in `hass.data` so that the thing which resolves a
@@ -317,6 +354,8 @@ __all__ = [
     "RuntimeStore",
     "ScheduleCollection",
     "ScheduleStore",
+    "async_check_entity_ids_free",
+    "async_settle_object_id",
     "async_setup_collection",
     "occupied_entity_ids",
 ]

@@ -50,6 +50,12 @@ class OccurrenceStatus(StrEnum):
     SCHEDULED = "scheduled"
     UNRESOLVED = "unresolved"
     OVERLAPS_PREVIOUS = "overlaps_previous"
+    # D11's second stage said no, and D12 says so out loud. The generous date pass
+    # offered this day, the resolved anchor landed outside the set, and the row the
+    # timeline draws has to say *that* rather than go missing -- "on Shabbat, at
+    # 22:00" produces a Saturday occurrence whose absence is otherwise the only
+    # evidence the two-stage filter ran at all.
+    OUTSIDE_SET = "outside_set"
 
 
 @dataclass(frozen=True, slots=True)

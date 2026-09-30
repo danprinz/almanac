@@ -235,11 +235,20 @@ def test_every_n_is_not_extended_backwards_past_its_origin() -> None:
 
 
 def test_a_day_set_recurrence_is_not_computed_rather_than_wrong() -> None:
-    """D11's two stages land in step 4, and one stage is not an approximation."""
+    """A day set is never approximated by the pure date generator.
+
+    Step 3 reported NOT_IMPLEMENTED here. Step 4 implements it — in
+    `engine/day_set.py`, because both of D11's stages need the day-set collection
+    and the resolver registry — so this function keeps a guard rather than a gap.
+    Either way the contract that matters is the same one: `start_dates` does not
+    guess. Returned rather than raised because this function always returns a
+    value.
+    """
     result = start_dates({"kind": RECUR_DAY_SET, "day_set_id": "shabbat"}, date(2026, 10, 1), date(2026, 10, 7))
 
     assert isinstance(result, Unresolved)
-    assert result.reason is UnresolvedReason.NOT_IMPLEMENTED
+    assert result.reason is UnresolvedReason.ERROR
+    assert "day_set.py" in result.detail
 
 
 @pytest.mark.parametrize(
@@ -853,7 +862,10 @@ async def test_an_unevaluatable_recurrence_is_reported_once_on_the_plan(
 
     assert plan.occurrences == ()
     assert plan.problem is not None
-    assert plan.problem.reason is UnresolvedReason.NOT_IMPLEMENTED
+    # Enumerated with no day-set collection, which is the cleanest way to make a
+    # recurrence unevaluatable: the fault is one level above every rule, so the
+    # test is about where it is reported rather than about what went wrong.
+    assert plan.problem.reason is UnresolvedReason.ERROR
 
 
 # --- D41: At recovery ------------------------------------------------------

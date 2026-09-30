@@ -247,8 +247,9 @@ def test_rule_rejects(payload: dict[str, Any]) -> None:
 @pytest.mark.parametrize(
     ("field", "value", "step"),
     [
+        # `conditions` was here until step 4 landed and gave it a schema of its
+        # own. `tests/test_conditions.py` now owns what it accepts.
         ("actions", [{"service": "light.turn_on"}], "5"),
-        ("conditions", [{"entity_id": "binary_sensor.home"}], "4"),
     ],
 )
 def test_later_steps_are_reserved_not_open(

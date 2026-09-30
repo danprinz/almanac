@@ -477,6 +477,60 @@ bug cannot be expressed. Under D26 the user states what they actually meant — 
 with a deadline — instead of toggling an implementation detail whose behaviour they must
 reverse-engineer.
 
+### 7.4 Gaps closed at step 4
+
+Recorded 2026-09-30, as implemented in step 4. D99 and D100 are about the day-set impact preview
+(D22) rather than conditions, and sit here because they were settled in the same pass.
+
+**D97 — an undetermined predicate changes nothing.** A condition the engine cannot read leaves a
+held interval held and a pending entry un-entered. It is not treated as false.
+
+*Why:* the alternative is fail-closed, which is effectively what core's `condition.state` and
+upstream's `track_conditions` do. It is rejected because a motion sensor that restarts for four
+seconds would turn the lights off, and the state that follows is one no rule asked for. A user who
+wants an interval to survive its predicate going away has a way to say so — D4's `latch` — and a
+user who wants unreadable to mean stop has the condition they already wrote. Neither is served by
+the engine guessing. The undetermined outcome is still reported (§12), so the case is visible
+rather than silently absorbed.
+
+*The asymmetry worth naming:* a definite `False` anywhere settles the whole list even when a
+sibling is unreadable. Without that, one broken sensor would make a rule with an obviously-false
+condition read as *unreadable* rather than *blocked*, which is the less useful of the two
+sentences.
+
+**D98 — a `for:` period is met at exactly its boundary.** Sixty seconds is met at sixty seconds.
+Core's `_state_valid_since` uses a strict `>`.
+
+*Why:* under D64 the engine evaluates at instants it chose itself, so a tick landing exactly on
+the boundary is a case that actually occurs rather than a measure-zero hypothetical — the next
+transition instant is computed, and the boundary is one of the things it is computed from.
+Matching core exactly would make a sixty-second condition unmet at sixty seconds, which is a
+sentence no user would predict. The divergence is deliberate and small; it is recorded because
+it is the kind of thing a later reader would otherwise "fix" back.
+
+**D99 — the impact preview names schedules it would *break*, separately from occurrences it would
+change.** D22 requires the timeline delta before saving; a deletion or a narrowing both remove
+occurrences, and the diff alone renders them identically.
+
+*Why:* a day set that a schedule's *recurrence* depends on is not optional to that schedule.
+Deleting it does not narrow the schedule, it stops the schedule enumerating at all — and in a
+diff of occurrences that is indistinguishable from a set the user meant to narrow to nothing. The
+preview has to be able to say "these two schedules will stop working", which is a different
+warning from "these occurrences go away", and D22's purpose is defeated if the most severe edit
+is the one that looks mildest.
+
+**D100 — the preview's occurrence diff does not cover schedules that reference a day set only in
+a condition, and says so.** Such a schedule is still listed among the affected; its timeline delta
+is empty.
+
+*Why:* conditions are evaluated when a transition is decided, not when occurrences are enumerated
+— that is D25, and it is what makes the predicate always-live. So there is no occurrence to
+diff, and producing one would mean evaluating conditions at enumeration time against a
+hypothetical future state, which is both wrong and a second evaluation path of the kind D64 exists
+to prevent. Stated as a limit rather than worked around, because the honest version of the warning
+("this set is used by these schedules; here is what changes on the timeline, which is not
+everything") is still the mitigation D22 asks for, and a fabricated delta would not be.
+
 ---
 
 ## 8. Actions
