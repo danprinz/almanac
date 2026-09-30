@@ -18,6 +18,13 @@ What the module owns, and why each part is here rather than in step 3:
 - **The window padding.** An anchor's offset shifts the instant, so the *source*
   window has to be shifted the other way before forecasting or the occurrence at
   the edge is lost.
+- **The two questions an anchor answers.** `async_forecast_anchor` asks *every
+  instant in this window*, which is what a timeline wants;
+  `async_resolve_anchor_on_date` asks *the instant for this civil date*, which is
+  what D1's recurrence wants, because recurrence selects the date a rule begins
+  on and that date belongs to the anchor's source event rather than to the
+  instant the offset produces. They are separate functions because the second
+  deliberately does **not** filter its answer by the window it computed from.
 
 What it does not own: pairing a `During` rule's end to its start (D38), the
 grace window (D41), and anything that decides whether an occurrence fires. Those
@@ -27,7 +34,7 @@ are step 3, and they are built on top of `AnchorForecast`.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, tzinfo
+from datetime import date, datetime, time, timedelta, tzinfo
 from typing import Any
 
 from homeassistant.util import dt as dt_util
@@ -89,26 +96,9 @@ async def async_forecast_anchor(
     one broken anchor is one occurrence rendered as unresolved (D12), not a
     stalled engine.
     """
-    kind = anchor.get(CONF_KIND)
-    offset = timedelta(seconds=int(anchor.get(CONF_OFFSET, 0)))
-
-    if kind == ANCHOR_CLOCK:
-        # A clock anchor carries no offset field: the user types a different
-        # time instead, so there is nothing for an offset to express (schema
-        # `_CLOCK_ANCHOR_SCHEMA`).
-        domain, key, offset = RESOLVER_CLOCK, anchor[CONF_AT], timedelta()
-    elif kind == ANCHOR_ENTITY_TIME:
-        domain, key = RESOLVER_ENTITY_TIME, anchor["entity_id"]
-    elif kind == ANCHOR_RESOLVER:
-        domain, key = anchor[CONF_DOMAIN], anchor[CONF_KEY]
-        if isinstance(
-            selectable := registry.async_resolve_selectable(domain, key), Unresolved
-        ):
-            return selectable
-    else:
-        return Unresolved(
-            UnresolvedReason.ERROR, f"{kind!r} is not an anchor kind (D6)"
-        )
+    if isinstance(address := _address(registry, anchor), Unresolved):
+        return address
+    domain, key, offset = address.domain, address.key, address.offset
 
     # An instant `s + offset` lands in `window` exactly when `s` lands in the
     # window shifted back by the offset. Forecasting the unpadded window and
@@ -131,6 +121,120 @@ async def async_forecast_anchor(
         instants=instants,
         horizon=forecast.horizon,
         known_through=min(_shift(forecast.known_through, offset), window.end),
+    )
+
+
+def anchor_horizon(
+    registry: ResolverRegistry, anchor: dict[str, Any]
+) -> Horizon | Unresolved:
+    """The horizon an anchor's source *declared* (D13), without forecasting it.
+
+    §5.5's claim is that the horizon is declared and never inferred, and this is
+    where that becomes literal: it is read off the `Offering`, so an anchor's
+    honesty about how far it can see costs no computation and cannot be changed
+    by what a forecast happened to return. The engine needs it separately from
+    the instants because a plan has to report *known through* even for a window
+    in which nothing is scheduled.
+    """
+    if isinstance(address := _address(registry, anchor), Unresolved):
+        return address
+    offering = registry.async_offering(address.domain, address.key)
+    return offering if isinstance(offering, Unresolved) else offering.horizon
+
+
+async def async_resolve_anchor_on_date(
+    registry: ResolverRegistry, anchor: dict[str, Any], day: date
+) -> datetime | Unresolved | None:
+    """The instant this anchor resolves to *for one civil date*, or `None`.
+
+    This is the shape D1 needs and `async_forecast_anchor` deliberately does not
+    provide. Recurrence picks the dates on which a rule **begins**, and the date
+    it picks belongs to the anchor's *source event*, not to the instant the
+    anchor finally resolves to. So the window here is the civil day itself and
+    there is **no containment filter on the result**: an offset is allowed, and
+    expected, to carry the answer out of the day it was computed for.
+
+    Filtering on the resolved instant's own date instead would reintroduce the
+    bug this project exists to fix. Upstream's `timer.py` clamps an offset to the
+    day boundary rather than rolling over (A.3), which is why schemes there
+    cannot cross midnight; dropping "twenty minutes after sunset" on a northern
+    June evening because it lands at 00:10 tomorrow is the same failure wearing
+    a filter instead of a clamp.
+
+    `None` is a *known* nothing — the source works and this date has no such
+    event, as at a polar midsummer — and is distinct from `Unresolved`, which is
+    D17's degraded answer and D42's late arrival.
+    """
+    if isinstance(address := _address(registry, anchor), Unresolved):
+        return address
+
+    zone = registry.zone
+    forecast = await registry.async_forecast(
+        address.domain, address.key, _civil_day(day, zone)
+    )
+    if isinstance(forecast, Unresolved):
+        return forecast
+    if not forecast.spans:
+        return None
+
+    # The registry returns spans sorted, so the first is the earliest. A resolver
+    # offering more than one event of the same kind on one civil day is not a
+    # shape any offering in this design has — a date names at most one sunset and
+    # at most one candle lighting — so taking the earliest is a statement about
+    # the data model rather than a tie-break.
+    return _shift(_edge(forecast.spans[0], anchor, zone), address.offset)
+
+
+@dataclass(frozen=True, slots=True)
+class _Address:
+    """Where an anchor points, once D6's three storage shapes are behind it."""
+
+    domain: str
+    key: str
+    offset: timedelta
+
+
+def _address(
+    registry: ResolverRegistry, anchor: dict[str, Any]
+) -> _Address | Unresolved:
+    """Turn a stored anchor into a resolver address. The whole of D6's collapse.
+
+    One function rather than one per caller: this is the only place where the
+    union in storage becomes the single interface below it, and a second copy of
+    the dispatch would be the first place the timeline and the engine could
+    disagree about what an anchor means.
+    """
+    kind = anchor.get(CONF_KIND)
+    offset = timedelta(seconds=int(anchor.get(CONF_OFFSET, 0)))
+
+    if kind == ANCHOR_CLOCK:
+        # A clock anchor carries no offset field: the user types a different
+        # time instead, so there is nothing for an offset to express (schema
+        # `_CLOCK_ANCHOR_SCHEMA`).
+        return _Address(RESOLVER_CLOCK, anchor[CONF_AT], timedelta())
+    if kind == ANCHOR_ENTITY_TIME:
+        return _Address(RESOLVER_ENTITY_TIME, anchor["entity_id"], offset)
+    if kind == ANCHOR_RESOLVER:
+        domain, key = anchor[CONF_DOMAIN], anchor[CONF_KEY]
+        if isinstance(
+            selectable := registry.async_resolve_selectable(domain, key), Unresolved
+        ):
+            return selectable
+        return _Address(domain, key, offset)
+    return Unresolved(UnresolvedReason.ERROR, f"{kind!r} is not an anchor kind (D6)")
+
+
+def _civil_day(day: date, zone: tzinfo) -> Window:
+    """One local civil day as a half-open window of instants.
+
+    Built the same way `Span.bounds` builds an all-day span's edges, so the two
+    cannot disagree about where a day starts. Both ends are civil midnights
+    rather than `start + 24h`, which is what makes a 23- or 25-hour DST day one
+    whole day here instead of one day and an hour of the next.
+    """
+    return Window(
+        datetime.combine(day, time(), tzinfo=zone),
+        datetime.combine(day + timedelta(days=1), time(), tzinfo=zone),
     )
 
 
@@ -160,4 +264,9 @@ def _shift(instant: datetime, offset: timedelta) -> datetime:
     return (dt_util.as_utc(instant) + offset).astimezone(instant.tzinfo)
 
 
-__all__ = ["AnchorForecast", "async_forecast_anchor"]
+__all__ = [
+    "AnchorForecast",
+    "anchor_horizon",
+    "async_forecast_anchor",
+    "async_resolve_anchor_on_date",
+]

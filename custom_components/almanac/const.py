@@ -171,6 +171,17 @@ CONF_WEEKDAY: Final = "weekday"
 
 WEEKDAYS: Final = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
+# --- the engine (D38, D39, D44) --------------------------------------------
+
+# D44 — our compute budget, which §10.6 is careful to distinguish from a
+# resolver's own horizon (D13): one is how far we are willing to compute, the
+# other is how far the source can honestly see. The figure is "a starting point
+# to be revisited against real enumeration cost, not a measured one", so it lives
+# here as one named number rather than spread through the enumerator, and the
+# plan reports `computed_through` so that beyond it the timeline can say *not
+# computed* instead of guessing.
+ENUMERATION_HORIZON_DAYS: Final = 90
+
 # --- completion fields (D46) -----------------------------------------------
 
 CONF_COUNT: Final = "count"

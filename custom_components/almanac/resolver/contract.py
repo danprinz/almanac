@@ -94,6 +94,31 @@ class Horizon:
         return cls(HorizonKind.NEXT_ONLY)
 
 
+def absolute(instant: datetime) -> datetime:
+    """The same instant in UTC, so that comparing two of them cannot go wall-clock.
+
+    Not a formality, and not defensive. Python compares — and subtracts — two aware
+    datetimes that share a `tzinfo` *object* by their naive values, ignoring the
+    offset entirely. This is deliberate in CPython: PEP 495 specifies intra-zone
+    comparison as wall-clock so that a zone's own ordering stays total. And
+    `ZoneInfo` interns its instances, so every instant produced for one schedule
+    shares one `tzinfo` and takes that path.
+
+    On the November night the clocks go back, 01:15 EST is genuinely forty-five
+    minutes *after* 01:30 EDT, and compares as being fifteen minutes before it;
+    subtracting them yields −23:15. So an interval ending inside the repeated hour
+    appears to end before it began, and `Window.contains` answers for the wrong one
+    of the two 01:15s.
+
+    D40 already settles what the *semantics* are — clock anchors are wall time,
+    resolver anchors are absolute instants. This is what stops the implementation
+    reaching the opposite answer by accident, one attribute lookup at a time. Every
+    comparison and every subtraction of two instants in this integration goes
+    through here; `engine/occurrence.py` re-exports it for the engine's call sites.
+    """
+    return instant.astimezone(dt_util.UTC)
+
+
 @dataclass(frozen=True, slots=True)
 class Window:
     """A half-open interval of instants, `[start, end)`.
@@ -111,12 +136,12 @@ class Window:
         """A window has to be orientable and absolute to be comparable."""
         if self.start.tzinfo is None or self.end.tzinfo is None:
             raise ValueError("a window is made of aware instants")
-        if self.end <= self.start:
+        if absolute(self.end) <= absolute(self.start):
             raise ValueError(f"window {self.start} .. {self.end} does not move forward")
 
     def contains(self, instant: datetime) -> bool:
-        """Whether an instant falls in the window."""
-        return self.start <= instant < self.end
+        """Whether an instant falls in the window, compared absolutely."""
+        return absolute(self.start) <= absolute(instant) < absolute(self.end)
 
     def shifted(self, delta: timedelta) -> Window:
         """The same window moved by `delta`, as absolute instants.
@@ -176,7 +201,11 @@ class Span:
         if isinstance(self.start, datetime):
             if self.start.tzinfo is None or self.end.tzinfo is None:
                 raise ValueError("a precise span is made of aware instants")
-        if self.end < self.start:
+        if isinstance(self.start, datetime):
+            backwards = absolute(self.end) < absolute(self.start)  # type: ignore[arg-type]
+        else:
+            backwards = self.end < self.start
+        if backwards:
             raise ValueError(f"span {self.start} .. {self.end} runs backwards")
 
     @property
@@ -207,7 +236,7 @@ class Span:
         than the two instants (§5.4's Shabbat case, step 7's problem).
         """
         low, high = self.bounds(zone)
-        return low <= instant < high
+        return absolute(low) <= absolute(instant) < absolute(high)
 
     def overlaps(self, window: Window, zone: tzinfo) -> bool:
         """Whether the span touches the window at all.
@@ -287,7 +316,22 @@ class UnresolvedReason(StrEnum):
 
     UNKNOWN_DOMAIN = "unknown_domain"
     UNKNOWN_KEY = "unknown_key"
+    # Not a resolver failure at all, and deliberately in the same vocabulary as
+    # one: §15's build order means a stored schedule can legitimately reference
+    # something a later step implements — a day-set recurrence, before step 4.
+    # D12 requires that occurrence to render as *not computed* rather than to
+    # vanish, and a second enum for "we have not built it yet" would give the
+    # timeline two unrelated ways to say the same sentence.
+    NOT_IMPLEMENTED = "not_implemented"
     NOT_SELECTABLE = "not_selectable"
+    # Also the engine's rather than a resolver's, and here for the same reason as
+    # `NOT_IMPLEMENTED`. D38 pairs an interval's end to the first occurrence of its
+    # end anchor at or after the resolved start, and D39 bounds how far that search
+    # may run. When nothing is found inside the bound there is no interval at all,
+    # and D12 requires the timeline to say so. The resolver answered perfectly
+    # well — it is the *pairing* that failed, which is a different sentence from
+    # "unavailable" and needs to read as one in a tooltip.
+    NO_PAIRING = "no_pairing"
     ROLE_NOT_OFFERED = "role_not_offered"
     UNAVAILABLE = "unavailable"
     TIMEOUT = "timeout"

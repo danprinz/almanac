@@ -40,6 +40,7 @@ from .const import (
     STORAGE_KEY_SCHEDULES,
     WS_PREFIX_SCHEDULE,
 )
+from .engine import interval_problems
 from .resolver import ResolverRegistry
 from .schema import (
     CREATE_FIELDS,
@@ -125,6 +126,7 @@ class ScheduleCollection(DictStorageCollection):
         )
         _async_check_object_id_free(self.hass, object_id)
         validated[CONF_OBJECT_ID] = object_id
+        _check_intervals(validated)
         return validated
 
     @callback
@@ -153,7 +155,14 @@ class ScheduleCollection(DictStorageCollection):
         same two-line merge somewhere else.
         """
         update = cast(dict[str, Any], self.UPDATE_SCHEMA(update_data))
-        return item | update
+        merged = item | update
+        # Checked on the *merged* result, not on the update. D39 is a relation
+        # between a rule's length and the schedule's recurrence, so either half
+        # can break it while arriving alone and valid — changing the recurrence
+        # from daily to twice-daily is the case that a check on `update` would
+        # wave through.
+        _check_intervals(merged)
+        return merged
 
 
 class RuntimeStore:
@@ -215,6 +224,30 @@ def _async_check_object_id_free(hass: HomeAssistant, object_id: str) -> None:
             entity_id
         ):
             raise vol.Invalid(f"The entity id {entity_id} is already taken")
+
+
+@callback
+def _check_intervals(schedule: dict[str, Any]) -> None:
+    """D39 — refuse a schedule whose intervals would overlap their own repeats.
+
+    Here rather than in `schema.py` because it is a cross-field relation between
+    `rules` and `recurrence`, and because the reasoning belongs to the engine: the
+    number it compares against is `recurrence_period`, which is the same bound
+    D38's end-anchor search uses. Expressing it as a voluptuous validator would
+    put a second copy of that arithmetic in the schema, and the two could drift.
+
+    Refusing at save is D39's actual decision, and the alternative it rejects is
+    silent coalescing. A schedule the editor accepted and the engine then quietly
+    reinterprets is the failure this product is a response to.
+
+    Not applied at load. `_async_validate_loaded` deliberately only re-runs the
+    schema, because a schedule stored before this check existed must still load and
+    render — the enumerator marks its colliding occurrences `OVERLAPS_PREVIOUS`
+    (D12) instead, which is visible and fixable. Dropping it at load would make an
+    upgrade destructive.
+    """
+    if problems := interval_problems(schedule):
+        raise vol.Invalid("; ".join(problems))
 
 
 async def async_setup_collection(hass: HomeAssistant) -> ScheduleCollection:

@@ -16,7 +16,12 @@ ambient value, and a `Window` is a parameter of every question.
 
 from __future__ import annotations
 
-from .anchor import AnchorForecast, async_forecast_anchor
+from .anchor import (
+    AnchorForecast,
+    anchor_horizon,
+    async_forecast_anchor,
+    async_resolve_anchor_on_date,
+)
 from .clock import ClockResolver
 from .contract import (
     BaseResolver,
@@ -34,6 +39,7 @@ from .contract import (
     Unresolved,
     UnresolvedReason,
     Window,
+    known_through,
 )
 from .entity_time import EntityTimeResolver
 from .registry import ResolverRegistry, async_create_registry
@@ -60,6 +66,9 @@ __all__ = [
     "Unresolved",
     "UnresolvedReason",
     "Window",
+    "anchor_horizon",
     "async_create_registry",
     "async_forecast_anchor",
+    "async_resolve_anchor_on_date",
+    "known_through",
 ]

@@ -733,6 +733,83 @@ rather than guessing. This is distinct from a resolver's own horizon (D13): one 
 budget, the other is the source's honesty. The figure is a starting point to be revisited
 against real enumeration cost, not a measured one.
 
+### 10.6a Gaps closed at step 3
+
+Seven questions the engine could not be written without. Recorded 2026-09-30, all as implemented
+in step 3. Where the alternative was defensible it is named, because these are the ones most
+likely to be revisited.
+
+**D90 — restart re-entry is its own transition, distinct from entry.** D41 says a `During` rule
+"reconciles" on restart; the engine emits `RESUME`, which re-applies desired state without
+re-running D5's enter actions.
+
+*Why:* a consumer that only saw `ENTER` would re-run the enter actions on every Home Assistant
+restart. For the flagship case that means re-sending an IR burst and re-dimming lights someone
+has since adjusted by hand, once per restart, for no scheduled reason. The distinction has to be
+in the transition kind rather than in a flag on it, because the audit log (§12) has to be able to
+say which of the two happened.
+
+**D91 — disarming a rule mid-interval exits immediately and runs its exit behaviour.** D47
+settles that *completion* never takes effect mid-interval; turning a rule off is not completion,
+and takes effect at once.
+
+*Why:* the principle under D47 is that a schedule must not exit leaving the world in a state it
+created. Disarming a rule and leaving its interval latched until its natural end would hold the
+world in that state with nothing on any surface still claiming responsibility for it — the switch
+reads off, and the lights are still on because of it. Immediate exit runs `on_exit` (D3), so the
+three-valued choice the user already made is what decides whether state is restored, replaced or
+left.
+
+*The alternative, and why not:* letting the interval finish is more predictable, and is what a
+user who disarms a rule at 23:00 "for tomorrow" probably meant. It is rejected because it makes
+*off* mean two different things depending on when it was pressed, and because D47's mid-interval
+protection already exists for the case where finishing matters.
+
+**D92 — an `At` occurrence whose anchor is unresolved produces no transition at all.** It is
+logged at DEBUG and left undecided, rather than emitting a missed-fire.
+
+*Why:* D42 says an unavailable anchor is "skipped and logged", and the engine does not know *when*
+the occurrence should have happened — that is precisely what failed to resolve. Emitting a missed
+transition would mean inventing an instant to hang it on, and a fabricated timestamp in the §12
+audit trail is worse than no row, because the plan already shows the occurrence as unresolved
+(D12). Leaving it undecided is also what allows D41's grace window to pick it up if the anchor
+recovers in time.
+
+**D93 — a schedule with no recorded evaluation point gets no lookback, whatever its grace
+window.** Either it was just created or its runtime state was lost.
+
+*Why:* the grace window exists to survive a restart that straddled an occurrence, and it can only
+mean that if there is a recorded point to have straddled. Firing on first evaluation because the
+rule happens to declare twelve hours of grace would be the engine inventing a past, and the
+observable effect — a schedule that fires the moment it is saved — is indistinguishable from a
+bug.
+
+**D94 — the forward search for an end anchor is bounded by the recurrence period.** D38 pairs an
+end anchor to its first occurrence at or after the start; that search needs a limit. It is the
+shortest possible gap between two starts of the same rule, falling back to D44's horizon when the
+recurrence states no period.
+
+*Why:* it introduces no new arbitrary constant, and it is the same quantity D39's save-time check
+already bounds on — an interval that ran past the next start would be the overlap D39 rejects, so
+searching beyond that point can only find an end the engine would refuse anyway.
+
+**D95 — `end: duration` is absolute, not wall-clock.** "For four hours" is four hours, including
+across a DST transition.
+
+*Why:* D40 makes *clock anchors* wall time, because 22:00 means 22:00 on both sides of a
+transition. A duration is the opposite kind of statement: the user said how long, not when. An
+air conditioner asked to run for four hours on the March night would otherwise run for three.
+
+**D96 — a date window's `from` and `until` are inclusive at both ends**, in deliberate contrast
+to D88's half-open resolver spans.
+
+*Why:* the two are different kinds of object. A resolver span is computed and tiles against its
+neighbours, which is what half-open is for. A date window is two dates a person typed, and a
+person who types an end date means the day they named. Making it exclusive would mean a schedule
+that runs "until 31 December" stops on the 30th — an off-by-one the user would have to know about
+the encoding to predict. The contrast is stated here rather than reconciled because reconciling it
+would mean one of the two lying about its own purpose.
+
 ### 10.7 Firing externally
 
 **D45 — a `run_now` service takes a schedule or rule reference and an explicit
@@ -1413,6 +1490,30 @@ One caveat, per Appendix B: the *structure* above — which branch is guarded by
 parameter names exist, which paths have no filter — is what these citations establish. Where a
 precedent's string literals matter (`"almanac"`, a URL) they are this project's own, not quoted
 from third-party source.
+
+**A.13 — Python compares and subtracts two aware datetimes sharing a `tzinfo` *object* by wall
+clock, ignoring the offset. Verified 2026-09-30 by execution** on the pinned CPython 3.14.2,
+which is out-of-band evidence in Appendix B's sense: the interpreter's behaviour is not a content
+read.
+
+On 2026-11-01 in `America/New_York`, with `a = 01:30 fold=0` (EDT) and `b = 01:15 fold=1` (EST) —
+genuinely forty-five minutes apart:
+
+- `a.tzinfo is b.tzinfo` → `True`. `ZoneInfo` interns its instances, so *every* instant this
+  integration produces for one location takes this path. It is not an exotic case.
+- `b < a` → `True`, and `b - a` → `-15 minutes`. Converted to UTC first, `b > a` and the
+  difference is `+45 minutes`.
+
+This is specified, not a defect: PEP 495 defines intra-zone comparison as wall-clock so that a
+zone's own ordering stays total, and `fold` is deliberately ignored. It therefore cannot be waited
+out and has to be compared around.
+
+*What it decided:* `absolute()` in `resolver/contract.py`, through which every comparison and
+subtraction of two instants in the integration passes, and the reason it lives in the contract
+rather than the engine. Found at step 3 by a test: a four-hour `During` across the spring-forward
+read as five hours. The autumn case is worse than wrong — an interval ending inside the repeated
+hour looks inverted, so a correctly built interval fails its own invariant. D40 settles what the
+semantics are; this is what stops the implementation reaching the opposite answer by accident.
 
 ---
 

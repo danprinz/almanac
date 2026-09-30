@@ -37,7 +37,7 @@ from custom_components.almanac.resolver import (
     UnresolvedReason,
     Window,
 )
-from custom_components.almanac.resolver.contract import known_through
+from custom_components.almanac.resolver.contract import absolute, known_through
 
 NY = ZoneInfo("America/New_York")
 
@@ -177,6 +177,66 @@ def test_a_zero_length_span_on_the_exclusive_edge_does_not_overlap() -> None:
     """Half-open, so two adjacent windows cannot both claim the boundary."""
     assert not Span(WINDOW.end, WINDOW.end).overlaps(WINDOW, NY)
     assert Span(WINDOW.start, WINDOW.start).overlaps(WINDOW, NY)
+
+
+# --- the repeated hour (D40, and `absolute`) --------------------------------
+#
+# Every instant these classes handle for one location shares one interned
+# `ZoneInfo`, and Python compares — and subtracts — two such instants by wall
+# clock, ignoring the offset. PEP 495 specifies that, so it is not a bug to be
+# waited out; it has to be compared around. On the night the clocks go back these
+# three tests are the difference between the contract answering about the right
+# 01:45 and the wrong one.
+#
+# Built from UTC on purpose. Adding a `timedelta` to an aware datetime is *also*
+# wall-clock arithmetic and drops `fold`, so constructing these by hand in local
+# time is how a test ends up asserting something other than what it says.
+
+_UTC = ZoneInfo("UTC")
+
+
+def _ny(hour: int, minute: int) -> datetime:
+    """A New York instant, named by its UTC time on 2026-11-01."""
+    return datetime(2026, 11, 1, hour, minute, tzinfo=_UTC).astimezone(NY)
+
+
+EDT_0130 = _ny(5, 30)  # 01:30 EDT, the first pass
+EST_0115 = _ny(6, 15)  # 01:15 EST, forty-five minutes later
+
+
+def test_the_repeated_hour_really_does_compare_backwards() -> None:
+    """The hazard itself, asserted, so the tests below are not guarding a phantom.
+
+    Two instants forty-five minutes apart. Same `tzinfo` object, so Python reports
+    the later one as fifteen minutes *earlier*.
+    """
+    assert EDT_0130.tzinfo is EST_0115.tzinfo
+    assert EST_0115 < EDT_0130
+    assert EST_0115 - EDT_0130 == timedelta(minutes=-15)
+    assert absolute(EST_0115) - absolute(EDT_0130) == timedelta(minutes=45)
+
+
+def test_a_window_across_the_fold_is_not_read_as_running_backwards() -> None:
+    """A forty-five-minute window that `__post_init__` would otherwise reject."""
+    window = Window(EDT_0130, EST_0115)
+    assert absolute(window.end) - absolute(window.start) == timedelta(minutes=45)
+
+
+def test_containment_in_the_repeated_hour_distinguishes_the_two_oclocks() -> None:
+    """01:45 happens twice, and only the first one is in this window.
+
+    Naively neither is: wall-clock 01:45 does not fall between 01:30 and 01:15.
+    """
+    window = Window(EDT_0130, EST_0115)
+    assert window.contains(_ny(5, 45))  # 01:45 EDT
+    assert not window.contains(_ny(6, 45))  # 01:45 EST
+
+
+def test_a_span_covers_the_second_pass_through_a_repeated_instant() -> None:
+    """`Span.covers` has the same exposure as `Window.contains`, one layer over."""
+    span = Span(EDT_0130, EST_0115)
+    assert span.covers(_ny(5, 45), NY)
+    assert not span.covers(_ny(6, 45), NY)
 
 
 # --- InvalidationSignal (D43) ----------------------------------------------

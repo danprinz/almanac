@@ -130,14 +130,17 @@ class ResolverRegistry:
             )
         return offering
 
-    async def async_forecast(
-        self, domain: str, key: str, window: Window
-    ) -> Forecast | Unresolved:
-        """Enumerate a window, with the horizon attached (§5.5).
+    @callback
+    def async_offering(self, domain: str, key: str) -> Offering | Unresolved:
+        """Describe one addressed offering, parametric resolvers included.
 
-        The horizon is read from the offering and `known_through` computed here,
-        once, rather than by each resolver — so a resolver cannot claim to see
-        further than it declared, and a renderer never has to guess.
+        The difference from `async_resolve_selectable` is deliberate and is D86:
+        that method answers *may a stored `kind: resolver` anchor name this*, and
+        so refuses a parametric resolver on principle. This one answers *what is
+        this key, and what did it declare* — which `clock` and `entity_time` can
+        both answer about a key of their own, and which is what a caller needs in
+        order to read a horizon off the declaration rather than infer it from a
+        forecast (D13).
         """
         resolver = self._resolvers.get(domain)
         if resolver is None:
@@ -148,6 +151,20 @@ class ResolverRegistry:
             return Unresolved(
                 UnresolvedReason.UNKNOWN_KEY, f"{domain} does not offer {key!r}"
             )
+        return offering
+
+    async def async_forecast(
+        self, domain: str, key: str, window: Window
+    ) -> Forecast | Unresolved:
+        """Enumerate a window, with the horizon attached (§5.5).
+
+        The horizon is read from the offering and `known_through` computed here,
+        once, rather than by each resolver — so a resolver cannot claim to see
+        further than it declared, and a renderer never has to guess.
+        """
+        if isinstance(offering := self.async_offering(domain, key), Unresolved):
+            return offering
+        resolver = self._resolvers[domain]
 
         result = await self._call(domain, key, resolver.forecast(key, window))
         if isinstance(result, Unresolved):
@@ -191,16 +208,9 @@ class ResolverRegistry:
         self, domain: str, key: str
     ) -> InvalidationSignal | Unresolved:
         """What has to change for this key's answers to change (D43)."""
-        resolver = self._resolvers.get(domain)
-        if resolver is None:
-            return Unresolved(
-                UnresolvedReason.UNKNOWN_DOMAIN, f"no resolver for domain {domain!r}"
-            )
-        if resolver.offering(key) is None:
-            return Unresolved(
-                UnresolvedReason.UNKNOWN_KEY, f"{domain} does not offer {key!r}"
-            )
-        return resolver.invalidation(key)
+        if isinstance(offering := self.async_offering(domain, key), Unresolved):
+            return offering
+        return self._resolvers[domain].invalidation(key)
 
     @callback
     def async_subscribe(
