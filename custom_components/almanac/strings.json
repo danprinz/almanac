@@ -9,5 +9,25 @@
     "abort": {
       "single_instance_allowed": "almanac is already set up. Schedules are items inside it, not separate installations."
     }
+  },
+  "services": {
+    "run_now": {
+      "name": "Run now",
+      "description": "Run a schedule, or one rule in it, straight away — without waiting for its anchor and without moving it.",
+      "fields": {
+        "schedule_id": {
+          "name": "Schedule",
+          "description": "The schedule to run. Give this or an almanac entity to act on."
+        },
+        "rule_id": {
+          "name": "Rule",
+          "description": "One rule inside the schedule. Leave empty to run every rule."
+        },
+        "bypass_conditions": {
+          "name": "Ignore conditions",
+          "description": "Run even where the rule's conditions are not met. Off by default: a rule whose conditions are false is recorded as skipped."
+        }
+      }
+    }
   }
 }

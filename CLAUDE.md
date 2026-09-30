@@ -7,10 +7,15 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 `scheduler-card`): a schedule engine and UI whose rule model is **enumerable**, so that
 "what will happen between now and Friday night" is a view you can actually render.
 
-## Status — 2026-09-24
+## Status — 2026-09-30
 
-**Design settled. No code yet.** The brief's five open questions are answered, and the model
-is recorded in `DESIGN.md` as numbered decisions D1–D71.
+**Build steps 1–5 of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
+resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
+and — at step 5 — actions, desired state, scripts, completion and the tick that drives them.
+431 tests pass. Remote is `git@github.com:danprinz/almanac.git`.
+
+Decisions now run D1–D106. Each build step closes the gaps it found in its own subsection
+(`DESIGN.md` §5.6, §7.4, §10.6a, §11.1) rather than editing the decision it refines.
 
 | File | Contains |
 | --- | --- |
@@ -27,9 +32,16 @@ the first commit; anything added since takes the next free number and lives in t
 belongs to. Do **not** renumber to tidy the sequence — see the convention note at the top of
 `DESIGN.md`.
 
-**Next step:** `DESIGN.md` §15 build order, step 1 — schema, storage collection, entity model,
-config flow. The `almanac` namespace check is **done** — clear in core, in the HACS default
-list, and in a GitHub manifest-domain search (`DESIGN.md` "Remaining checks").
+**Next step:** `DESIGN.md` §15 build order, step 6 — observability (D48–D52). Then 7 (`hdate`
+resolver), 8 (timeline and dry run), 9 (UI), 10 (importer, last — D60). The `almanac` namespace
+check is **done** — clear in core, in the HACS default list, and in a GitHub manifest-domain
+search (`DESIGN.md` "Remaining checks").
+
+**Two things a reader of the code needs before touching the engine.** A.13 — Python compares
+*and subtracts* two aware datetimes sharing a `tzinfo` object by wall clock, so every instant
+comparison goes through `absolute()` in `resolver/contract.py`, `key=absolute` included. And D64
+below, which `tests/test_design_constraints.py` enforces by an AST sweep: the allow-list names the
+five functions in `tick.py` that may sample the clock, and nothing else in the package may.
 
 **Frontend toolchain: decided** — §17, D67–D71. One repository, HACS category `integration`,
 TypeScript + Lit built by Rollup into `custom_components/almanac/frontend/dist/`, panel via

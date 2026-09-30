@@ -1,0 +1,34 @@
+# D45 — one service, `run_now`, with condition bypass as an explicit flag on it
+# rather than as a second service name. Two names would make the audit trail read
+# as if the conditions had passed, and §12 is what makes that unacceptable.
+run_now:
+  target:
+    entity:
+      integration: almanac
+      domain: switch
+  fields:
+    schedule_id:
+      # The stored id, for callers that have one — a script, a websocket client, a
+      # test. The entity target above is the same instruction said the way a person
+      # says it; either identifies the schedule, and `entity.py` makes the mapping
+      # exact by carrying the collection id as the entity's unique_id.
+      required: false
+      example: 01JC0Q5Z3T8V0T1F5W8Y2Q4R6B
+      selector:
+        text:
+    rule_id:
+      # Optional, and when absent every rule in the schedule runs. Naming one rule
+      # is the case this service was added for: proving a single rule fires the way
+      # it was meant to, without waiting for its anchor.
+      required: false
+      example: 01JC0Q6A7M4N2P8R1S3T5V7W9X
+      selector:
+        text:
+    bypass_conditions:
+      # Off by default. With it off, a rule whose conditions are false is logged as
+      # skipped rather than raising: "the conditions were false" is the rule's own
+      # answer, not a broken service call.
+      required: false
+      default: false
+      selector:
+        boolean:

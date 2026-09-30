@@ -54,6 +54,7 @@ from .schema import (
 
 if TYPE_CHECKING:
     from .day_sets import DaySetCollection
+    from .tick import AlmanacTick
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -347,6 +348,12 @@ class AlmanacData:
     # lives here rather than in `hass.data` so that the thing which resolves a
     # schedule's anchors has the same lifetime as the schedules themselves.
     resolvers: ResolverRegistry
+    # The running tick (D64's one clock reader), attached after the rest of the
+    # data exists because it takes this object as its argument. Optional so that
+    # the tests which build an `AlmanacData` to exercise storage or a platform in
+    # isolation do not have to start an engine to do it; a platform that needs the
+    # tick checks for it rather than assuming setup order.
+    tick: AlmanacTick | None = None
 
 
 __all__ = [

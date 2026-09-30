@@ -3,11 +3,12 @@
 D34 makes this the constraining artifact for the whole product: no field may
 exist here that the visual editor cannot render and edit. So a field is added
 when the step that owns its UI is reached, not when the shape of it first
-becomes obvious. Where a later step owns the *contents* of a field but this step
-owns its *place* — actions, conditions, desired state — the field is present and
-its value space is empty, guarded by `_reserved_for` below. That keeps the shape
-reserved without committing the editor to anything, and makes the omission
-visible in an error message rather than in a comment nobody reads.
+becomes obvious. Until step 5 the fields whose *place* step 1 owned but whose
+*contents* a later step owned — actions and desired state — were present with an
+empty value space, guarded by a `_reserved_for` validator that named the step.
+Step 5 filled the last of them, so that guard is gone; the mechanism is recorded
+here because the next field to be reserved should be reserved the same way
+rather than left permissive.
 
 Everything validated here is stored verbatim by `DictStorageCollection`, so
 every validator must return JSON scalars. That is why clock times, dates and
@@ -29,6 +30,8 @@ from homeassistant.util import dt as dt_util, slugify
 from homeassistant.util.ulid import ulid_now
 
 from .const import (
+    ACTION_SCRIPT,
+    ACTION_SERVICE,
     ANCHOR_CLOCK,
     ANCHOR_ENTITY_TIME,
     ANCHOR_RESOLVER,
@@ -43,12 +46,14 @@ from .const import (
     CONF_ANCHOR,
     CONF_AT,
     CONF_ATTRIBUTE,
+    CONF_ATTRIBUTES,
     CONF_COMPLETION,
     CONF_CONDITION_POLICY,
     CONF_CONDITIONS,
     CONF_COUNT,
     CONF_COUNT_ON,
     CONF_DATE,
+    CONF_DATA,
     CONF_DATE_WINDOW,
     CONF_DAY_SET_ID,
     CONF_DEADLINE,
@@ -59,8 +64,10 @@ from .const import (
     CONF_ENABLED,
     CONF_END,
     CONF_ENTER_ACTIONS,
+    CONF_ENTITIES,
     CONF_ENTITY_ID,
     CONF_EXIT_ACTIONS,
+    CONF_FIELDS,
     CONF_FINISHED_WHEN,
     CONF_FOR,
     CONF_FROM,
@@ -78,15 +85,21 @@ from .const import (
     CONF_OFFSET,
     CONF_ON_EXIT,
     CONF_OPERATOR,
+    CONF_OVERRIDE,
     CONF_OWNER,
     CONF_RECURRENCE,
     CONF_RULES,
+    CONF_SCRIPT,
+    CONF_SERVICE,
     CONF_SOURCE,
     CONF_START_ANCHOR,
     CONF_STATE,
+    CONF_TARGET,
     CONF_THEN,
+    CONF_TIMEOUT,
     CONF_UNTIL,
     CONF_VALUE,
+    CONF_WAIT,
     CONF_WEEKDAY,
     COUNT_ON_ACTIONS_SUCCEEDED,
     COUNT_ON_CONDITIONS_PASSED,
@@ -118,36 +131,16 @@ from .const import (
     RECUR_WEEKDAYS,
     RULE_AT,
     RULE_DURING,
+    SCRIPT_DOMAIN,
     SOURCE_COMPOSITION,
     SOURCE_OFFERING,
+    TARGET_SELECTORS,
     THEN_ACTION,
     THEN_DELETE,
     THEN_DISABLE,
     THEN_KEEP,
     WEEKDAYS,
 )
-
-
-def _reserved_for(step: str, what: str) -> vol.Validator:
-    """Accept only an empty value, naming the build step that will fill it in.
-
-    §15's build order is the reason this exists rather than a permissive schema.
-    A field left open "for now" gets populated by a caller before the step that
-    owns it has decided what the contents mean, and by then the storage shape is
-    load-bearing. Refusing the value keeps the field's *place* reserved — which
-    is what costs a migration later — while refusing to guess its contents.
-    """
-
-    def validator(value: Any) -> Any:
-        if not value:
-            return value
-        raise vol.Invalid(
-            f"{what} is not implemented yet: it lands in build step {step} "
-            f"(DESIGN.md §15). The field exists so the storage shape does not "
-            f"change when it does."
-        )
-
-    return validator
 
 
 def _whole_number(value: Any) -> int:
@@ -417,11 +410,188 @@ CONDITION_SCHEMA: Final = cv.key_value_schemas(
 CONDITIONS_SCHEMA: Final = vol.All(cv.ensure_list, [CONDITION_SCHEMA])
 
 
-# --- actions, desired state ------------------------------------------------
-# Present, empty, and owned by step 5. See `_reserved_for`.
+# --- actions, desired state (D27, D28, D30-D32) ----------------------------
 
-ACTIONS_SCHEMA: Final = _reserved_for("5", "actions (D27, D30-D32)")
-DESIRED_STATE_SCHEMA: Final = _reserved_for("5", "desired state (D28)")
+
+def _service_name(value: Any) -> str:
+    """A `domain.service` pair, stored as the string the user typed.
+
+    `cv.service` is not used: it returns the same string but is documented as
+    validating a *template*, and D58's grammar boundary says templates are not
+    part of this model. Splitting it here also means the executor never has to
+    parse — it gets two halves it can pass straight to `async_call`.
+    """
+    if not isinstance(value, str):
+        raise vol.Invalid(f"expected a service like 'light.turn_on', got {value!r}")
+    domain, _, service = value.partition(".")
+    if not domain or not service or "." in service:
+        raise vol.Invalid(f"expected a service like 'light.turn_on', got {value!r}")
+    return f"{slugify(domain)}.{slugify(service)}"
+
+
+def _service_data(value: Any) -> dict[str, Any]:
+    """A service call's payload, stored exactly as given.
+
+    Deliberately unvalidated beyond "it is a mapping with string keys". The set
+    of valid keys belongs to the target service, not to us, and a whitelist here
+    would go stale every time an integration adds a field. D58 is the reason
+    there is no template rendering: what is stored is what is sent. A string
+    containing `{{ ... }}` is passed through verbatim and will read as a literal,
+    which is the honest outcome of having no template layer — the editor warns,
+    this does not refuse.
+    """
+    if not isinstance(value, dict):
+        raise vol.Invalid(f"expected a mapping of service data, got {value!r}")
+    if bad := [key for key in value if not isinstance(key, str)]:
+        raise vol.Invalid(f"service data keys must be strings, got {bad!r}")
+    return dict(value)
+
+
+# The five selectors, each a list. Lists rather than `cv.entity_ids`-style
+# coercion of a bare string because the stored shape has to be one thing for the
+# editor to render it (D34) — a field that is sometimes a string and sometimes a
+# list is two widgets.
+_TARGET_SCHEMA: Final = vol.Schema(
+    {vol.Optional(selector): vol.All(cv.ensure_list, [cv.string]) for selector in TARGET_SELECTORS}
+)
+
+
+def _target(value: Any) -> dict[str, list[str]]:
+    """A service call's target, refusing the empty one.
+
+    An empty `target` is not the same as no target — `{}` alongside a `data`
+    without `entity_id` is a call at every entity the service accepts, which is
+    never what a schedule means and is the shape a half-finished editor session
+    produces. No target at all stays legal, because `script.turn_on`-less
+    services like `notify.persistent_notification` genuinely have none.
+    """
+    target = cast(dict[str, list[str]], _TARGET_SCHEMA(value))
+    if not any(target.values()):
+        raise vol.Invalid("a target must name at least one entity, device, area, floor or label")
+    return target
+
+
+_SERVICE_ACTION_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_KIND): ACTION_SERVICE,
+        vol.Required(CONF_SERVICE): _service_name,
+        vol.Optional(CONF_TARGET, default=None): vol.Any(None, _target),
+        vol.Optional(CONF_DATA, default=dict): _service_data,
+    }
+)
+
+
+def _script_action(value: Any) -> dict[str, Any]:
+    """A script call, with D30's rule that waiting requires a timeout.
+
+    The relation between `wait` and `timeout` is checked here rather than in two
+    independent field validators because it *is* a relation: `wait: true` with no
+    timeout is the one setting that turns a slow script into a stuck scheduler,
+    and D30 refuses to offer it. `wait: false` with a timeout is refused too, in
+    the other direction — it stores a number that has no effect, and a stored
+    field that does nothing is a field the editor has to explain.
+    """
+    action = cast(dict[str, Any], _SCRIPT_ACTION_SCHEMA(value))
+    if action[CONF_WAIT] and action[CONF_TIMEOUT] is None:
+        raise vol.Invalid(
+            "a script action with wait: true must set a timeout (D30): an unbounded "
+            "wait holds the engine inside one rule for as long as the script takes"
+        )
+    if not action[CONF_WAIT] and action[CONF_TIMEOUT] is not None:
+        raise vol.Invalid("timeout only applies with wait: true (D30)")
+    return action
+
+
+_SCRIPT_ACTION_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_KIND): ACTION_SCRIPT,
+        # The entity, not the object id. D31's pre-flight reads the script
+        # entity's own `mode` / `current` / `max` attributes, and D57 indexes
+        # scripts alongside every other referenced entity, so storing the entity
+        # id means neither has to reconstruct it.
+        vol.Required(CONF_SCRIPT): cv.entity_domain(SCRIPT_DOMAIN),
+        # D32 — "parameters work": a direct `script.<name>` call passes
+        # `variables=service.data`, and `script.turn_on` takes `variables`, so
+        # fields reach the script on both paths (A.10).
+        vol.Optional(CONF_FIELDS, default=dict): _service_data,
+        vol.Optional(CONF_WAIT, default=False): cv.boolean,
+        vol.Optional(CONF_TIMEOUT, default=None): vol.Any(None, vol.All(_whole_number, vol.Range(min=1))),
+    }
+)
+
+
+ACTION_SCHEMA: Final = cv.key_value_schemas(
+    CONF_KIND,
+    {
+        ACTION_SERVICE: _SERVICE_ACTION_SCHEMA,
+        ACTION_SCRIPT: _script_action,
+    },
+)
+
+# D27 — "heterogeneous, multiple per rule". The list is ordered and the executor
+# honours that order, which is what makes a `wait: true` script useful at all:
+# "prepare, then act" needs the two to be sequenced. There is no length cap and
+# no uniqueness constraint — calling one service twice with different data is a
+# legitimate thing to want, and it is exactly what the one-call-per-timeslot
+# limit (Fix #4) prevented.
+ACTIONS_SCHEMA: Final = vol.All(cv.ensure_list, [ACTION_SCHEMA])
+
+
+def _desired_entity(value: Any) -> dict[str, Any]:
+    """One entity's desired state: a state, attributes, or both.
+
+    Neither alone is required, but one of them must be there. A row with neither
+    describes nothing, and `async_reproduce_state` given a `State` whose value
+    equals the current value is a call that means "leave it alone" — which the
+    user expressed by not adding the row.
+
+    `state` stays optional rather than required, which is a *provisional*
+    reading: D28 says "entity → attributes, reconciled" and does not say whether
+    the state string is mandatory. Optional is chosen because requiring it forces
+    a user who only wants to change `temperature` to restate `hvac_mode`, which
+    is the "set full state" problem D28's override exists to escape. When it is
+    absent the executor reproduces the entity's *current* state string with the
+    named attributes on top. Rejected alternative: require `state` always, on the
+    grounds that a `State` needs one — it does, but supplying the current one is
+    the executor's job, not the user's.
+    """
+    entity = cast(dict[str, Any], _DESIRED_ENTITY_SCHEMA(value))
+    if entity[CONF_STATE] is None and not entity[CONF_ATTRIBUTES]:
+        raise vol.Invalid(
+            f"{entity[CONF_ENTITY_ID]} names neither a state nor any attributes, "
+            f"so it describes no desired state"
+        )
+    return entity
+
+
+_DESIRED_ENTITY_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_ENTITY_ID): cv.entity_id,
+        vol.Optional(CONF_STATE, default=None): vol.Any(None, cv.string),
+        vol.Optional(CONF_ATTRIBUTES, default=dict): _service_data,
+    }
+)
+
+# D28 — desired state, applied through `async_reproduce_state`, with a per-rule
+# explicit service-call override for the domains where that helper is chatty and
+# non-atomic (climate issues up to seven sequential blocking calls and does not
+# skip attributes already matching — A.5).
+#
+# `override`, when present, replaces the reproduce_state call entirely: the
+# engine runs those actions instead. It is deliberately an ordinary action list
+# rather than a new shape, so the editor has one widget for it and D34 holds. It
+# still lives *beside* `entities` rather than replacing them, because the
+# entities are what the timeline reads to say what the interval will do, and
+# because D3's `restore` needs to know which entities to snapshot — an override
+# with no entity list would be a state change the engine cannot undo.
+DESIRED_STATE_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_ENTITIES): vol.All(
+            cv.ensure_list, [_desired_entity], vol.Length(min=1)
+        ),
+        vol.Optional(CONF_OVERRIDE, default=list): ACTIONS_SCHEMA,
+    }
+)
 
 
 # --- rules (D2-D5) ---------------------------------------------------------

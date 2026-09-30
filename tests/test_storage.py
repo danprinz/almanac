@@ -309,6 +309,12 @@ async def test_runtime_state_is_not_in_the_edited_object(
     The engine writes here; the editor writes to the collection. If they shared
     a store, every edit would race the engine and neither writer could see it
     happening.
+
+    Asserted as a subset rather than as equality, because from step 5 the tick is
+    live in this fixture: an edit makes it re-evaluate, and it writes its own keys
+    into the runtime record while leaving keys it does not own alone. That is the
+    claim being made — the *editor's* write does not reach the runtime store — and
+    equality here would instead assert that no engine exists.
     """
     collection = almanac_data.schedules
     runtime = almanac_data.runtime
@@ -317,13 +323,13 @@ async def test_runtime_state_is_not_in_the_edited_object(
     runtime.async_set(item["id"], {"occurrences": 2, "last_result": "fired"})
 
     updated = await collection.async_update_item(item["id"], {"name": "Renamed"})
+    await hass.async_block_till_done()
 
     assert "occurrences" not in updated
     assert "last_result" not in updated
-    assert runtime.async_get(item["id"]) == {
-        "occurrences": 2,
-        "last_result": "fired",
-    }
+    state = runtime.async_get(item["id"])
+    assert state["occurrences"] == 2
+    assert state["last_result"] == "fired"
 
 
 async def test_runtime_state_cannot_be_written_through_the_collection(

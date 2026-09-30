@@ -270,6 +270,64 @@ LIST_OPERATORS: Final = (CMP_IN, CMP_NOT_IN)
 GROUP_AND: Final = "and"
 GROUP_OR: Final = "or"
 
+# --- action fields (D27, D28, D30-D32) -------------------------------------
+
+# D27 — two kinds only, and which kinds a rule may carry is decided by the rule
+# shape, not by the action: an `At` rule's `actions` and a `During` rule's
+# `enter_actions`/`exit_actions` take both; a `During` rule's `state` is desired
+# state and is not an action list at all. Keeping the action vocabulary this
+# small is what makes D34 parity achievable — there is no action the editor
+# cannot render.
+ACTION_SERVICE: Final = "service"
+ACTION_SCRIPT: Final = "script"
+
+CONF_SERVICE: Final = "service"
+CONF_DATA: Final = "data"
+CONF_TARGET: Final = "target"
+CONF_SCRIPT: Final = "script"
+CONF_FIELDS: Final = "fields"
+
+# D30 — a script runs non-blocking by default, because a script containing a
+# `delay` would otherwise hold the engine inside one rule for the length of that
+# delay. Waiting is opt-in and *requires* a timeout: "wait forever" is the one
+# setting that turns a slow script into a stuck scheduler, so the schema refuses
+# it rather than offering it with a warning.
+CONF_WAIT: Final = "wait"
+CONF_TIMEOUT: Final = "timeout"
+
+# The five target selectors core's service calls accept. They are spelled out
+# here rather than deferred to core's own target schema so that the storage
+# format is ours and a core change cannot silently widen what a stored schedule
+# may contain — D34 again: the editor has to be able to render every one.
+CONF_DEVICE_ID: Final = "device_id"
+CONF_AREA_ID: Final = "area_id"
+CONF_FLOOR_ID: Final = "floor_id"
+CONF_LABEL_ID: Final = "label_id"
+
+TARGET_SELECTORS: Final = (
+    CONF_ENTITY_ID,
+    CONF_DEVICE_ID,
+    CONF_AREA_ID,
+    CONF_FLOOR_ID,
+    CONF_LABEL_ID,
+)
+
+# D28 — desired state is a list of entities with a state and/or attributes, and
+# it is applied through `async_reproduce_state`. `override` is the escape hatch
+# the decision insists on: for climate, core's reproduce_state issues up to seven
+# sequential blocking calls and does not skip attributes that already match
+# (A.5), so a rule may name the service call to use instead. The override lives
+# *inside* the desired-state block rather than on the rule so that `on_exit:
+# apply`, which carries a second desired state, gets the same escape hatch.
+CONF_ENTITIES: Final = "entities"
+CONF_ATTRIBUTES: Final = "attributes"
+CONF_OVERRIDE: Final = "override"
+
+# The script integration's domain. Named here because D31's pre-flight reads a
+# `script.*` entity's own attributes, and `homeassistant.components.script` must
+# not become an import dependency of this integration for the sake of one string.
+SCRIPT_DOMAIN: Final = "script"
+
 # --- the engine (D38, D39, D44) --------------------------------------------
 
 # D44 — our compute budget, which §10.6 is careful to distinguish from a

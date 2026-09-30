@@ -910,6 +910,81 @@ end. Stating it explicitly gives the *Then* axis a defined value in the ordinary
 being inapplicable, and it means a schedule's completion can be read off the stored record rather
 than inferred from a missing key.
 
+### 11.1 Gaps closed at step 5
+
+Recorded 2026-09-30, as implemented in step 5 — actions, desired state, scripts and completion,
+plus the tick that drives them. D102 and D103 belong to §10.7's `run_now` and D104–D106 to the
+tick. They sit here because step 5 is where all of them were settled.
+
+**D101 — the exit promise decides how an interval exits, not the rule as it currently stands.**
+When an interval is entered the engine stores a copy of that rule's `on_exit` and exit actions,
+keyed to the held interval, and *every* exit reads the copy.
+
+*Why:* `ExitCause.GONE` — a rule edited away while holding — forces the copy to exist regardless,
+because at that point there is no rule left to read the exit behaviour from. Once it exists,
+consulting it only there is the worse of the two rules available: it means editing a rule silently
+changes how an interval **currently in force** will end, so a user adjusting tomorrow's behaviour
+changes tonight's, with nothing in the UI to say so. The promise reading is also the only one that
+can be explained in a sentence — "it will put back what it found, because that is what it recorded
+when it started" — which is the same argument `HeldInterval.end` already makes for carrying its own
+end. *Rejected:* read the live rule and fall back to the promise only for `GONE`.
+
+**D102 — `run_now` on a `During` rule enters properly when an occurrence holds at `now`, and
+otherwise runs the enter actions only, leaving desired state untouched.**
+
+*Why:* the two alternatives are both worse. Applying desired state outside any occurrence would
+create state with no recorded end — nothing would ever put it back, which is precisely the orphaned
+state D47 exists to prevent. Refusing `run_now` on `During` rules removes the service from the
+rules that need it most: an `At` rule can be checked by waiting a second, an interval rule cannot.
+Enter actions are one-shot and self-contained, so running them is the honest subset — it does the
+part that has an ending.
+
+**D103 — `run_now` ignores the enabled flag. It does not ignore conditions.** With no `rule_id`
+named it runs every rule in the schedule, disabled ones included. Conditions are still evaluated,
+and a condition that blocks logs at INFO and returns rather than raising.
+
+*Why the enabled flag:* the service exists to answer "why did this not fire", and the commonest
+answer is "because it is disabled". A service that refuses to run a disabled rule cannot be used
+on the case it is most often reached for.
+
+*Why not conditions:* D45 already provides an explicit `bypass_conditions` flag, for the reason
+recorded there — burying condition bypass makes the audit log read as if conditions passed. Having
+`run_now` bypass them silently would make that flag meaningless. And it returns rather than raises
+because a blocked condition is a **result**, not a failure: a service exception surfaces in the UI
+as an error when the correct answer is "conditions did not pass".
+
+**D104 — a wake is armed even when nothing falls inside the enumeration horizon: a daily
+re-enumeration.** If D44's ninety days hold no transition for any schedule, the tick still wakes
+once a day and enumerates again.
+
+*Why:* D44's horizon is measured from `now`, so it moves. A schedule whose first occurrence is six
+months out has nothing inside the horizon today and something inside it in three months, and the
+only thing that can notice is a re-enumeration. Arming nothing is correct about the *plan* and
+wrong about the *schedule* — it would leave that schedule waiting for an unrelated schedule's tick
+to happen to run. This is not the polling interval the tick's docstring rejects: the wake has a
+nameable reason ("the horizon moved"), the period is a day rather than seconds, and it does no work
+when the horizon is still empty. **Flagged for ruling** — the period is a judgement, not a
+derivation.
+
+**D105 — the tick evaluates disabled schedules.** A schedule with its switch off is enumerated and
+reconciled like any other. What changes is that its occurrences come back unarmed.
+
+*Why:* D91 requires that disarming mid-interval produce an immediate exit that runs the exit path.
+Skipping disabled schedules produces no transitions at all, so a schedule disabled while holding
+would hold forever — the lights stay on and the switch reads off, which is the failure D47 and D91
+both exist to prevent. `plan.py` already marks a disabled schedule's occurrences unarmed, so the
+cost is one enumeration per disabled schedule per wake, and what it buys is that *off* means the
+world was put back.
+
+**D106 — shutdown runs no exit paths.** Home Assistant stopping, or the config entry unloading,
+cancels the wake and stops evaluating. It does not exit held intervals and does not restore state.
+
+*Why:* exiting on the way down would turn the lights off on every restart for an update, which is
+not what a held interval means. D41's recovery exists for exactly this: the held interval and its
+exit promise (D101) live in the runtime store, so the promise survives the restart and is honoured
+by whichever run is holding it afterwards. The alternative also cannot be done reliably — shutdown
+is time-boxed, and a restore that is half-applied leaves a worse state than one never started.
+
 ---
 
 ## 12. Observability
@@ -1568,6 +1643,20 @@ rather than the engine. Found at step 3 by a test: a four-hour `During` across t
 read as five hours. The autumn case is worse than wrong — an interval ending inside the repeated
 hour looks inverted, so a correctly built interval fails its own invariant. D40 settles what the
 semantics are; this is what stops the implementation reaching the opposite answer by accident.
+
+**A.14 — `ObservableCollection.notify_changes` *awaits* its listeners. Verified 2026-09-30**
+against the pinned `homeassistant` 2026.9.4 in `.venv`, `helpers/collection.py` — the same file as
+A.6. It is one `asyncio.gather` over every registered listener and change-set listener, awaited
+before the write returns.
+
+*What it decided:* D46's *Then* axis runs **outside** the tick's lock. `disable` and `delete` write
+through the schedule collection, the tick registers its own re-evaluation handler as a listener, and
+that handler takes the tick's non-reentrant lock — so a termination carried out inside the locked
+pass deadlocks the tick on a lock the same tick is holding. Found by reading the helper before
+writing the call rather than by observing the hang, which is the only reason it is a note here and
+not a defect in the history. A second benefit fell out: every runtime record is already persisted
+when a `then` fires, so the re-evaluation its write triggers sees the state this pass decided on
+rather than the state it started from.
 
 ---
 

@@ -1,19 +1,18 @@
 """almanac — a schedule engine whose rule model is enumerable.
 
-Build step 1 of DESIGN.md §15: schema, storage collection, entity model, config
-flow. The engine, the resolvers, conditions, actions and every frontend surface
-land in later steps; what is here is the shape they attach to.
+Set-up order for DESIGN.md §15's build: the storage collections and the resolver
+registry, then the platforms, then the tick — and the tick last because it is the
+only part that acts on the world.
 
 Two constraints are honoured from the first function because neither can be
 retrofitted:
 
 - **D64 — nothing below the top-level scheduler tick reads a clock.** `now` is a
-  parameter. Step 1 has no tick, so what it can do is decline to introduce the
-  habit: nothing in this package calls `dt_util.now()` or `utcnow()`, and the
-  sensor that will one day hold the next trigger returns `None` rather than
-  computing anything for itself (see `sensor.py`). The timeline, the dry run and
-  the live engine are meant to be one code path evaluated at three instants, and
-  that is only true if no layer has a clock of its own.
+  parameter. As of step 5 the tick exists, and it is the *only* module in this
+  package that reads a clock: `tests/test_design_constraints.py` sweeps the source
+  for clock reads and names `tick.py` as the one exception. The timeline, the dry
+  run and the live engine are one code path evaluated at three instants, and that
+  is only true because no layer beneath the tick has a clock of its own.
 - **D66 — the slugged entity_id is a suggestion, editable at creation, never
   re-derived.** Made structural rather than conventional: `object_id` exists in
   the create schema and in no other, so an update cannot carry one and the merge
@@ -25,10 +24,11 @@ from __future__ import annotations
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import CONFIG_ENTRY_VERSION, PLATFORMS
+from .const import CONFIG_ENTRY_VERSION, DOMAIN, PLATFORMS
 from .day_sets import async_setup_day_sets
 from .resolver import async_create_registry
 from .storage import AlmanacData, RuntimeStore, async_setup_collection
+from .tick import SERVICE_RUN_NOW, AlmanacTick, async_register_services
 
 type AlmanacConfigEntry = ConfigEntry[AlmanacData]
 
@@ -61,11 +61,34 @@ async def async_setup_entry(hass: HomeAssistant, entry: AlmanacConfigEntry) -> b
     # platform sees the full set of schedules as existing items rather than as a
     # burst of additions it has to race.
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # The tick is started last, and it then defers its first pass to
+    # `async_at_started`. Both delays are D41's: the recovery pass reconciles every
+    # interval that is in force, which means applying desired state, which needs
+    # the target entities to exist. Reconciling against a half-assembled world
+    # would report most of it as missing.
+    tick = AlmanacTick(hass, entry.runtime_data)
+    entry.runtime_data.tick = tick
+    await tick.async_start()
+    async_register_services(hass, tick)
     return True
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: AlmanacConfigEntry) -> bool:
-    """Unload the config entry."""
+    """Unload the config entry.
+
+    The tick drops its subscriptions and deliberately runs no exit paths — an
+    unload is not a schedule ending. See `AlmanacTick.async_shutdown`; the runtime
+    store is what carries held intervals across it, and D90's `RESUME` is what picks
+    them up on the way back.
+    """
+    if (tick := entry.runtime_data.tick) is not None:
+        tick.async_shutdown()
+        entry.runtime_data.tick = None
+    # D65 — one config entry, so unloading it means nothing is left to serve the
+    # service. Registering in setup and removing here keeps the two symmetrical
+    # rather than leaving a service that raises on every call.
+    hass.services.async_remove(DOMAIN, SERVICE_RUN_NOW)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 

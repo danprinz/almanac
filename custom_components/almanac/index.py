@@ -24,11 +24,13 @@ rule inside it and which field mentioned the thing, because "this schedule uses
 renamed entity wants to know it is an anchor, not which of the two anchor fields
 of a `During` rule it is.
 
-**Actions are indexed as far as step 4 can see them.** §15 step 5 owns the
-actions model, and an action's target entities are the largest source of edges
-this index will eventually carry. `_action_references` has one hook for them and
-nothing behind it yet: the shape is here so that adding it is one function rather
-than a second index.
+**Actions are indexed, as of step 5.** An action's target entities are the largest
+source of edges this index carries: service targets, scripts (D32 asks for those
+by name), desired-state entities, D28's override actions, D3's exit state and
+D46's `then: run an action`. What is *not* indexed is a service target expressed
+as an area, floor, device or label, because resolving one needs the registries and
+this index is a function of the two collections alone — see
+`_action_list_references` for why that property is worth the gap.
 """
 
 from __future__ import annotations
@@ -42,29 +44,43 @@ from typing import Any
 from homeassistant.const import CONF_ID
 
 from .const import (
+    ACTION_SCRIPT,
+    ACTION_SERVICE,
     ANCHOR_ENTITY_TIME,
     CONDITION_COMPARISON,
     CONDITION_DAY_SET,
     CONDITION_GROUP,
+    CONF_ACTIONS,
     CONF_ANCHOR,
     CONF_COMPLETION,
     CONF_CONDITIONS,
     CONF_DAY_SET_ID,
     CONF_END,
+    CONF_ENTER_ACTIONS,
+    CONF_ENTITIES,
     CONF_ENTITY_ID,
+    CONF_EXIT_ACTIONS,
     CONF_FINISHED_WHEN,
     CONF_KIND,
     CONF_MEMBERS,
+    CONF_ON_EXIT,
+    CONF_OVERRIDE,
     CONF_RECURRENCE,
     CONF_RULES,
+    CONF_SCRIPT,
     CONF_SOURCE,
     CONF_START_ANCHOR,
+    CONF_STATE,
+    CONF_TARGET,
+    CONF_THEN,
     CONF_VALUE,
     END_ANCHOR,
     FINISHED_CONDITION,
+    ON_EXIT_APPLY,
     OPERAND_ENTITY,
     RECUR_DAY_SET,
     SOURCE_COMPOSITION,
+    THEN_ACTION,
 )
 
 
@@ -244,9 +260,19 @@ def _schedule_references(
     # schedule that stops itself when an entity says so depends on that entity as
     # hard as any anchor does, and a rename that broke it would break termination
     # rather than a trigger.
-    finished = schedule.get(CONF_COMPLETION, {}).get(CONF_FINISHED_WHEN, {})
+    completion = schedule.get(CONF_COMPLETION, {})
+    finished = completion.get(CONF_FINISHED_WHEN, {})
     if finished.get(CONF_KIND) == FINISHED_CONDITION:
         for target in _condition_references(finished.get(CONF_CONDITIONS, ())):
+            yield target, Reference(schedule_id, "", Usage.COMPLETION)
+
+    # D46's `then: run an action` is the second place outside a rule that reaches
+    # the world, and it is indexed as COMPLETION rather than ACTION: the rule_id is
+    # empty because there is no rule, and calling it an action edge would send a
+    # user repairing a rename looking for a rule that does not exist.
+    then = completion.get(CONF_THEN, {})
+    if then.get(CONF_KIND) == THEN_ACTION:
+        for target in _action_list_references(then.get(CONF_ACTIONS, ())):
             yield target, Reference(schedule_id, "", Usage.COMPLETION)
 
     for rule in schedule.get(CONF_RULES, ()):
@@ -315,17 +341,70 @@ def _condition_references(
                 yield ("entity", operand[CONF_ENTITY_ID])
 
 
-def _action_references(rule: dict[str, Any]) -> Iterator[_Target]:
-    """The entities a rule's actions target — step 5's half of the index.
+def _action_list_references(actions: Sequence[dict[str, Any]]) -> Iterator[_Target]:
+    """Every entity one action list names.
 
-    Empty, and present. §15 step 5 owns the actions model and nothing is stored in
-    those fields yet (the schema refuses non-empty contents until then), so there
-    is nothing to walk. The function exists because the alternative is discovering
-    in step 5 that the index needs restructuring: the call site, the `Usage` value
-    and the docstring that says where the edges come from are the parts that are
-    expensive to add later.
+    D32 is explicit that scripts are indexed — *"the reverse index (D57) indexes
+    every script a schedule references, so 'which schedules call
+    `script.pa_announce`' is answerable"* — and a script is an entity, so it goes
+    in as one rather than under a category of its own. That is what makes the
+    rename-repair flow work uniformly: a renamed script is found by exactly the
+    query that finds a renamed light.
+
+    Only the `entity_id` selector of a service target is indexed. A call targeted
+    at an area, floor, device or label resolves to entities at call time through
+    the registries, and resolving it here would make this a function of registry
+    state rather than of the two collections — which is the property the module
+    docstring rests on, and the property D22's preview over a *proposed* edit
+    needs. The consequence, and it is accepted: "which schedules touch
+    `light.kitchen`" misses a schedule that reaches it via `area_id: kitchen`.
+    Recording an area edge instead would be the honest fix and needs a second
+    target type, which is step 9's problem once the editor can render one.
     """
-    return iter(())
+    for action in actions:
+        kind = action.get(CONF_KIND)
+        if kind == ACTION_SCRIPT:
+            yield ("entity", action[CONF_SCRIPT])
+        elif kind == ACTION_SERVICE:
+            target = action.get(CONF_TARGET) or {}
+            for entity_id in target.get(CONF_ENTITY_ID, ()):
+                yield ("entity", entity_id)
+            # `data` is not walked. An `entity_id` inside `data` rather than
+            # `target` is legal for a service call and the editor never writes one
+            # — it puts targets in `target` — so walking it would index whatever a
+            # hand-edited code view happened to contain, under a key that is only
+            # conventionally an entity id.
+
+
+def _desired_state_references(desired: dict[str, Any] | None) -> Iterator[_Target]:
+    """Every entity a desired state names, including its D28 override's."""
+    if not desired:
+        return
+    for entry in desired.get(CONF_ENTITIES, ()):
+        yield ("entity", entry[CONF_ENTITY_ID])
+    yield from _action_list_references(desired.get(CONF_OVERRIDE, ()))
+
+
+def _action_references(rule: dict[str, Any]) -> Iterator[_Target]:
+    """The entities a rule's actions target — D27's four positions, all of them.
+
+    Written as a walk over every field that can hold actions rather than a branch
+    on the rule kind, for the reason `_anchors` gives: a rule shape added later
+    would silently drop its edges and nothing would fail, and an index that is
+    quietly incomplete under-reports D22's blast radius instead of erroring.
+
+    `on_exit: apply` carries a second desired state (D3), and it is walked here
+    too. It is the edge most easily missed and the one whose absence would hurt
+    most: an entity that appears *only* in an exit state is one a rename would
+    leave the world stuck in the interval's state, with nothing in the index
+    saying why.
+    """
+    for key in (CONF_ACTIONS, CONF_ENTER_ACTIONS, CONF_EXIT_ACTIONS):
+        yield from _action_list_references(rule.get(key, ()))
+    yield from _desired_state_references(rule.get(CONF_STATE))
+    on_exit = rule.get(CONF_ON_EXIT, {})
+    if on_exit.get(CONF_KIND) == ON_EXIT_APPLY:
+        yield from _desired_state_references(on_exit.get(CONF_STATE))
 
 
 __all__ = ["Reference", "ReverseIndex", "Usage", "build_index"]

@@ -244,26 +244,26 @@ def test_rule_rejects(payload: dict[str, Any]) -> None:
         RULE_SCHEMA(payload)
 
 
-@pytest.mark.parametrize(
-    ("field", "value", "step"),
-    [
-        # `conditions` was here until step 4 landed and gave it a schema of its
-        # own. `tests/test_conditions.py` now owns what it accepts.
-        ("actions", [{"service": "light.turn_on"}], "5"),
-    ],
-)
-def test_later_steps_are_reserved_not_open(
-    field: str, value: Any, step: str
-) -> None:
-    """A field whose contents a later step owns accepts nothing but empty.
+def test_no_field_is_reserved_any_more() -> None:
+    """Every reserved place has been filled; nothing is left refusing its contents.
 
-    The place is reserved so the storage shape does not change when step 4 and
-    step 5 land; the contents are refused so nothing is stored before the step
-    that owns the UI has decided what it means (D34).
+    `conditions` was reserved until step 4, `actions` and `state` until step 5.
+    The guard that refused their contents is gone, and this test is what says so:
+    a rule carrying both now validates rather than naming a build step. If a
+    future step reserves a field again it should reserve it the same way, and this
+    test should start failing with the step's number in the message.
     """
-    payload = {"kind": "at", "anchor": {"kind": "clock", "at": "17:00"}, field: value}
-    with pytest.raises(vol.Invalid, match=f"build step {step}"):
-        RULE_SCHEMA(payload)
+    rule = RULE_SCHEMA(
+        {
+            "kind": "at",
+            "anchor": {"kind": "clock", "at": "17:00"},
+            "actions": [{"kind": "service", "service": "light.turn_on"}],
+            "conditions": [],
+        }
+    )
+    assert rule["actions"] == [
+        {"kind": "service", "service": "light.turn_on", "target": None, "data": {}}
+    ]
 
 
 # --- the schedule (§2) -----------------------------------------------------
