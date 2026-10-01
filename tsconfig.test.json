@@ -1,0 +1,27 @@
+{
+  "//": [
+    "A second config, because the first one is read by Rollup (D132).",
+    "",
+    "`node --test` runs TypeScript directly, but its loader only strips types --",
+    "it does not resolve module specifiers -- so a relative import has to name",
+    "the real file, `./rails.ts`. TypeScript accepts that only under",
+    "`allowImportingTsExtensions`, which in turn demands `noEmit`, and",
+    "@rollup/plugin-typescript sets `noEmit: false` to get its output. Putting the",
+    "flag in `tsconfig.json` therefore fails the build with TS5096 -- measured,",
+    "not assumed. So the flag lives here, with the test directory, and",
+    "`tsconfig.json` stays the config a bundler can use.",
+    "",
+    "`types: [\"node\"]` is scoped to this config for the same reason: the panel and",
+    "the card run in a browser, and `@types/node`'s globals have no business being",
+    "in scope while they are checked."
+  ],
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowImportingTsExtensions": true,
+    "types": ["node"]
+  },
+  "include": [
+    "custom_components/almanac/frontend/src/**/*.ts",
+    "custom_components/almanac/frontend/test/**/*.ts"
+  ]
+}

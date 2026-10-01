@@ -5,19 +5,25 @@
 // which is the opposite of the card's situation and the reason D70's stub
 // discipline does not apply here. Lit is imported at the top level deliberately.
 //
-// What this sub-step draws is the timeline's data layer: the window, *now* as the
-// divider, one lane per schedule, past on the left of the divider and predicted
-// on the right, and every occurrence D11's precise stage dropped shown as
-// *outside the set* rather than omitted (D12). The anchor-relative track that
-// replaces each lane's list of chips is D72–D74 and is the next sub-step; the
-// queries, the ordering and the honest statement of what is not known are the
-// parts that have to be right first, because a track drawn over the wrong
-// horizon is worse than a list drawn over the right one.
+// What the panel draws is two different things about each schedule, and D135 is
+// the decision that they are two:
+//
+//   * the **window** — now as the divider, recorded on its left and predicted on
+//     its right, with every occurrence D11's precise stage dropped shown as
+//     *outside the set* rather than omitted (D12);
+//   * the **track** — D73's anchor-relative shape of one occurrence, above it.
+//
+// An earlier note in this file said the track would replace the lane's chips. It
+// does not, because it cannot: a track is the anatomy of a single occurrence and
+// a window is a list of many, and dropping the list would drop exactly the
+// occurrences D12 exists to keep visible. The track answers "what does this
+// schedule do"; the chips answer "and what will it do between Tuesday and
+// Friday".
 
 import { LitElement, html, nothing, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
-import { dayOffset, fetchTimeline, isNotLoaded } from "./api";
+import { dayOffset, fetchSchedules, fetchTimeline, isNotLoaded } from "./api";
 import {
   armedStages,
   coverageReason,
@@ -27,7 +33,10 @@ import {
 } from "./derive";
 import { clockTime, dateLabel, dayAndTime, relative } from "./format";
 import type { HomeAssistant } from "./ha";
+import { armedRules, buildTrack } from "./rails";
+import type { StoredSchedule } from "./stored";
 import { almanacHitTarget, almanacText, almanacTokens } from "./styles";
+import "./track";
 import type {
   WireOccurrence,
   WirePastOccurrence,
@@ -51,6 +60,7 @@ export class AlmanacPanel extends LitElement {
 
   @state() private _range: Range = RANGES[1];
   @state() private _timeline?: WireTimeline | undefined;
+  @state() private _stored?: Map<string, StoredSchedule> | undefined;
   @state() private _error?: string | undefined;
   @state() private _notLoaded = false;
   @state() private _at = new Date();
@@ -92,12 +102,22 @@ export class AlmanacPanel extends LitElement {
     // would let the window and the divider disagree by a few milliseconds.
     const at = new Date();
     try {
-      const timeline = await fetchTimeline(hass, {
-        start: dayOffset(at, -this._range.back),
-        end: dayOffset(at, this._range.forward),
-        at,
-      });
+      // Both reads, concurrently and against the same `at`. The join is on
+      // `rule_id` (see `stored.ts`), so they have to describe the same
+      // configuration — and a schedule edited between two sequential reads would
+      // give a track whose rails no occurrence belongs to.
+      const [timeline, stored] = await Promise.all([
+        fetchTimeline(hass, {
+          start: dayOffset(at, -this._range.back),
+          end: dayOffset(at, this._range.forward),
+          at,
+        }),
+        fetchSchedules(hass),
+      ]);
       this._timeline = timeline;
+      this._stored = new Map(
+        stored.map((schedule) => [schedule.id, schedule] as const),
+      );
       this._at = at;
       this._error = undefined;
       this._notLoaded = false;
@@ -196,10 +216,24 @@ export class AlmanacPanel extends LitElement {
         </div>`;
   }
 
+  /** A friendly name for an entity anchor's rail, when the entity exists. */
+  private _entityName = (entityId: string): string | undefined => {
+    const attributes = this.hass?.states[entityId]?.attributes;
+    const name = attributes?.["friendly_name"];
+    return typeof name === "string" ? name : undefined;
+  };
+
   private _lane(lane: WireScheduleTimeline, timeline: WireTimeline) {
     const hass = this.hass!;
     const next = nextOccurrence(lane.plan, this._at);
-    const stages = armedStages(lane.plan);
+    const stored = this._stored?.get(lane.schedule_id);
+    // D77's fraction over the stored rules when they are to hand, because a rule
+    // with no occurrence in this window is still a stage of this schedule and a
+    // count taken from the plan alone would not know it exists.
+    const stages = stored ? armedRules(stored) : armedStages(lane.plan);
+    const track = stored
+      ? buildTrack(stored, lane.plan, this._at, this._entityName)
+      : null;
     const coverage = coverageReason(lane.coverage, lane.plan);
     const limit = horizon(lane.plan);
     const future = [...lane.plan.occurrences]
@@ -223,7 +257,15 @@ export class AlmanacPanel extends LitElement {
             : html`<span class="muted">nothing ahead in this window</span>`}
         </div>
 
-        <div class="track" role="group" aria-label=${lane.name ?? lane.schedule_id}>
+        ${track && track.rails.length > 0
+          ? html`<almanac-track
+              class="shape"
+              size="lane"
+              .track=${track}
+            ></almanac-track>`
+          : nothing}
+
+        <div class="window" role="group" aria-label=${lane.name ?? lane.schedule_id}>
           <div class="half past">
             ${timeline.recorded && lane.past.length === 0
               ? html`<span class="muted">nothing recorded</span>`
@@ -395,10 +437,15 @@ export class AlmanacPanel extends LitElement {
         flex: 1 1 auto;
       }
 
+      /* D135's upper half: the shape, drawn once, above the window. */
+      .shape {
+        margin-top: var(--almanac-gap-sm);
+      }
+
       /* D63 — one view, *now* as the divider. The two halves share a row and
          scroll independently, so a long recorded past cannot push the predicted
          future off the screen; the divider itself is the only fixed thing. */
-      .track {
+      .window {
         display: flex;
         align-items: stretch;
         gap: var(--almanac-gap-sm);

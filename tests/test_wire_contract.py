@@ -1,4 +1,4 @@
-"""The wire form, in two languages — `as_dict()` against `wire.ts`.
+"""Both boundaries, in two languages — Python against `wire.ts` and `stored.ts`.
 
 `custom_components/almanac/frontend/src/wire.ts` is written out by hand, one
 interface per `as_dict()`, and its header says this test is the reason. Here is
@@ -25,6 +25,17 @@ it does not check the *enum members*, because `str(SomeEnum.MEMBER)` is a runtim
 fact; `tests/test_observability.py` and the resolver tests already pin those
 spellings against the payloads they appear in.
 
+The second half of this module does the same job at the *storage* boundary, which
+is a separate boundary and arrived for a separate reason. D133 — the track's axis
+is the anchor sequence, and an occurrence carries no anchor, so the panel and the
+card read `almanac/schedule/list` as well as `almanac/timeline` and join the two
+on `rule_id`. That read is served straight out of the collection, so its keys are
+`schema.py`'s keys, and `stored.ts` mirrors them. The sweep is therefore over
+voluptuous schemas rather than over `as_dict()` bodies: a `vol.Schema({...})`
+display, one inline arm of a `cv.key_value_schemas` dispatch, or a plain dict of
+validators, with one named spread and one comprehension followed by table. Four
+of `stored.ts`'s shapes are deliberately opaque and `NOT_CHECKED_OPAQUE` says so.
+
 Related: `tests/test_design_constraints.py` enforces D64 the same way, by reading
 the source rather than running it. Both exist because the constraint they protect
 is invisible to every other check in the project.
@@ -38,7 +49,7 @@ import re
 
 import pytest
 
-from custom_components.almanac.const import DOMAIN
+from custom_components.almanac.const import DOMAIN, TARGET_SELECTORS
 
 PKG = pathlib.Path(__file__).resolve().parent.parent / "custom_components" / DOMAIN
 WIRE_TS = PKG / "frontend" / "src" / "wire.ts"
@@ -250,21 +261,21 @@ def nested_keys(name: str, key: str, registry: dict[str, ast.Dict]) -> set[str]:
     pytest.fail(f"{name} no longer emits `{key}`")
 
 
-def interfaces() -> dict[str, set[str]]:
-    """Field names per `export interface` in `wire.ts`.
+def interfaces(path: pathlib.Path) -> dict[str, set[str]]:
+    """Field names per `export interface`, in whichever file is asked for.
 
-    Two spaces of indentation is the whole parser, which is enough because the
-    file is hand-written to one shape and `prettier` is not in the toolchain to
+    Two spaces of indentation is the whole parser, which is enough because both
+    files are hand-written to one shape and `prettier` is not in the toolchain to
     change it. A nested object literal inside an interface would break this, and
     that is the intended pressure: a nested shape gets its own interface.
     """
-    source = WIRE_TS.read_text(encoding="utf-8")
+    source = path.read_text(encoding="utf-8")
     found: dict[str, set[str]] = {}
     for match in re.finditer(r"export interface (\w+) \{(.*?)\n\}", source, re.S):
         found[match.group(1)] = set(
             re.findall(r"^ {2}(\w+)\??:", match.group(2), re.M)
         )
-    assert found, "the interface parser stopped matching"
+    assert found, f"the interface parser stopped matching {path.name}"
     return found
 
 
@@ -275,7 +286,7 @@ def registry() -> dict[str, ast.Dict]:
 
 @pytest.fixture(scope="module")
 def wire() -> dict[str, set[str]]:
-    return interfaces()
+    return interfaces(WIRE_TS)
 
 
 @pytest.mark.parametrize(("producer", "interface"), sorted(PAIRS.items()))
@@ -353,7 +364,7 @@ def test_nothing_on_the_wire_is_optional() -> None:
     source = WIRE_TS.read_text(encoding="utf-8")
     optional = re.findall(r"^ {2}(\w+)\?:.*$", source, re.M)
 
-    past = interfaces()["WirePastOccurrence"]
+    past = interfaces(WIRE_TS)["WirePastOccurrence"]
     assert set(optional) <= past, [field for field in optional if field not in past]
 
 
@@ -392,3 +403,217 @@ def test_the_day_alias_is_only_used_for_civil_dates() -> None:
     source = WIRE_TS.read_text(encoding="utf-8")
     days = re.findall(r"^ {2}(\w+)\??: Day[;,\s]", source, re.M)
     assert set(days) == {"start_date"}
+
+
+# --- the stored form, which is the second boundary (D133) -------------------
+
+STORED_TS = PKG / "frontend" / "src" / "stored.ts"
+
+# Each voluptuous schema against the interface that mirrors it. A name in square
+# brackets is one arm of a `cv.key_value_schemas` dispatch, named by the *value*
+# of its dispatch key -- so `_END_SCHEMA[duration]` is the `kind: "duration"`
+# arm, and the arms are listed separately because `stored.ts` declares them
+# separately.
+#
+# This is `PAIRS` again at a different boundary. `PAIRS` covers what almanac
+# sends; this covers what it stores and what the collection websocket hands back
+# unchanged. D133 is why the frontend reads the stored form at all: an occurrence
+# carries no anchor, so the track joins the two reads on `rule_id`, and that
+# makes every storage key below a key the UI depends on.
+STORED = {
+    "_CLOCK_ANCHOR_SCHEMA": "StoredClockAnchor",
+    "_ENTITY_TIME_ANCHOR_SCHEMA": "StoredEntityTimeAnchor",
+    "_RESOLVER_ANCHOR_SCHEMA": "StoredResolverAnchor",
+    "_END_SCHEMA[duration]": "StoredDurationEnd",
+    "_END_SCHEMA[anchor]": "StoredAnchorEnd",
+    "_TARGET_SCHEMA": "StoredTarget",
+    "_SERVICE_ACTION_SCHEMA": "StoredServiceAction",
+    "_SCRIPT_ACTION_SCHEMA": "StoredScriptAction",
+    "_DESIRED_ENTITY_SCHEMA": "StoredDesiredEntity",
+    "DESIRED_STATE_SCHEMA": "StoredDesiredState",
+    "_AT_RULE_SCHEMA": "StoredAtRule",
+    "_DURING_RULE_SCHEMA": "StoredDuringRule",
+    "_DATE_WINDOW_SCHEMA": "StoredDateWindow",
+    "STORAGE_SCHEMA": "StoredSchedule",
+}
+
+# What `stored.ts` declares and this test does not compare, each for one of two
+# reasons. Listed rather than omitted, for `OFF_WIRE`'s reason: an empty set and
+# a set somebody looked at are different answers.
+#
+# Opaque on purpose -- the four shapes the track does not read. `stored.ts`
+# leaves them as open records because writing them out would be writing the
+# editor's types before the editor, so there is nothing here to compare.
+NOT_CHECKED_OPAQUE = {
+    "StoredRecurrence",
+    "StoredCondition",
+    "StoredConditionPolicy",
+    "StoredCompletion",
+}
+
+# Unions and aliases, not interfaces. The parser reads `export interface` bodies;
+# these are `export type A = B | C`, and their arms are the interfaces above --
+# except `StoredOnExit`, whose arms are spelled inline because two of them are
+# `{ kind: "leave" }` and nothing else, and an interface apiece would be three
+# interfaces carrying one key.
+NOT_CHECKED_UNIONS = {
+    "AnchorKind",
+    "StoredAnchor",
+    "StoredEnd",
+    "StoredAction",
+    "StoredOnExit",
+    "StoredRule",
+}
+
+# Spreads and comprehensions the sweep cannot follow, each against the name that
+# supplies the keys. There are two, and both are deliberate: `_body_fields` turns
+# the validators into markers at import time, so the keys live in
+# `_BODY_VALIDATORS`; and `_TARGET_SCHEMA` is one validator applied across
+# `TARGET_SELECTORS`, which is the shape that keeps the five selectors from
+# drifting apart.
+SCHEMA_SPREADS = {
+    "_body_fields(defaults=True)": "_BODY_VALIDATORS",
+}
+SCHEMA_SEQUENCES = {
+    "TARGET_SELECTORS": TARGET_SELECTORS,
+}
+
+
+def _marker_key(node: ast.expr) -> str | None:
+    """The storage key a dict entry is written under, or None.
+
+    Three spellings reach here: `vol.Required(CONF_X)`, `vol.Optional(CONF_X,
+    default=...)` and a bare `CONF_X` -- the last from `_BODY_VALIDATORS`, which
+    is a plain dict of validators that `_body_fields` wraps in markers later.
+    """
+    if isinstance(node, ast.Call) and node.args:
+        node = node.args[0]
+    if isinstance(node, ast.Name):
+        return CONSTANTS.get(node.id)
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _schema_keys(node: ast.AST, tables: dict[str, ast.AST]) -> set[str]:
+    """Every storage key one schema writes, spreads and comprehensions resolved."""
+    if isinstance(node, ast.DictComp):
+        over = node.generators[0].iter
+        name = over.id if isinstance(over, ast.Name) else ast.unparse(over)
+        assert name in SCHEMA_SEQUENCES, f"unfollowable comprehension over {name}"
+        return set(SCHEMA_SEQUENCES[name])
+
+    assert isinstance(node, ast.Dict), f"not a schema body: {type(node).__name__}"
+    keys: set[str] = set()
+    for key, value in zip(node.keys, node.values):
+        if key is None:
+            spread = ast.unparse(value)
+            target = SCHEMA_SPREADS.get(spread)
+            assert target is not None, f"unfollowable spread: {spread}"
+            assert target in tables, f"{target} is gone from schema.py"
+            keys |= _schema_keys(tables[target], tables)
+            continue
+        found = _marker_key(key)
+        assert found is not None, f"unreadable key: {ast.unparse(key)[:60]}"
+        keys.add(found)
+    return keys
+
+
+def schemas() -> dict[str, ast.AST]:
+    """Every module-level schema body in `schema.py`, by name.
+
+    Four shapes are recognised, and nothing else is: a plain dict assignment
+    (which is what makes `_BODY_VALIDATORS` reachable as a spread target), a
+    `vol.Schema({...})`, a `vol.Schema` over a dict comprehension, and each
+    inline arm of a `cv.key_value_schemas` dispatch, registered as
+    `OUTER[value]`. A schema that stops being one of those disappears from this
+    mapping, and the pairing test below fails by name rather than by silence.
+    """
+    tree = ast.parse((PKG / "schema.py").read_text(encoding="utf-8"))
+    found: dict[str, ast.AST] = {}
+
+    def body_of(node: ast.expr) -> ast.AST | None:
+        if isinstance(node, ast.Call) and node.args:
+            inner = node.args[0]
+            if ast.unparse(node.func).endswith("vol.Schema") and isinstance(
+                inner, (ast.Dict, ast.DictComp)
+            ):
+                return inner
+        return None
+
+    for node in tree.body:
+        if not isinstance(node, (ast.Assign, ast.AnnAssign)):
+            continue
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        if len(targets) != 1 or not isinstance(targets[0], ast.Name):
+            continue
+        name = targets[0].id
+        value = node.value
+        if value is None:
+            continue
+        if isinstance(value, ast.Dict):
+            found[name] = value
+            continue
+        direct = body_of(value)
+        if direct is not None:
+            found[name] = direct
+            continue
+        if (
+            isinstance(value, ast.Call)
+            and len(value.args) >= 2
+            and ast.unparse(value.func).endswith("key_value_schemas")
+            and isinstance(value.args[1], ast.Dict)
+        ):
+            dispatch = value.args[1]
+            for arm, arm_body in zip(dispatch.keys, dispatch.values):
+                label = None if arm is None else _marker_key(arm)
+                body = body_of(arm_body)
+                if label is not None and body is not None:
+                    found[f"{name}[{label}]"] = body
+    assert found, "the schema parser stopped matching"
+    return found
+
+
+@pytest.fixture(scope="module")
+def schema_bodies() -> dict[str, ast.AST]:
+    return schemas()
+
+
+@pytest.fixture(scope="module")
+def stored() -> dict[str, set[str]]:
+    return interfaces(STORED_TS)
+
+
+@pytest.mark.parametrize(("schema", "interface"), sorted(STORED.items()))
+def test_every_stored_shape_matches_its_interface(
+    schema: str,
+    interface: str,
+    schema_bodies: dict[str, ast.AST],
+    stored: dict[str, set[str]],
+) -> None:
+    """A renamed storage key is silent in both directions, same as the wire.
+
+    Worse in one respect. A storage rename is also a migration, so the key the
+    frontend stops finding is a key the *stored* data still has, and the symptom
+    is not an empty label but a wrong drawing: an anchor the track cannot see
+    gives one rail per rule instead of one per anchor, which reads as a layout
+    bug rather than as a schema change.
+    """
+    assert schema in schema_bodies, f"{schema} is gone from schema.py"
+    assert interface in stored, f"{interface} is gone from stored.ts"
+    assert _schema_keys(schema_bodies[schema], schema_bodies) == stored[interface]
+
+
+def test_every_stored_declaration_is_paired_or_declared_opaque(
+    stored: dict[str, set[str]],
+) -> None:
+    """Nothing in `stored.ts` is checked, or left unchecked, by accident."""
+    source = STORED_TS.read_text(encoding="utf-8")
+    declared = set(re.findall(r"^export (?:interface|type) (\w+)", source, re.M))
+    accounted = set(STORED.values()) | NOT_CHECKED_OPAQUE | NOT_CHECKED_UNIONS
+
+    assert declared - accounted == set()
+    assert accounted - declared == set()
+    # And every pair resolves to an interface the parser actually found, so a
+    # shape that quietly became a type alias fails here rather than vanishing.
+    assert set(STORED.values()) <= set(stored)

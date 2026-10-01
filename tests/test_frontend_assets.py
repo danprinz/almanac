@@ -366,3 +366,63 @@ def test_the_bundles_are_resolved_from_the_package_not_the_config_dir() -> None:
 
     assert SRC.is_dir()
     assert SRC.parent == package / FRONTEND_DIST.split("/")[0]
+
+
+def test_the_derivation_imports_nothing_at_run_time() -> None:
+    """D132 — D70's technique again, for an unrelated reason.
+
+    `rails.ts` holds every piece of arithmetic in the frontend: D73's rails and
+    their local scales, D76's order check, D79's two endpoints. It is tested by
+    `node --test`, which runs TypeScript by stripping the types and nothing
+    else — in particular it does not resolve a bare specifier like `lit` or an
+    extensionless relative one. So a single run-time import here does not fail
+    the build and does not fail `tsc`. It fails the unit tests, with a
+    module-resolution error that reads like a broken toolchain, and the cheapest
+    way out of that is to delete the test file.
+
+    Hence this test, which names the real constraint while it still holds.
+    """
+    source = (SRC / "rails.ts").read_text(encoding="utf-8")
+    statements = re.findall(r"^import\b.*$", source, flags=re.MULTILINE)
+
+    assert statements, "the regex stopped matching, not the constraint holding"
+    for statement in statements:
+        assert statement.startswith("import type "), statement
+
+
+def test_the_test_tsconfig_carries_the_flag_the_build_cannot() -> None:
+    """Why there are two configs, measured rather than assumed.
+
+    `allowImportingTsExtensions` is what lets the test file name `./rails.ts`
+    with its extension, which is what Node's loader requires. TypeScript permits
+    the flag only with `noEmit`, and `@rollup/plugin-typescript` sets
+    `noEmit: false` so it can produce output — so the flag in `tsconfig.json`
+    fails the build with TS5096. The split is therefore forced, and a future
+    tidy-up that merges the two configs breaks `npm run build` rather than
+    anything a type-checker would mention.
+    """
+    base = (REPO / "tsconfig.json").read_text(encoding="utf-8")
+    scoped = (REPO / "tsconfig.test.json").read_text(encoding="utf-8")
+
+    assert "allowImportingTsExtensions" not in base
+    assert "allowImportingTsExtensions" in scoped
+    # And `@types/node` stays out of the sources' scope, because the panel and
+    # the card run in a browser.
+    assert '"types": ["node"]' in scoped
+    assert '"types"' not in base
+
+
+def test_the_unit_tests_are_wired_to_a_script_and_a_directory() -> None:
+    """A test suite nothing runs is a test suite that does not exist.
+
+    Node's `--test` takes a glob here rather than the directory, which it tries
+    to load as a module. The project has no CI yet (the release workflow D71
+    needs is still missing), so this assertion is what records that `npm test`
+    is the entry point.
+    """
+    package = (REPO / "package.json").read_text(encoding="utf-8")
+    tests = SRC.parent / "test"
+
+    assert "node --test" in package
+    assert tests.is_dir()
+    assert sorted(path.name for path in tests.glob("*.test.ts")) == ["rails.test.ts"]

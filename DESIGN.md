@@ -1679,6 +1679,7 @@ to — a template helper entity is evaluated, never enumerated, so it never touc
 8a. Anchor-span day sets — D122, D123, D124, and §6.2's D125–D128
 9. UI — D61, D62, and §17's toolchain
 9a. The delivery path — the toolchain, the Python registration, and §17.1's D129–D131
+9b. The track — D73–D79 read, and §16.2's D132–D138
 10. **Import from `scheduler-component`, last** — D60
 
 The packaging decisions D67–D71 are settled ahead of step 1, not at step 9: the repository layout
@@ -1786,6 +1787,9 @@ become ticks, stages become dots, labels fall away, the break becomes a hairline
 *Why:* an editor is learnable when you author in the shape you will later read. One diagram at
 four sizes costs one design and is recognised everywhere it appears.
 
+*Refined by D138:* two of the four are built. The other two arrive with the screens they
+belong to, for a reason that is about those screens and not about the track.
+
 **D75 — no surface renders a bare rule.** Every list, lane, log line and more-info panel renders
 the *schedule*; stages are a disclosure inside it, never a sibling row.
 
@@ -1837,6 +1841,123 @@ call are not atomic. UI copy must not imply that they are.
 *Why:* closing that race needs engine work that is deliberately deferred to a later phase.
 Deferring the work is a decision; shipping copy that claims the work was done is not.
 `ux/prototype/15-new-shabbat-2.html` currently claims it, and is the thing to fix.
+
+---
+
+### 16.2 What step 9b found
+
+§16.1 describes the track as a drawing. Building it found that the drawing is the easy half: the
+geometry is forty lines, and everything below was a consequence of where the *facts* it draws
+come from. Six of the seven decisions here are about that, and the seventh corrects D74.
+
+**D132 — the derivation imports nothing at run time, and that is a constraint, not an
+accident.** `frontend/src/rails.ts` turns a stored schedule plus a plan into rails, gaps and
+stages. Every one of its imports is `import type`, so after type-stripping the file has no
+imports at all — which is the condition under which `node --test` can execute it directly, with
+no bundler, no test framework and no new dependency. `tests/test_frontend_assets.py` fails if a
+plain `import` appears in it.
+
+*Why the test is on the Python side:* a single run-time import there does not fail the build and
+does not fail `tsc`. It fails the unit tests, with a module-resolution error that reads like a
+broken toolchain rather than like a broken rule, and the cheapest way out of *that* is to delete
+the test file. So the rule is asserted somewhere that states the rule. This is D70's technique —
+keep one file free of static imports and the whole cost disappears — applied for an unrelated
+reason, which is worth noting because the two will look like the same rule to a later reader and
+are not.
+
+*What it bought:* 21 tests over the arithmetic that nothing else in the project can check. The
+engine's tests prove the instants; these prove that the inverse — `anchorEvent = start − offset`,
+which is how a rail recovers its own event with no resolver and no clock — lands back on the
+engine's own answer, that one anchor's stages share one rail, that the labelled gap carries the
+real elapsed duration, and that D76's order check fires on the pair that actually swaps.
+
+**Two tsconfigs, forced rather than stylistic.** The test files import `../src/rails.ts` with the
+extension, because that is what Node resolves; `tsc` accepts that spelling only under
+`allowImportingTsExtensions`, and that flag requires `noEmit`. `@rollup/plugin-typescript` sets
+`noEmit: false` on the config it reads, so putting the flag in `tsconfig.json` fails the build
+with TS5096 — measured, not inferred. Hence `tsconfig.test.json`, which carries the flag and
+`types: ["node"]`, and a `tsconfig.json` that must stay free of both. A test asserts the
+division, because the natural tidying-up is to merge them.
+
+**D133 — the track is drawn from two reads joined on `rule_id`; the anchor is not added to the
+occurrence wire form.** `Occurrence.as_dict()` emits the rule it came from and the instant it
+resolved to. The track's axis is the anchor, which is not in there. So the panel and the card read
+`almanac/schedule/list` alongside `almanac/timeline` and join them — `lane.schedule_id` against
+the stored schedule's `id`, then `occurrence.rule_id` against the rule's.
+
+*Why not widen the payload:* D64 is the argument. The engine resolved those instants with a
+threaded `now`; asking it to also repeat the anchor puts the same fact on the wire twice, in two
+shapes, and the second shape would then need its own test to stay in step with the first. The
+stored form is already a contract — it is what the editor will write — so joining against it adds
+no new surface. The two reads are issued concurrently and awaited together, because a schedule
+edited between two sequential reads would give a track whose rails no occurrence belongs to.
+
+*What it cost:* a second hand-written mirror, `frontend/src/stored.ts`, and the second half of
+`tests/test_wire_contract.py` to hold it against `schema.py`. Four of its shapes — recurrence,
+condition, condition policy and completion — are left as open records and declared as such,
+because writing them out is writing the editor's types before the editor exists.
+
+**D134 — a rail's identity excludes the offset and includes the resolver edge.** Two stages at
+`candle_lighting −60m` and `candle_lighting −5m` are one rail; a stage at `candle_lighting` and a
+stage at that resolver's `end` edge are two.
+
+*Why:* this is D122 read as a layout rule. D122 settled that the day set is asked about the
+anchor's *event*, not about the offset, which is the same statement that the offset is not part of
+the event's identity — and the rail *is* the event. The edge is on the other side of that line: a
+start and an end are two events of one calendar entry, they can be a day apart, and drawing them
+as one rail would put a 25-hour gap inside a rail instead of between two.
+
+**D135 — in the panel the track is added above the window halves, not instead of the chips.** An
+earlier note in `panel.ts` said the track would replace each lane's list of occurrence chips. It
+cannot, and the note was wrong rather than premature.
+
+*Why:* a track is the anatomy of *one* occurrence and the window is a list of *many*. Dropping the
+list would drop exactly the occurrences D12 exists to keep visible — the ones that will not fire,
+and the reason. The two answer different questions: the track answers "what does this schedule
+do", the chips answer "and what will it do between Tuesday and Friday". So the lane carries both,
+the track once at the top and the window below D63's divider.
+
+**D136 — an interval whose end is a duration puts both of its stages on the start anchor's
+rail.** A `during` rule ending at `+90m` draws its enter and its exit on one rail, 90 minutes
+apart on that rail's local scale.
+
+*Why:* there is no second anchor to make a rail out of. A duration end is defined relative to the
+start that D73 already gave a rail, so it is an offset on that rail by the same definition that
+puts the stages there — and inventing a rail for it would claim an event that the schedule never
+named. This does mean a long duration stretches one rail's local scale rather than opening a
+labelled break, which is correct in the same way: the break exists to compress distance *between*
+events, and here there is one event.
+
+**D137 — D76's order check only samples the dates on which every rail resolved.** A date where
+one anchor returned nothing is not evidence that the order changed; it is evidence that the date
+is not a sample. Incomplete samples are dropped before the comparison, and a pair that never gets
+two complete samples is simply not marked.
+
+*Why:* without this, an unresolved anchor reads as an order swap, and D17's *unresolved* state —
+which already has its own rendering, amber, meaning "almanac does not know" — would additionally
+produce a second and unrelated warning on a schedule whose order is in fact fixed. Two warnings
+for one cause is how a user learns to ignore both.
+
+**D138 — two sizes, not D74's four.** `lane` and `micro` are implemented. The editor's full size
+and the next-runs strip are not, and the omission is deliberate rather than pending.
+
+*Why:* what distinguishes the editor's track is not a bigger rail. It is hit targets, drag,
+D78's inline reference creation and D72's recurrence control above the spine — none of which can
+be designed before the editor it belongs to, and all of which would be guessed at if the size
+shipped first. The next-runs strip has the same shape of problem pointed at a surface that does
+not exist yet. D74's "one design at four sizes" still holds as the claim it was making; this
+records that two of the four arrive with their screens.
+
+**The measured figures, for the next reader of D70.** After step 9b the card entry is 838 bytes
+and the lazy chunk is 37,197 — the track, the derivation, both new modules and the stored types
+all landed behind the dynamic `import()`, and the always-loaded path did not move by a byte. The
+panel bundle is 41,081.
+
+**One build fix, recorded because it is a release risk and not a convenience.** Rollup does not
+clear its output directory, so a rebuild left the previous `chunks/card-body-<hash>.js` beside the
+new one. D129 registers the whole `dist/` directory and D71 ships it as a zip asset, so a stale
+chunk is a shipped chunk — and under D131 the symptom of shipping the wrong bytes is quiet. The
+`build` script now runs `clean` first.
 
 ---
 

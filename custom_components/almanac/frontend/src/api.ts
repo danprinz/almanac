@@ -1,4 +1,13 @@
-// The two reads, and the one rule the frontend has to keep.
+// The three reads, and the one rule the frontend has to keep.
+//
+// Two of them are almanac's own commands and the third is not: the stored
+// schedules come from the collection websocket Home Assistant generates for us,
+// `almanac/schedule/list`, which `storage.py` registers by handing
+// `WS_PREFIX_SCHEDULE` to `DictStorageCollectionWebsocket`. It is listed here
+// because D73's track needs it — an occurrence says *when* and the stored rule
+// says *what it is relative to* — and because a reader looking for where the
+// anchors come from should not have to discover that one of the three reads is
+// not in this file.
 //
 // D64 gives the backend a single clock reader — the tick — and
 // `tests/test_design_constraints.py` enforces it with an AST sweep. The
@@ -15,10 +24,12 @@
 // window by a day.
 
 import type { HomeAssistant } from "./ha";
+import type { StoredSchedule } from "./stored";
 import type { WireDryRun, WireTimeline } from "./wire";
 
 export const WS_TIMELINE = "almanac/timeline";
 export const WS_DRY_RUN = "almanac/dry_run";
+export const WS_SCHEDULE_LIST = "almanac/schedule/list";
 
 /** `send_error`'s shape, as `sendMessagePromise` rejects with it. */
 export interface WsError {
@@ -79,6 +90,19 @@ export const fetchDryRun = (
     at: request.at.toISOString(),
     live: request.live ?? true,
     ...(request.scheduleIds ? { schedule_ids: [...request.scheduleIds] } : {}),
+  });
+
+/**
+ * Every stored schedule, as the collection websocket returns them.
+ *
+ * No request fields and no `at`: this read is the configuration, not an
+ * evaluation of it, so D64 does not reach it. The panel and the card both pair
+ * it with a timeline read and join the two on `rule_id` — see `stored.ts` for
+ * why the anchor is fetched rather than carried on the occurrence.
+ */
+export const fetchSchedules = (hass: HomeAssistant): Promise<StoredSchedule[]> =>
+  hass.connection.sendMessagePromise<StoredSchedule[]>({
+    type: WS_SCHEDULE_LIST,
   });
 
 /** Midnight local, `days` away from `from`. Window edges, not instants of interest. */

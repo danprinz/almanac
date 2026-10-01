@@ -4,13 +4,14 @@
 // lazy chunk, which is the whole point of `card.ts` being what it is. Nothing
 // here may be imported from `card.ts`.
 //
-// What a row shows is D79: the generated summary is the payload, and a
-// description overrides it only where someone wrote one. The summary this
-// sub-step can generate is the one the plan supports — when the schedule next
-// runs — because the anchor-relative phrasing (`candle lighting −45m → havdalah
-// +30m`) needs the stored rule bodies and those arrive with the editor. The row
-// is laid out for the longer string now so that it does not have to be relaid
-// out later.
+// What a row shows is D79: the generated summary is the payload — `candle
+// lighting −45m → havdalah +30m`, built from the stored rules — and the
+// free-text description overrides it only where someone wrote one. That way
+// round, because a description is a note somebody left and a summary is a fact
+// about the schedule, and the note is the thing more likely to have gone stale.
+//
+// D74's smallest two sizes both appear here: the micro-track beside the name,
+// and no track at all when the stored schedule is not to hand.
 //
 // D75 holds throughout: a row is a schedule. Stages are a disclosure inside one,
 // never a sibling row.
@@ -18,7 +19,7 @@
 import { LitElement, html, nothing, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
-import { dayOffset, fetchTimeline, isNotLoaded } from "./api";
+import { dayOffset, fetchSchedules, fetchTimeline, isNotLoaded } from "./api";
 import {
   armedStages,
   coverageReason,
@@ -27,7 +28,10 @@ import {
 } from "./derive";
 import { dayAndTime, relative } from "./format";
 import type { HomeAssistant, LovelaceCardConfig } from "./ha";
+import { armedRules, buildTrack } from "./rails";
+import type { StoredSchedule } from "./stored";
 import { almanacText, almanacTokens } from "./styles";
+import { summaryLine } from "./track";
 import type { WireScheduleTimeline } from "./wire";
 
 /** How far ahead a card looks. One week answers "what is next" for anything weekly. */
@@ -45,6 +49,7 @@ export class AlmanacCardBody extends LitElement {
 
   @state() private _config?: AlmanacCardConfig | undefined;
   @state() private _lanes?: WireScheduleTimeline[] | undefined;
+  @state() private _stored?: Map<string, StoredSchedule> | undefined;
   @state() private _error?: string | undefined;
   @state() private _notLoaded = false;
 
@@ -104,13 +109,23 @@ export class AlmanacCardBody extends LitElement {
     this._inFlight = true;
     const from = new Date();
     try {
-      const timeline = await fetchTimeline(hass, {
-        start: from,
-        end: dayOffset(from, LOOKAHEAD_DAYS),
-        at: from,
-        ...(config.schedule_ids ? { scheduleIds: config.schedule_ids } : {}),
-      });
+      // `fetchSchedules` has no filter, so a card configured for one schedule
+      // still reads the collection. That is the same read the schedule list
+      // itself does, it is served from memory, and filtering it on the server
+      // would mean a second command that exists only for this caller.
+      const [timeline, stored] = await Promise.all([
+        fetchTimeline(hass, {
+          start: from,
+          end: dayOffset(from, LOOKAHEAD_DAYS),
+          at: from,
+          ...(config.schedule_ids ? { scheduleIds: config.schedule_ids } : {}),
+        }),
+        fetchSchedules(hass),
+      ]);
       this._lanes = [...timeline.schedules].sort(laneOrder);
+      this._stored = new Map(
+        stored.map((schedule) => [schedule.id, schedule] as const),
+      );
       this._error = undefined;
       this._notLoaded = false;
     } catch (error) {
@@ -156,17 +171,43 @@ export class AlmanacCardBody extends LitElement {
     </ul>`;
   }
 
+  /** A friendly name for an entity anchor's rail, when the entity exists. */
+  private _entityName = (entityId: string): string | undefined => {
+    const name = this.hass?.states[entityId]?.attributes["friendly_name"];
+    return typeof name === "string" ? name : undefined;
+  };
+
   private _row(lane: WireScheduleTimeline) {
     const hass = this.hass!;
     const next = nextOccurrence(lane.plan, this._at);
-    const stages = armedStages(lane.plan);
+    const stored = this._stored?.get(lane.schedule_id);
+    const stages = stored ? armedRules(stored) : armedStages(lane.plan);
+    const track = stored
+      ? buildTrack(stored, lane.plan, this._at, this._entityName)
+      : null;
     const coverage = coverageReason(lane.coverage, lane.plan);
     const entity = hass.states[lane.entity_id];
+    // D79, in order of authority: what someone wrote, else what the schedule
+    // demonstrably is, else nothing — and never a placeholder, because an empty
+    // payload is a row that has not loaded and a placeholder is a row that has.
+    const summary =
+      stored && stored.description !== ""
+        ? stored.description
+        : track
+          ? summaryLine(track)
+          : "";
 
     return html`
       <li class="lane">
         <div class="head">
           <span class="name">${lane.name ?? lane.schedule_id}</span>
+          ${track && track.rails.length > 0
+            ? html`<almanac-track
+                class="micro"
+                size="micro"
+                .track=${track}
+              ></almanac-track>`
+            : nothing}
           ${
             // D77 — a schedule with any stage disabled never renders as plain
             // *on*. The fraction replaces the state word rather than sitting
@@ -179,7 +220,10 @@ export class AlmanacCardBody extends LitElement {
               : html`<span class="pill">${entity?.state ?? "unknown"}</span>`
           }
         </div>
-        <div class="payload">
+        ${summary === ""
+          ? nothing
+          : html`<div class="payload">${summary}</div>`}
+        <div class="when">
           ${next
             ? html`<span class="mono">${dayAndTime(hass, next.start!)}</span>
                 <span class="muted"
@@ -223,6 +267,14 @@ export class AlmanacCardBody extends LitElement {
 
       .name {
         font-weight: 500;
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      /* D74's smallest size: about 120px for two rails, and it must not be what
+         decides the row's height. */
+      .micro {
+        flex: 0 0 auto;
       }
 
       /* The row's payload slot. Finding 13 measured the prototype's summary
@@ -231,10 +283,16 @@ export class AlmanacCardBody extends LitElement {
          clipping, and the slot is allowed two lines. */
       .payload {
         margin-top: var(--almanac-gap-xs);
+        font-size: 0.9375rem;
+        overflow-wrap: anywhere;
+      }
+
+      .when {
+        margin-top: var(--almanac-gap-xs);
         display: flex;
         flex-wrap: wrap;
         gap: var(--almanac-gap-xs);
-        font-size: 0.9375rem;
+        font-size: 0.875rem;
       }
 
       .problem {

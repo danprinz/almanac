@@ -9,20 +9,22 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 
 ## Status — 2026-10-01
 
-**Build steps 1–9a of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
+**Build steps 1–9b of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
 resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
 actions and completion and the tick that drives them, observability, the `hdate` resolver, and —
 at step 8 — the timeline query and the dry run, with the two websocket commands the panel is
 built on, at step 8a the anchor-span day set the flagship scenario turned out to need, and at
 step 9a the frontend's delivery path: the Rollup toolchain, the Python registration, D70's
-always-loaded stub, and thin-but-honest first drafts of the panel and the card. 580 tests pass,
-among them `tests/test_flagship.py` and `tests/test_anchor_span_day_sets.py`, which enumerate
+always-loaded stub, and thin-but-honest first drafts of the panel and the card, and at step 9b
+D73's anchor-relative track, drawn in the panel's lanes and in the card's rows. 598 Python
+tests pass, plus 21 TypeScript ones (`npm test`) that are the project's first; among them
+`tests/test_flagship.py` and `tests/test_anchor_span_day_sets.py`, which enumerate
 the brief's flagship scenario end to end twice over — once from `hdate`'s prebuilt Shabbat and
 once from a span the user wrote. Remote is `git@github.com:danprinz/almanac.git`.
 
-Decisions now run D1–D131. Each build step closes the gaps it found in its own subsection
-(`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2, §17.1) rather than editing
-the decision it refines.
+Decisions now run D1–D138. Each build step closes the gaps it found in its own subsection
+(`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2, §16.2, §17.1) rather than
+editing the decision it refines.
 
 **Step 8 fixed the engine, which is the part worth knowing.** `Plan` was reporting one fact where
 D44 says there are two: `_Horizons` was built over the window *after* the ninety-day clamp, so
@@ -91,18 +93,44 @@ makes Rollup emit a chunk whose name no Python constant can know; **D130** the p
 URL are undone on unload, because none of the three registrations is idempotent and a config
 entry reload is ordinary; **D131** a missing bundle logs and skips rather than failing setup.
 
+**What step 9b built, and what it found, is §16.2. The part worth knowing is where the track's
+facts come from.** An occurrence carries no anchor — `Occurrence.as_dict()` emits the rule and
+the instant — and D73's axis *is* the anchor, so the panel and the card read
+`almanac/schedule/list` alongside `almanac/timeline` and join the two on `rule_id` (**D133**).
+That is why `frontend/src/stored.ts` exists and why `tests/test_wire_contract.py` now covers
+two boundaries. The arithmetic lives in `frontend/src/rails.ts`, which imports nothing at run
+time (**D132**) — every import is `import type` — and that is the whole reason `node --test` can
+run it with no bundler and no framework; `tests/test_frontend_assets.py` fails if a plain
+`import` appears there. Four more: **D134** a rail's identity excludes the offset and includes
+the resolver edge (D122 read as a layout rule); **D135** the track is added *above* the window
+halves and does **not** replace the chips, because a track is one occurrence's anatomy and the
+window is a list of many; **D136** a duration end draws on the start anchor's rail; **D137**
+D76's order check samples only dates where every rail resolved, so an unresolved anchor is not
+reported as a swap. And **D138** records that two of D74's four sizes are built, deliberately.
+
+**Two tsconfigs, and they must stay two.** `tsconfig.json` is what Rollup reads;
+`@rollup/plugin-typescript` sets `noEmit: false`, so `allowImportingTsExtensions` there fails
+the build with TS5096 — measured. The flag and `types: ["node"]` live in `tsconfig.test.json`.
+`npm run typecheck` checks the first, `npm run typecheck:test` the second, and a test in
+`tests/test_frontend_assets.py` asserts the division because merging them is the obvious tidy.
+
+**`npm run build` now cleans first.** Rollup does not clear `dist/`, D129 registers the whole
+directory and D71 zips it, so a stale hashed chunk is a shipped chunk — and under D131 that
+ships quietly.
+
 **Two tests exist because nothing else would notice the thing they check.**
 `tests/test_wire_contract.py` sweeps every `as_dict()` by AST and compares the key sets against
-`frontend/src/wire.ts`'s interfaces — the websocket boundary is the one place in the project
-where a rename is silent in both directions. `tests/test_frontend_assets.py` does the same for
+`frontend/src/wire.ts`'s interfaces, and since step 9b does the same for `schema.py` against
+`frontend/src/stored.ts` — those two boundaries are the places in the project where a rename is
+silent in both directions. `tests/test_frontend_assets.py` does the same for
 the delivery path: the bundle filenames against `rollup.config.mjs`, the element names against
 the TypeScript, and D70's rule that `card.ts` has no run-time import. Both read source rather
 than running it, for the same reason `tests/test_design_constraints.py` does for D64.
 
-**Next step:** step 9b — the anchor-relative track (D72–D74, D76, D77), which replaces each
-lane's list of chips in `panel.ts`. Then 9c the editor (D72, D78, D80) plus the card's
-`getConfigElement` and D79's generated summary, which needs the stored rule bodies and therefore
-the schedule CRUD commands; then 9d D62's more-info entry point. The other 17 UX findings in
+**Next step:** step 9c — the editor (D72, D78, D80), the track's `full` size (D138 says what
+distinguishes it: hit targets, drag, D78's inline reference creation and D72's recurrence
+control, not a bigger rail), and the card's `getConfigElement`, which is deliberately absent
+rather than stubbed. Then 9d D62's more-info entry point. The other 17 UX findings in
 `ux/FINDINGS.md` are all still unapplied, and `ux/prototype/15-new-shabbat-2.html` still claims
 the pre-flight check is a guarantee, which is what D80 says to fix. Then 10
 (importer, last — D60). The `almanac` namespace check is **done** — clear in
