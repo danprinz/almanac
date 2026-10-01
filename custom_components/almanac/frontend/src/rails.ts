@@ -6,6 +6,12 @@
 // come out ordered by the latter and positioned by the former. `track.ts` draws
 // what this returns and makes no decisions of its own.
 //
+// Two builders come out of that. `buildTrack` joins the stored rules to an
+// enumerated plan and is what the panel and the card draw. `draftTrack` is the
+// same geometry with the plan left out — every instant null, no order check —
+// which is the only honest drawing of a schedule the user has not saved, since
+// nothing has resolved its anchors and D64 forbids this file from asking.
+//
 // **This module imports nothing at run time.** Every import is `import type`,
 // which `verbatimModuleSyntax` forces to be written as such and which both
 // TypeScript and Node erase outright. That is not an accident of this file being
@@ -21,10 +27,12 @@
 // a local time first would make the arithmetic wrong across a DST boundary by
 // exactly the hour the user is most likely to be scheduling around.
 
+import type { WritableRule } from "./draft";
 import type {
   StoredAction,
   StoredAnchor,
   StoredDesiredState,
+  StoredEnd,
   StoredOnExit,
   StoredRule,
   StoredSchedule,
@@ -221,6 +229,38 @@ const joined = (parts: readonly (string | null)[]): string | null => {
   return named.length === 1 ? first : `${first} +${named.length - 1} more`;
 };
 
+/**
+ * What the geometry needs of a rule, which is less than a stored rule is.
+ *
+ * A `StoredRule` satisfies this; a draft rule does not, because D142 leaves `id`
+ * absent until the backend mints one and D139 lets every other field be
+ * half-typed. `drawable()` is the single place that difference is resolved, so
+ * a saved schedule and one the user is still writing are laid out by the same
+ * code — which is the only reason the editor can draw a track at all, and the
+ * same argument D64 makes for the dry run sharing the engine's code path.
+ */
+interface DrawableAt {
+  kind: "at";
+  id: string;
+  enabled: boolean;
+  anchor: StoredAnchor;
+  actions: readonly StoredAction[];
+}
+
+interface DrawableDuring {
+  kind: "during";
+  id: string;
+  enabled: boolean;
+  start_anchor: StoredAnchor;
+  end: StoredEnd;
+  state: StoredDesiredState | null;
+  enter_actions: readonly StoredAction[];
+  exit_actions: readonly StoredAction[];
+  on_exit: StoredOnExit;
+}
+
+type DrawableRule = DrawableAt | DrawableDuring;
+
 interface RuleStages {
   ref: AnchorRef;
   stage: Omit<Stage, "instant">;
@@ -236,7 +276,7 @@ interface RuleStages {
  * duration the user already typed as the end.
  */
 const stagesOf = (
-  rule: StoredRule,
+  rule: DrawableRule,
   entityName?: (entityId: string) => string | undefined,
 ): RuleStages[] => {
   if (rule.kind === "at") {
@@ -300,7 +340,7 @@ interface RuleGeometry {
 }
 
 const geometryOf = (
-  rules: readonly StoredRule[],
+  rules: readonly DrawableRule[],
   entityName?: (entityId: string) => string | undefined,
 ): Map<string, RuleGeometry> => {
   const found = new Map<string, RuleGeometry>();
@@ -464,6 +504,82 @@ const instability = (
   return { unstable, gaps };
 };
 
+/** Rails in declaration order with their stages, before any plan is joined on. */
+interface Collected {
+  declared: string[];
+  meta: Map<string, AnchorRef>;
+  stages: Map<string, Omit<Stage, "instant">[]>;
+}
+
+/**
+ * The rails a rule list declares, in the order it declares them.
+ *
+ * Declaration order first, always, so that a rail whose anchor did not resolve
+ * has somewhere to be — `orderOf` sorts the resolved ones in front of it and
+ * leaves it where the user put it. A draft never gets past this function,
+ * because there is nothing to sort by.
+ */
+const collect = (
+  rules: readonly DrawableRule[],
+  entityName?: (entityId: string) => string | undefined,
+): Collected => {
+  const declared: string[] = [];
+  const meta = new Map<string, AnchorRef>();
+  const stages = new Map<string, Omit<Stage, "instant">[]>();
+  for (const rule of rules) {
+    for (const { ref, stage } of stagesOf(rule, entityName)) {
+      if (!meta.has(ref.key)) {
+        meta.set(ref.key, ref);
+        declared.push(ref.key);
+        stages.set(ref.key, []);
+      }
+      stages.get(ref.key)!.push(stage);
+    }
+  }
+  return { declared, meta, stages };
+};
+
+/** Each rail's stages sorted and scaled, with whatever instants resolved joined on. */
+const railsOf = (
+  order: readonly string[],
+  { meta, stages }: Omit<Collected, "declared">,
+  instants: Map<string, string>,
+): Rail[] =>
+  order.map((key) => {
+    const ref = meta.get(key)!;
+    const instant = instants.get(key) ?? null;
+    const own = [...(stages.get(key) ?? [])].sort((a, b) => a.offset - b.offset);
+    const widest = own.reduce((most, stage) => Math.max(most, Math.abs(stage.offset)), 0);
+    return {
+      key,
+      label: ref.label,
+      detail: ref.detail,
+      scale: niceScale(widest),
+      instant,
+      stages: own.map((stage) => ({
+        ...stage,
+        instant: instant === null ? null : shift(instant, stage.offset),
+      })),
+    };
+  });
+
+/** D73's breaks between adjacent rails. Null seconds wherever either end is unknown. */
+const gapsOf = (rails: readonly Rail[], unstable: ReadonlySet<number>): Gap[] => {
+  const gaps: Gap[] = [];
+  for (let i = 0; i + 1 < rails.length; i += 1) {
+    const here = rails[i]!.instant;
+    const next = rails[i + 1]!.instant;
+    gaps.push({
+      seconds:
+        here === null || next === null
+          ? null
+          : Math.round((Date.parse(next) - Date.parse(here)) / 1000),
+      unstable: unstable.has(i),
+    });
+  }
+  return gaps;
+};
+
 /**
  * D73's track for one schedule, from the stored rules and the enumerated plan.
  *
@@ -482,21 +598,8 @@ export const buildTrack = (
   const day = referenceDate(plan, at);
   const instants = railInstants(dates.get(day ?? "") ?? [], geometry);
 
-  // Declaration order first, so an unresolved rail has somewhere to be.
-  const declared: string[] = [];
-  const meta = new Map<string, AnchorRef>();
-  const stages = new Map<string, Omit<Stage, "instant">[]>();
-  for (const rule of schedule.rules) {
-    for (const { ref, stage } of stagesOf(rule, entityName)) {
-      if (!meta.has(ref.key)) {
-        meta.set(ref.key, ref);
-        declared.push(ref.key);
-        stages.set(ref.key, []);
-      }
-      stages.get(ref.key)!.push(stage);
-    }
-  }
-
+  const collected = collect(schedule.rules, entityName);
+  const { declared } = collected;
   const order = orderOf(declared, instants);
 
   // Only dates on which *every* rail resolved can say anything about order. A
@@ -517,38 +620,92 @@ export const buildTrack = (
     : [];
   const { unstable, gaps: unstableGaps } = instability(order, samples);
 
-  const rails: Rail[] = order.map((key) => {
-    const ref = meta.get(key)!;
-    const instant = instants.get(key) ?? null;
-    const own = [...(stages.get(key) ?? [])].sort((a, b) => a.offset - b.offset);
-    const widest = own.reduce((most, stage) => Math.max(most, Math.abs(stage.offset)), 0);
-    return {
-      key,
-      label: ref.label,
-      detail: ref.detail,
-      scale: niceScale(widest),
-      instant,
-      stages: own.map((stage) => ({
-        ...stage,
-        instant: instant === null ? null : shift(instant, stage.offset),
-      })),
-    };
-  });
+  const rails = railsOf(order, collected, instants);
+  return {
+    scheduleId: schedule.id,
+    rails,
+    gaps: gapsOf(rails, unstableGaps),
+    day,
+    unstable,
+  };
+};
 
-  const railGaps: Gap[] = [];
-  for (let i = 0; i + 1 < rails.length; i += 1) {
-    const here = rails[i]!.instant;
-    const next = rails[i + 1]!.instant;
-    railGaps.push({
-      seconds:
-        here === null || next === null
-          ? null
-          : Math.round((Date.parse(next) - Date.parse(here)) / 1000),
-      unstable: unstableGaps.has(i),
-    });
+/**
+ * A draft rule as the geometry needs it, or null when it cannot be drawn yet.
+ *
+ * Three fields are filled in here and nowhere else. `id` becomes the rule's
+ * index, which is what D142 makes it — a draft rule has no id until the backend
+ * mints one, and the index is the handle the editor already addresses it by; a
+ * stored id is a ULID, so a decimal index cannot be mistaken for one. `enabled`
+ * becomes true, which is the one backend default this file restates that the
+ * drawing depends on; `tests/test_schema.py` pins it, and names this file, so
+ * that the restatement fails loudly rather than drifting. `on_exit` becomes
+ * `leave`, whose label is null — which is also what absence would draw, so
+ * nothing is claimed by filling it in.
+ *
+ * Null is for a rule with no anchor, and for a `during` rule with no end: there
+ * is no position to draw them at, and inventing one would put a dot where the
+ * engine will not fire. `problems()` names both cases, which is what keeps a
+ * rule missing from its own track from reading as a rendering bug.
+ */
+const drawable = (rule: WritableRule, index: number): DrawableRule | null => {
+  const id = String(index);
+  const enabled = rule.enabled ?? true;
+  if (rule.kind === "at") {
+    return rule.anchor
+      ? { kind: "at", id, enabled, anchor: rule.anchor, actions: rule.actions ?? [] }
+      : null;
   }
+  if (!rule.start_anchor || !rule.end) {
+    return null;
+  }
+  return {
+    kind: "during",
+    id,
+    enabled,
+    start_anchor: rule.start_anchor,
+    end: rule.end,
+    state: rule.state ?? null,
+    enter_actions: rule.enter_actions ?? [],
+    exit_actions: rule.exit_actions ?? [],
+    on_exit: rule.on_exit ?? { kind: "leave" },
+  };
+};
 
-  return { scheduleId: schedule.id, rails, gaps: railGaps, day, unstable };
+/**
+ * D73's track for a schedule that has not been saved: the shape, not a prediction.
+ *
+ * Every instant is null and so is `day`, because nothing has enumerated these
+ * rules — the plan comes from the engine over stored data, and D64 is what stops
+ * this file resolving an anchor itself. So the rails come out in declaration
+ * order rather than in firing order, and `unstable` is false rather than
+ * unknown: D76's check needs resolved instants on several dates, and false is
+ * the claim that no swap was *found*, which is true of a check that could not
+ * run.
+ *
+ * A null instant is what `track.ts` draws amber for, meaning "almanac does not
+ * know". That reading is right for a saved schedule and wrong here, where it
+ * would make every draft amber and teach the user to ignore the colour — so the
+ * component takes a `preview` flag and the editor sets it. That flag is the
+ * whole of the difference between the two builders at the screen.
+ */
+export const draftTrack = (
+  rules: readonly WritableRule[],
+  scheduleId: string | null,
+  entityName?: (entityId: string) => string | undefined,
+): Track => {
+  const drawables = rules
+    .map(drawable)
+    .filter((rule): rule is DrawableRule => rule !== null);
+  const collected = collect(drawables, entityName);
+  const rails = railsOf(collected.declared, collected, new Map());
+  return {
+    scheduleId: scheduleId ?? "",
+    rails,
+    gaps: gapsOf(rails, new Set()),
+    day: null,
+    unstable: false,
+  };
 };
 
 /**

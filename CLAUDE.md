@@ -9,7 +9,7 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 
 ## Status — 2026-10-01
 
-**Build steps 1–9c of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
+**Build steps 1–9d of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
 resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
 actions and completion and the tick that drives them, observability, the `hdate` resolver, and —
 at step 8 — the timeline query and the dry run, with the two websocket commands the panel is
@@ -17,16 +17,18 @@ built on, at step 8a the anchor-span day set the flagship scenario turned out to
 step 9a the frontend's delivery path: the Rollup toolchain, the Python registration, D70's
 always-loaded stub, and thin-but-honest first drafts of the panel and the card, and at step 9b
 D73's anchor-relative track, drawn in the panel's lanes and in the card's rows, and at step 9c
-the boundary the editor will sit on: `almanac/resolvers`, core's three write commands, and the
-pure draft algebra that produces what they are sent. 608 Python tests pass, plus 38 TypeScript
-ones (`npm test`); among them `tests/test_flagship.py` and
+the boundary the editor sits on: `almanac/resolvers`, core's three write commands, and the
+pure draft algebra that produces what they are sent — and at step 9d the editor itself,
+mounted in the panel, drawing an unsaved schedule through the same geometry as a saved one.
+609 Python tests pass, plus 50 TypeScript ones (`npm test`); among them
+`tests/test_flagship.py` and
 `tests/test_anchor_span_day_sets.py`, which enumerate the brief's flagship scenario end to end
 twice over — once from `hdate`'s prebuilt Shabbat and once from a span the user wrote. Remote
 is `git@github.com:danprinz/almanac.git`.
 
-Decisions now run D1–D146. Each build step closes the gaps it found in its own subsection
-(`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2, §16.2, §16.3, §17.1) rather
-than editing the decision it refines.
+Decisions now run D1–D151. Each build step closes the gaps it found in its own subsection
+(`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2, §16.2, §16.3, §16.4, §17.1)
+rather than editing the decision it refines.
 
 **Step 8 fixed the engine, which is the part worth knowing.** `Plan` was reporting one fact where
 D44 says there are two: `_Horizons` was built over the window *after* the ninety-day clamp, so
@@ -132,23 +134,29 @@ widened the second one: the no-run-time-import rule now covers `draft.ts` as wel
 `rails.ts`, because both are executed by `node --test` and a plain import in either fails
 nothing but the unit tests.
 
-**Next step:** step 9d — the editor itself (D72, D78, D80), the track's `full` size (D138 says
-what distinguishes it: hit targets, drag, D78's inline reference creation and D72's recurrence
-control, not a bigger rail), and the card's `getConfigElement`, which is deliberately absent
-rather than stubbed. **Everything it writes through already exists and is tested** —
-`frontend/src/draft.ts` holds D139's draft and D140's diff, `api.ts` the three writes and the
-four reads, and `almanac/resolvers` the anchor picker's list; read §16.3 before writing a
-component, because D141 through D146 decide things a component would otherwise decide badly.
-Then 9e, D62's more-info entry point. The other 17 UX findings in `ux/FINDINGS.md` are all
-still unapplied, and `ux/prototype/15-new-shabbat-2.html` still claims the pre-flight check is
-a guarantee, which is what D80 says to fix. Then 10 (importer, last — D60). The `almanac`
-namespace check is **done** — clear in core, in the HACS default list, and in a GitHub
-manifest-domain search (`DESIGN.md` "Remaining checks").
+**Step 9d's shape is the thing to know about the editor: it edits *when*, not *what* (D149).**
+Anchors, offsets, arming, a `during` rule's end, rules added and removed, and the schedule's own
+name / `object_id` / description / recurrence. Actions, conditions, completion, desired state,
+`on_exit`, `latch` and `grace` are read, carried through a save untouched, and shown as counts.
+This is a correctness limit and not a schedule: a partial action editor would render the
+`service` it understands, drop the `data` keys it does not, and D140's diff would send the
+truncated action as a change — so opening an imported or YAML-authored schedule and pressing
+Save would silently destroy it. Do not widen the scope without the builders.
+
+**Next step:** step 9e — the action and condition builders, split out of 9d by D149. Then 9f,
+D62's more-info entry point, which also carries D78's deferred half: the footprint ships as
+names rather than links because each link needs core's more-info event name, a verbatim
+third-party identifier this environment cannot certify, whose misspelling fails *silently*. The
+card's `getConfigElement` is still deliberately absent rather than stubbed. The other 17 UX
+findings in `ux/FINDINGS.md` are all still unapplied, and `ux/prototype/15-new-shabbat-2.html`
+still claims the pre-flight check is a guarantee, which is what D80 says to fix. Then 10
+(importer, last — D60). The `almanac` namespace check is **done** — clear in core, in the HACS
+default list, and in a GitHub manifest-domain search (`DESIGN.md` "Remaining checks").
 
 **Still missing for a release:** the D71 workflow that builds and zips from *inside*
 `custom_components/almanac/`. Nothing exists yet, and D131 means a broken one degrades quietly.
 
-**Eight judgement calls are flagged for the owner** and are marked as such where they are
+**Nine judgement calls are flagged for the owner** and are marked as such where they are
 recorded: D91 (disarming mid-interval exits immediately), D97 (an unreadable condition changes
 nothing), D104 (the re-enumeration period when D44's horizon comes back empty), D109 (`run_now`
 fires no occurrence event) and D114 (`diaspora` and the two candle-lighting offsets have no user
@@ -158,7 +166,9 @@ alternative is a fourth `HorizonKind`, which is a contract change) and D120 (a d
 evaluation at one instant, not a replay of the interval leading to it), plus step 9a's one:
 D131 (a missing frontend bundle logs one line and the integration loads without a UI, which is
 the opposite trade from §17's reason for not committing `dist/` — the two are consistent, but a
-bad release is quiet).
+bad release is quiet), plus step 9d's one: D149 (the editor does not edit actions or conditions,
+so it cannot yet create a working schedule from nothing — a new schedule gets a time and no
+action, which is the honest state of a half-built editor and is why 9e exists).
 
 D116 is the one decision step 8 made that changes existing behaviour rather than adding to it:
 `run_now` now fires `almanac_execution`, so a manual run appears on the timeline's past half.

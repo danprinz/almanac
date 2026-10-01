@@ -31,6 +31,9 @@ import {
   laneOrder,
   nextOccurrence,
 } from "./derive";
+import { EDITOR_CLOSED } from "./editor";
+import type { EditorClosedDetail } from "./editor";
+import "./editor";
 import { clockTime, dateLabel, dayAndTime, relative } from "./format";
 import type { HomeAssistant } from "./ha";
 import { armedRules, buildTrack } from "./rails";
@@ -65,6 +68,16 @@ export class AlmanacPanel extends LitElement {
   @state() private _notLoaded = false;
   @state() private _at = new Date();
 
+  /**
+   * The editor, when one is open. `schedule: null` is a create.
+   *
+   * Wrapped in an object rather than held as `StoredSchedule | null` because
+   * those two states are three: closed, creating, and editing a schedule.
+   * `undefined` for closed and a one-field box for the other two is the
+   * encoding that cannot collapse the first two into each other.
+   */
+  @state() private _editing?: { schedule: StoredSchedule | null } | undefined;
+
   private _timer?: number | undefined;
   private _inFlight = false;
 
@@ -73,11 +86,16 @@ export class AlmanacPanel extends LitElement {
     this._timer = window.setInterval(() => {
       this._at = new Date();
     }, 60_000);
+    // On the host, by the constant, for the reason `editor.ts` gives about
+    // `STAGE_SELECTED`: Lit cannot bind a listener to a name held in a variable,
+    // so a literal in the template would be a second spelling nothing compares.
+    this.addEventListener(EDITOR_CLOSED, this._onEditorClosed as EventListener);
     void this._refresh();
   }
 
   public override disconnectedCallback(): void {
     super.disconnectedCallback();
+    this.removeEventListener(EDITOR_CLOSED, this._onEditorClosed as EventListener);
     if (this._timer !== undefined) {
       window.clearInterval(this._timer);
       this._timer = undefined;
@@ -133,6 +151,36 @@ export class AlmanacPanel extends LitElement {
     }
   }
 
+  /**
+   * D149's mounting point, and a departure from D61's table, which assigns rule
+   * editing to the card and gives the panel the timeline.
+   *
+   * The reason is that the editor needs width and the card does not have it: a
+   * `full`-size track is 240px of rail per anchor, and a Lovelace card in a
+   * three-column view is narrower than two of them. So the panel hosts it and
+   * the card will open it — which is the same division D62 already makes for
+   * more-info, where the small surface is the entry point and the large one is
+   * the destination. §16.4 records this against D61 rather than editing it.
+   *
+   * It replaces the lane list rather than floating over it. A dialog would be
+   * the conventional shape and needs `ha-dialog`, which nothing in `ha.ts` has
+   * a verified typing for; replacing the content needs no component at all, and
+   * keeps the focus order linear without a focus trap to get wrong.
+   */
+  private _edit(schedule: StoredSchedule | null): void {
+    this._editing = { schedule };
+  }
+
+  private _onEditorClosed = (event: CustomEvent<EditorClosedDetail>): void => {
+    this._editing = undefined;
+    if (event.detail.saved) {
+      // A save changes the configuration, so the timeline that was enumerated
+      // from the old one is stale in a way no amount of re-rendering fixes.
+      this._timeline = undefined;
+      void this._refresh();
+    }
+  };
+
   private _pickRange(range: Range): void {
     this._range = range;
     this._timeline = undefined;
@@ -162,6 +210,13 @@ export class AlmanacPanel extends LitElement {
               `,
             )}
           </div>
+          <button
+            class="range tappable"
+            ?disabled=${this._editing !== undefined}
+            @click=${() => this._edit(null)}
+          >
+            New schedule
+          </button>
           <span class="now mono"
             >now ${clockTime(this.hass, this._at.toISOString())}</span
           >
@@ -172,6 +227,14 @@ export class AlmanacPanel extends LitElement {
   }
 
   private _content() {
+    const editing = this._editing;
+    if (editing) {
+      return html`<almanac-editor
+        class="editor"
+        .hass=${this.hass}
+        .schedule=${editing.schedule}
+      ></almanac-editor>`;
+    }
     if (this._notLoaded) {
       return html`<p class="muted">almanac is reloading.</p>`;
     }
@@ -255,6 +318,14 @@ export class AlmanacPanel extends LitElement {
                 ${relative(next.start!, this._at)}</span
               >`
             : html`<span class="muted">nothing ahead in this window</span>`}
+          ${stored
+            ? html`<button
+                class="range tappable"
+                @click=${() => this._edit(stored)}
+              >
+                Edit
+              </button>`
+            : nothing}
         </div>
 
         ${track && track.rails.length > 0
@@ -483,6 +554,10 @@ export class AlmanacPanel extends LitElement {
 
       .banner {
         margin-top: var(--almanac-gap-sm);
+      }
+
+      .editor {
+        margin-top: var(--almanac-gap-md);
       }
 
       p {

@@ -21,6 +21,7 @@ import {
   addRule,
   clockAtRule,
   draftOf,
+  footprintOf,
   isDirty,
   newDraft,
   problems,
@@ -206,4 +207,122 @@ test("an entity id is only reported when it certainly cannot be one", () => {
   assert.equal(problems(withObjectId(draft, "")).length, 1);
   assert.equal(problems(withObjectId(draft, "Shabbat Lights")).length, 1);
   assert.equal(problems(withObjectId(draft, "lights.kitchen")).length, 1);
+});
+
+test("a rule the track cannot place is reported, and it says which rule", () => {
+  // The two cases `rails.ts::draftTrack` drops, because there is no position to
+  // draw them at. Without these the editor would list a rule that is simply
+  // absent from its own track, which reads as a rendering bug.
+  const noTime = withBody(newDraft("Bedtime"), { rules: [{ kind: "at" }] });
+  assert.deepEqual(problems(noTime), ["Rule 1 has no time."]);
+
+  const noEnd = withBody(newDraft("Bedtime"), {
+    rules: [
+      clockAtRule(),
+      { kind: "during", start_anchor: { kind: "clock", at: "18:00:00" } },
+    ],
+  });
+  assert.deepEqual(problems(noEnd), ["Rule 2 has no end."]);
+
+  const neither = withBody(newDraft("Bedtime"), { rules: [{ kind: "during" }] });
+  assert.deepEqual(problems(neither), [
+    "Rule 1 has no start.",
+    "Rule 1 has no end.",
+  ]);
+});
+
+// --- D78's footprint --------------------------------------------------------
+
+test("the footprint separates what is written from what is only read", () => {
+  // The distinction the four lists exist for. `sensor.candle_lighting` is an
+  // anchor: when it goes unavailable the schedule does not misfire, it fails to
+  // fire, and asking the user to check it is a different sentence from asking
+  // them to check the lamp.
+  const draft = withBody(newDraft("Shabbat"), {
+    rules: [
+      {
+        kind: "during",
+        start_anchor: {
+          kind: "entity_time",
+          entity_id: "sensor.candle_lighting",
+          offset: -2700,
+        },
+        end: {
+          kind: "anchor",
+          anchor: {
+            kind: "entity_time",
+            entity_id: "sensor.havdalah",
+            offset: 0,
+          },
+        },
+        state: {
+          entities: [{ entity_id: "light.dining", state: "on", attributes: {} }],
+          override: [],
+        },
+        exit_actions: [
+          {
+            kind: "script",
+            script: "script.wind_down",
+            fields: {},
+            wait: false,
+            timeout: null,
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.deepEqual(footprintOf(draft), {
+    entities: ["light.dining"],
+    reads: ["sensor.candle_lighting", "sensor.havdalah"],
+    scripts: ["script.wind_down"],
+    services: [],
+    unexpanded: 0,
+  });
+});
+
+test("a target almanac cannot expand is counted, not dropped", () => {
+  // D57's index does not resolve an area to its entities, so a footprint that
+  // listed `entity_id` targets alone would be complete-looking and wrong. The
+  // count is the editor's way of saying "and some more I cannot name".
+  const draft = withBody(newDraft("Evening"), {
+    rules: [
+      {
+        kind: "at",
+        anchor: { kind: "clock", at: "18:00:00" },
+        actions: [
+          {
+            kind: "service",
+            service: "light.turn_on",
+            target: {
+              entity_id: ["light.hall"],
+              device_id: [],
+              area_id: ["living_room", "kitchen"],
+              floor_id: [],
+              label_id: ["downstairs"],
+            },
+            data: {},
+          },
+        ],
+      },
+    ],
+  });
+
+  const footprint = footprintOf(draft);
+  assert.deepEqual(footprint.entities, ["light.hall"]);
+  assert.deepEqual(footprint.services, ["light.turn_on"]);
+  assert.equal(footprint.unexpanded, 3);
+});
+
+test("the footprint of a draft with nothing in it is four empty lists", () => {
+  // The editor renders nothing at all for this, so the shape matters: a
+  // footprint that returned `null` for "nothing" would make every caller ask
+  // the question twice.
+  assert.deepEqual(footprintOf(newDraft("Bedtime")), {
+    entities: [],
+    reads: [],
+    scripts: [],
+    services: [],
+    unexpanded: 0,
+  });
 });

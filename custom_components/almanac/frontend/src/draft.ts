@@ -23,7 +23,10 @@
 // appears here.
 
 import type {
+  StoredAction,
+  StoredAnchor,
   StoredAtRule,
+  StoredDesiredState,
   StoredDuringRule,
   StoredSchedule,
 } from "./stored";
@@ -263,8 +266,13 @@ export const isDirty = (draft: Draft, original: StoredSchedule | null): boolean 
  * TypeScript would produce a second validator that disagrees with the first
  * somewhere nobody is looking. What is here is the short list of things the
  * schema rejects that the *editor* can state in the user's own terms before a
- * round trip, so the two checks below are the two whose error messages would
+ * round trip, so the checks below are the ones whose error messages would
  * otherwise come back as `humanize_error` output about a voluptuous marker.
+ *
+ * The rule checks were added with the editor, because they are the two cases
+ * `rails.ts::draftTrack` cannot draw: a rule with no anchor has no position, so
+ * without this the editor would list a rule that is simply missing from its own
+ * track, which reads as a rendering bug rather than as an unfinished rule.
  */
 export const problems = (draft: Draft): string[] => {
   const found: string[] = [];
@@ -280,7 +288,125 @@ export const problems = (draft: Draft): string[] => {
       );
     }
   }
+  rulesOf(draft).forEach((rule, index) => {
+    const nth = index + 1;
+    if (rule.kind === "at") {
+      if (!rule.anchor) {
+        found.push(`Rule ${nth} has no time.`);
+      }
+      return;
+    }
+    if (!rule.start_anchor) {
+      found.push(`Rule ${nth} has no start.`);
+    }
+    if (!rule.end) {
+      found.push(`Rule ${nth} has no end.`);
+    }
+  });
   return found;
+};
+
+/**
+ * D78's footprint: what the schedule touches, separated by *how* it touches it.
+ *
+ * Four lists rather than one, because "touches" covers three different
+ * relationships and a single list would conflate them. An entity a desired
+ * state writes to is a thing this schedule changes; an entity an `entity_time`
+ * anchor names is a thing it *reads a time from*, and when that one goes
+ * unavailable the schedule does not misfire — it fails to fire at all, which is
+ * a different question to ask of a different entity. Scripts and services are
+ * named separately because a script is an entity with a `mode` and D31's
+ * pre-flight reads it, while a service is not an entity at all.
+ *
+ * `unexpanded` is the known gap, counted rather than hidden: D57's index does
+ * not resolve area, floor, device or label targets to entities, so a footprint
+ * that listed only `entity_id` targets would under-report and look complete.
+ * The editor says how many it could not expand.
+ *
+ * Pure, so it runs over a draft — the point being that the footprint of what
+ * the user is about to save is the one worth showing, not the footprint of what
+ * is stored.
+ */
+export interface Footprint {
+  /** Entities a desired state or an action target writes to. */
+  entities: string[];
+  /** Entities an `entity_time` anchor reads a time from. */
+  reads: string[];
+  scripts: string[];
+  services: string[];
+  /** Area, floor, device and label targets, which almanac does not expand. */
+  unexpanded: number;
+}
+
+export const footprintOf = (draft: Draft): Footprint => {
+  const entities = new Set<string>();
+  const reads = new Set<string>();
+  const scripts = new Set<string>();
+  const services = new Set<string>();
+  let unexpanded = 0;
+
+  const fromAnchor = (value: StoredAnchor | undefined): void => {
+    if (value?.kind === "entity_time") {
+      reads.add(value.entity_id);
+    }
+  };
+
+  const fromAction = (value: StoredAction): void => {
+    if (value.kind === "script") {
+      scripts.add(value.script);
+      return;
+    }
+    services.add(value.service);
+    const target = value.target;
+    if (!target) {
+      return;
+    }
+    for (const id of target.entity_id) {
+      entities.add(id);
+    }
+    unexpanded +=
+      target.device_id.length +
+      target.area_id.length +
+      target.floor_id.length +
+      target.label_id.length;
+  };
+
+  const fromState = (value: StoredDesiredState | null | undefined): void => {
+    if (!value) {
+      return;
+    }
+    for (const entity of value.entities) {
+      entities.add(entity.entity_id);
+    }
+    value.override.forEach(fromAction);
+  };
+
+  for (const rule of rulesOf(draft)) {
+    if (rule.kind === "at") {
+      fromAnchor(rule.anchor);
+      (rule.actions ?? []).forEach(fromAction);
+      continue;
+    }
+    fromAnchor(rule.start_anchor);
+    if (rule.end?.kind === "anchor") {
+      fromAnchor(rule.end.anchor);
+    }
+    fromState(rule.state);
+    (rule.enter_actions ?? []).forEach(fromAction);
+    (rule.exit_actions ?? []).forEach(fromAction);
+    if (rule.on_exit?.kind === "apply") {
+      fromState(rule.on_exit.state);
+    }
+  }
+
+  const sorted = (found: Set<string>): string[] => [...found].sort();
+  return {
+    entities: sorted(entities),
+    reads: sorted(reads),
+    scripts: sorted(scripts),
+    services: sorted(services),
+    unexpanded,
+  };
 };
 
 /**

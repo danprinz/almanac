@@ -36,6 +36,7 @@ export const WS_SCHEDULE_LIST = "almanac/schedule/list";
 export const WS_SCHEDULE_CREATE = "almanac/schedule/create";
 export const WS_SCHEDULE_UPDATE = "almanac/schedule/update";
 export const WS_SCHEDULE_DELETE = "almanac/schedule/delete";
+export const WS_DAY_SET_LIST = "almanac/day_set/list";
 
 /** `send_error`'s shape, as `sendMessagePromise` rejects with it. */
 export interface WsError {
@@ -135,6 +136,31 @@ export const fetchResolvers = (
 ): Promise<WireResolverCatalogue> =>
   hass.connection.sendMessagePromise<WireResolverCatalogue>({
     type: WS_RESOLVERS,
+  });
+
+/**
+ * The two fields a day-set picker needs, and deliberately not more.
+ *
+ * `day_sets.py` registers its own `DictStorageCollectionWebsocket`, so
+ * `almanac/day_set/list` returns whole day sets — `sources`, `compose` and all.
+ * The editor picks one by name and does not edit it, so this type names the two
+ * keys it reads and leaves the rest unmodelled, which is the honest shape for
+ * something not yet editable here.
+ *
+ * It lives in this file rather than in `stored.ts` for the same reason the write
+ * shapes live in `draft.ts`: `tests/test_wire_contract.py` sweeps `stored.ts`
+ * against `schema.py` key by key, and a type that models two fields out of six
+ * would fail that sweep for being right about what it claims.
+ */
+export interface DaySetRow {
+  id: string;
+  name: string;
+}
+
+/** Every day set, for D18's picker. No `at`, for `fetchSchedules`'s reason. */
+export const fetchDaySets = (hass: HomeAssistant): Promise<DaySetRow[]> =>
+  hass.connection.sendMessagePromise<DaySetRow[]>({
+    type: WS_DAY_SET_LIST,
   });
 
 // --- the three writes (D139-D141) ------------------------------------------

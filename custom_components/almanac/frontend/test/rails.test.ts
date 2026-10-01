@@ -18,7 +18,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { armedRules, buildTrack, summaryEndpoints } from "../src/rails.ts";
+import {
+  armedRules,
+  buildTrack,
+  draftTrack,
+  summaryEndpoints,
+} from "../src/rails.ts";
+import type { WritableRule } from "../src/draft.ts";
 import type {
   StoredAnchor,
   StoredAtRule,
@@ -433,4 +439,152 @@ test("a stage names one action and counts the rest", () => {
 test("a stage that does nothing says nothing", () => {
   const track = buildTrack(FLAGSHIP, FLAGSHIP_PLAN, FRIDAY);
   assert.equal(track.rails[0]!.stages[0]!.does, null);
+});
+
+// --- the same geometry, with no plan to join on (D147) ----------------------
+
+test("a draft rule has no id, so its stage is addressed by its position", () => {
+  // D142 leaves the id to the backend, and the editor already addresses a draft
+  // rule by index. A stored id is a ULID, so "0" cannot be mistaken for one.
+  const rules: WritableRule[] = [
+    { kind: "at", anchor: resolver("candle_lighting", -2700) },
+    { kind: "at", anchor: clock("22:00:00") },
+  ];
+  const track = draftTrack(rules, null);
+
+  assert.deepEqual(
+    track.rails.map((rail) => rail.stages.map((stage) => stage.ruleId)),
+    [["0"], ["1"]],
+  );
+});
+
+test("a draft track claims nothing about when anything happens", () => {
+  const track = draftTrack(
+    [
+      { kind: "at", anchor: resolver("candle_lighting", -2700) },
+      { kind: "at", anchor: sun("sunrise", 0) },
+    ],
+    "01JABCDEF",
+  );
+
+  assert.equal(track.scheduleId, "01JABCDEF");
+  assert.equal(track.day, null);
+  // Not "unknown" — D76's check could not run, and false is the honest claim
+  // that no swap was found.
+  assert.equal(track.unstable, false);
+  assert.deepEqual(
+    track.rails.map((rail) => rail.instant),
+    [null, null],
+  );
+  assert.deepEqual(
+    track.rails.flatMap((rail) => rail.stages.map((stage) => stage.instant)),
+    [null, null],
+  );
+  assert.deepEqual(track.gaps, [{ seconds: null, unstable: false }]);
+});
+
+test("rails stay in declaration order, because order is the thing not yet known", () => {
+  // The reverse of what `buildTrack` would do with these two resolved: sunrise
+  // is hours before the evening's candle lighting. Sorting a draft by a guess
+  // would move rails under the user's cursor as they typed.
+  const track = draftTrack(
+    [
+      { kind: "at", anchor: resolver("candle_lighting", 0) },
+      { kind: "at", anchor: sun("sunrise", 0) },
+    ],
+    null,
+  );
+  assert.deepEqual(
+    track.rails.map((rail) => rail.label),
+    ["candle lighting", "sunrise"],
+  );
+});
+
+test("the geometry of a draft is the geometry of the saved thing", () => {
+  // The point of the shared code path, stated as a test: the same rules laid
+  // out both ways differ only in what the plan supplied.
+  const anchor = resolver("candle_lighting", -2700);
+  const second = resolver("candle_lighting", -300);
+  const saved = buildTrack(
+    schedule([at("one", anchor), at("two", second)]),
+    plan([]),
+    FRIDAY,
+  );
+  const drafted = draftTrack(
+    [
+      { kind: "at", anchor },
+      { kind: "at", anchor: second },
+    ],
+    null,
+  );
+
+  assert.equal(drafted.rails.length, 1);
+  assert.equal(drafted.rails[0]!.label, saved.rails[0]!.label);
+  assert.equal(drafted.rails[0]!.detail, saved.rails[0]!.detail);
+  assert.equal(drafted.rails[0]!.scale, saved.rails[0]!.scale);
+  assert.deepEqual(
+    drafted.rails[0]!.stages.map((stage) => stage.offset),
+    saved.rails[0]!.stages.map((stage) => stage.offset),
+  );
+});
+
+test("an interval whose end is a duration is still one rail with two stages", () => {
+  const track = draftTrack(
+    [
+      {
+        kind: "during",
+        start_anchor: resolver("candle_lighting", -2700),
+        end: { kind: "duration", duration: 7200 },
+      },
+    ],
+    null,
+  );
+
+  assert.equal(track.rails.length, 1);
+  assert.deepEqual(
+    track.rails[0]!.stages.map((stage) => [stage.role, stage.offset]),
+    [
+      ["enter", -2700],
+      ["exit", 4500],
+    ],
+  );
+});
+
+test("a rule with nothing to position is left off the track, not guessed at", () => {
+  // `problems()` is what tells the user; drawing a dot at an invented position
+  // would put it where the engine will not fire.
+  const halfWritten: WritableRule[] = [
+    { kind: "at" },
+    { kind: "during", start_anchor: clock("18:00:00") },
+    { kind: "at", anchor: clock("22:00:00") },
+  ];
+  const track = draftTrack(halfWritten, null);
+
+  assert.deepEqual(
+    track.rails.map((rail) => rail.label),
+    ["22:00"],
+  );
+  // And the surviving rule keeps its own index, not its position among the drawn.
+  assert.equal(track.rails[0]!.stages[0]!.ruleId, "2");
+});
+
+test("a rule is armed unless it says otherwise, which is schema.py's default", () => {
+  const track = draftTrack(
+    [
+      { kind: "at", anchor: clock("07:00:00") },
+      { kind: "at", anchor: clock("08:00:00"), enabled: false },
+    ],
+    null,
+  );
+  assert.deepEqual(
+    track.rails.map((rail) => rail.stages[0]!.enabled),
+    [true, false],
+  );
+});
+
+test("a draft with no rules is an empty track, which is a real thing to draw", () => {
+  const track = draftTrack([], null);
+  assert.deepEqual(track.rails, []);
+  assert.deepEqual(track.gaps, []);
+  assert.deepEqual(summaryEndpoints(track), []);
 });

@@ -1681,6 +1681,9 @@ to — a template helper entity is evaluated, never enumerated, so it never touc
 9a. The delivery path — the toolchain, the Python registration, and §17.1's D129–D131
 9b. The track — D73–D79 read, and §16.2's D132–D138
 9c. The write boundary and the pick-list — §16.3's D139–D146
+9d. The editor — §16.4's D147–D151
+9e. The action and condition builders — split out of 9d by D149
+9f. More-info and the footprint's links — D62, and D78's deferred half
 10. **Import from `scheduler-component`, last** — D60
 
 The packaging decisions D67–D71 are settled ahead of step 1, not at step 9: the repository layout
@@ -2095,6 +2098,161 @@ terms, instead of relaying `humanize_error` output about a voluptuous marker.
 *And the absence of a problem is not a promise*, which is D80's rule about pre-flight checks
 pointed at the editor rather than at the dry run. The prototype screen that claims its pre-flight
 is a guarantee is still the thing D80 says to fix.
+
+### 16.4 What step 9d found
+
+The editor. Four of the five decisions here are about what it does *not* do, which is what
+building it turned out to be about: a schedule has nine editable fields per rule and the editor
+ships with four of them, because the other five cannot be edited safely before the builders exist
+and an editor that edits them unsafely is worse than one that does not edit them at all.
+
+**D147 — a draft is drawn by the same code that draws a saved schedule, with the plan left out.**
+`rails.ts::draftTrack` takes writable rules and no plan: every rail's `instant` is null, every
+gap's `seconds` is null, `day` is null, `unstable` is false, and the rails come out in declaration
+order.
+
+*Why the same code:* `buildTrack` derives all of the geometry — which anchors are rails, which
+stages sit on which rail, each rail's local scale, each stage's offset — from the rules alone. The
+plan contributes four things and only four: the rail instants, the gap durations, the civil day
+and D76's instability. So a second implementation for drafts would be a second implementation of
+the geometry, differing from the first in nothing the user can see and in everything a bug can
+hide in. This is D64's argument about the dry run sharing the engine's code path, one layer up:
+*the preview is the real thing with an input missing, not a drawing of it.* The refactor that made
+it true — `collect`, `railsOf`, `gapsOf` extracted out of `buildTrack`, and both builders reduced
+to whether a plan is joined on — was verified behaviour-preserving by the 38 existing track tests
+passing unchanged before a single new one was written.
+
+*Why declaration order and not sorted:* D76's order check needs resolved instants to sort by, and
+a draft has none. Sorting by something else — the typed clock time, the offset — would put the
+rails in an order the saved schedule will not have, so the editor would reorder itself on save.
+Declaration order is the one order that is already true.
+
+*Why `drawable` restates three backend defaults and not more:* the two that the *drawing* depends
+on, plus the id. `enabled` becomes true because D77 draws a disabled stage hollow, so a missing
+field would invert what the editor shows. `on_exit` becomes `leave`, whose label is null — which
+is also what absence draws, so nothing is claimed by filling it in. The id becomes the rule's
+decimal index, which collides with nothing because stored ids are ULIDs (D142). Everything else is
+left absent, because D143 says the schema is the authority on defaults and a copy of its list in
+TypeScript is a second authority that drifts without failing anything.
+`tests/test_schema.py::test_the_defaults_the_editors_draft_track_restates` names `rails.ts` so the
+restatement fails for the right reason.
+
+*And a rule with nothing to position is dropped, not guessed at.* An `at` rule with no anchor and
+a `during` rule with no end have no place on a rail. `problems()` gained a check for each at the
+same time, because without it the editor would list a rule that is simply missing from its own
+track — which reads as a rendering bug rather than as an unfinished rule.
+
+**D148 — the editor's track size differs from the reading sizes in what its stages *are*, not in
+how big they are.** At `full` a stage is a native `<button>`; at `lane` and `micro` it stays a
+`<span>`. Clicking one dispatches `almanac-stage-selected`, carrying the rule id and the role.
+
+*Why a button and not a span with a handler:* a native button is the whole of the keyboard story.
+It takes focus in DOM order, Enter and Space activate it, and a screen reader announces it as a
+control with its `aria-label`. A div with `@click` and a `tabindex` is the same pixels and none of
+that, and the gap only shows up for the users least able to work around it.
+
+*Why the event is `composed`, emphatically:* the editor hosts the track inside its own shadow
+root, and an event that bubbles but is not composed stops dead at that boundary — with the
+listener attached, the handler never called, and nothing logged anywhere. It is the failure mode
+that looks like a wiring mistake in the consumer.
+
+*Why the detail is the rule and not the rail:* a `during` rule has stages on two rails and the
+editor opens the rule either way. The role is what says which end to put the cursor in.
+
+*Why the hit target is 44×28 at this size and not 44×44:* the rail is horizontal, so two stages on
+one rail can only collide along x. A square target would make the left one of a close pair
+unreachable by pointer in half of its own area — a worse accessibility outcome than a narrower
+target, which is the thing the 44px rule is for. The height stays 44px, a rail with a single stage
+keeps the full square, and the keyboard reaches every dot regardless.
+
+*And drag is deliberately absent.* Dragging a stage along its rail is the obvious gesture and it
+is the one editing action with no keyboard equivalent, so it has to arrive together with one
+rather than instead of one. Shipping it first would make the fastest path through the editor the
+one a keyboard user cannot take.
+
+**D149 — the editor edits when things happen, not what they do.** In scope: the schedule's name,
+`object_id`, description and recurrence; a rule's arming, its anchors, its offsets, a `during`
+rule's end; and adding or removing rules. Out of scope and preserved untouched: actions,
+conditions, `condition_policy`, completion, desired state, `on_exit`, `latch` and `grace`.
+
+*Why this is a correctness decision and not a schedule:* a partial action editor renders the
+`service` and `target` it understands and silently drops the `data` keys it does not — and D140's
+diff would then send the truncated action as a change. Opening a YAML-authored or step-10-imported
+schedule and pressing Save would *destroy* it, quietly, with no error and no way back. A count
+destroys nothing.
+
+*Why the counts are on screen rather than merely absent:* a schedule with eleven actions that
+showed nothing about them reads as a schedule with none, and the Save button then looks like it is
+about to write that. "11 actions, carried through unchanged" is the sentence that makes the limit
+a limit rather than a loss.
+
+*What it costs:* the editor cannot yet create a working schedule from nothing — a new schedule
+gets a time and no action. That is the honest state of a half-built editor and is why 9e exists.
+
+**D150 — the editor lives in the panel, and the card opens it.** This departs from D61's table,
+which assigns rule editing to the card and the timeline to the panel.
+
+*Why:* the editor needs width that a card does not have. A `full`-size track is 240px of rail per
+anchor plus 128px per gap, and the flagship's three-anchor shape is wider than a Lovelace card in
+a three-column view. D61's division was between *reading* surfaces; editing is a third thing, and
+it goes where there is room. This is the same division D62 already makes for more-info — the small
+surface is the entry point, the large one is the destination — so the card's job becomes to ask
+for the editor rather than to be it.
+
+*Why it replaces the lane list instead of floating over it:* a dialog is the conventional shape
+and needs `ha-dialog`, which nothing in `ha.ts` has a verified typing for — and this environment
+cannot certify a verbatim third-party identifier (Appendix B), so a misspelled tag would render as
+nothing with no error. Replacing the content needs no component at all and keeps the focus order
+linear with no focus trap to get wrong.
+
+**D151 — the recurrence control offers only the two kinds it can build from nothing.** `weekdays`
+and `day_set` are editable and interchangeable; `dates`, `nth_weekday` and `every_n` are shown and
+cannot be switched away from.
+
+*Why not a full kind switch:* a dropdown that moved a schedule from `nth_weekday` to `weekdays`
+would discard the `nth` and the weekday it was built from, and the editor cannot put them back
+because it cannot build an `nth_weekday` at all. That is a one-way door disguised as a control.
+The two kinds it *can* build it can also rebuild, so switching between them loses only what the
+user explicitly replaced.
+
+*Why `day_set` is editable at all, rather than read-only like the other three:* the flagship's
+recurrence **is** a day set (`tests/test_flagship.py`), so a read-only `day_set` would make the
+flagship the one schedule the editor cannot touch. The picker reads `almanac/day_set/list`, which
+`day_sets.py` already registers; a stored id that no longer appears in that list is kept as it is
+and said out loud, never silently replaced with the first available one.
+
+*And a draft with no `recurrence` field says "every day — almanac's default, which nobody has
+overridden"*, rather than showing seven lit toggles. D143's rule holds on screen as well as in
+code: a default the user did not choose must not be presented as a choice they made.
+
+#### What the step refined rather than decided
+
+**D78's footprint ships as names, not links.** Each entry would open more-info, which needs core's
+`hass-more-info` event — a verbatim third-party identifier, the one class Appendix B says this
+environment cannot certify, and one whose misspelling fails *silently*: nothing opens, nothing is
+logged, and the bug is invisible to every check in the repository. It moves to 9f with D62, where
+one verification covers both. Same reasoning as D138.
+
+**The footprint's four lists are four because "touches" is three relationships.** An entity a
+desired state writes to is something the schedule changes. An entity an `entity_time` anchor names
+is something it *reads a time from* — and when that one goes unavailable the schedule does not
+misfire, it fails to fire at all, which is a different question to ask of a different entity. A
+script is an entity with a `mode` that D31's pre-flight reads; a service is not an entity. The
+fifth field is a count: D57's index does not expand area, floor, device or label targets, so a
+footprint listing only `entity_id` targets would under-report and look complete.
+
+**D146 gained two rule checks**, named above under D147. It is still not a mirror of `schema.py`
+and is still not a promise that a save will succeed.
+
+**The offset is typed in minutes at `step="any"`.** Minutes because that is the unit this domain
+is spoken in — "forty-five minutes before candle lighting" — and `step="any"` because `step="1"`
+would silently round a stored thirty-second offset away the first time the field was touched.
+`Math.round(minutes * 60)` on the way back keeps the stored value whole seconds.
+
+**No Home Assistant form component is used.** `ha-textfield`, `ha-select` and `ha-icon-button` are
+all real and none of them is typed in `ha.ts` or verifiable here, so the editor is built from
+native `<input>`, `<select>` and `<button>`. The cost is visual: it will not inherit a theme's
+input styling. The alternative is a tag name that may be wrong and would render as nothing.
 
 ---
 

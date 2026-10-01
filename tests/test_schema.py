@@ -162,6 +162,36 @@ def test_during_rule_with_duration_end() -> None:
     assert rule["latch"] is False
 
 
+def test_the_defaults_the_editors_draft_track_restates() -> None:
+    """D147 — `frontend/src/rails.ts::drawable` fills these in for an unsaved rule.
+
+    A rule the user is still writing has neither field: D142 leaves the id to
+    the backend and D139 lets everything else be half-typed, so the editor's
+    track projects a draft by supplying what the schema would have. Both values
+    are already asserted above as the schema's own choices (D26, D3). This test
+    exists because the frontend now *restates* them, and a restatement needs a
+    test that names the dependency — one that fails for the right reason when
+    the default changes, rather than one that merely happens to cover it.
+
+    `enabled` is the one that matters: D77 draws a disabled stage hollow, so a
+    drifted default would silently invert what the editor shows. `on_exit` is
+    here for completeness — `leave` has no label, which is what the absence of
+    the field would draw anyway.
+    """
+    at_rule = RULE_SCHEMA({"kind": "at", "anchor": {"kind": "clock", "at": "17:00"}})
+    assert at_rule["enabled"] is True
+
+    during_rule = RULE_SCHEMA(
+        {
+            "kind": "during",
+            "start_anchor": {"kind": "clock", "at": "17:00"},
+            "end": {"kind": "duration", "duration": 3600},
+        }
+    )
+    assert during_rule["enabled"] is True
+    assert during_rule["on_exit"] == {"kind": "leave"}
+
+
 def test_during_rule_with_anchor_end_spans_midnight_without_saying_so() -> None:
     """D38 — the end anchor resolves to its first occurrence at or after the start.
 

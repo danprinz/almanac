@@ -13,11 +13,19 @@
 // chooses colours and does no arithmetic on instants, which is what let the
 // decisions be tested without a DOM (D132).
 //
-// Two sizes are implemented, the two D74 needs now: `lane` for the timeline and
-// `micro` for a list row. The editor's full-width size arrives with the editor,
-// because what distinguishes it is not a larger rail but hit targets, drag and
-// the inline reference creation of D78 — a bigger `lane` would look like the
-// editor without being one.
+// Three sizes. `lane` for the timeline and `micro` for a list row are D74's two;
+// `full` is the editor's, and what distinguishes it is not the larger rail but
+// that its stages are *buttons* — focusable, keyboard-operable, with a 44px hit
+// target around a 14px dot — and that one of them can be selected. Drag is still
+// not here: it is the one editing gesture with no keyboard equivalent, so it has
+// to arrive alongside one rather than instead of one.
+//
+// `preview` is the other thing the editor needs, and it is a claim about meaning
+// rather than about size. A null instant means "almanac does not know", which is
+// amber — true of a saved schedule whose anchor would not resolve, and false of
+// `rails.ts::draftTrack`, where nothing has been resolved because nothing has
+// been saved. Drawing a draft amber would make every draft amber and teach the
+// user that amber means nothing, which finding 17 is entirely about avoiding.
 //
 // Shapes carry meaning, not only colour (`ux/FINDINGS.md` finding 17):
 //
@@ -33,10 +41,31 @@ import { customElement, property } from "lit/decorators.js";
 
 import { duration, offsetLabel } from "./format";
 import { summaryEndpoints } from "./rails";
-import type { Endpoint, Gap, Rail, Stage, Track } from "./rails";
-import { almanacText, almanacTokens } from "./styles";
+import type { Endpoint, Gap, Rail, Stage, StageRole, Track } from "./rails";
+import { almanacHitTarget, almanacText, almanacTokens } from "./styles";
 
-export type TrackSize = "lane" | "micro";
+export type TrackSize = "lane" | "micro" | "full";
+
+/**
+ * What a click on a stage says. The project's first custom DOM event.
+ *
+ * `bubbles` and `composed` are both required and for different reasons: the
+ * editor hosts this element inside its own shadow root, and an event that is not
+ * composed stops at that boundary — silently, with the listener attached and the
+ * handler never called. The name is `almanac-` prefixed like the tags, because
+ * an event called `stage-selected` on a bubbling path through a Home Assistant
+ * view is a name anything else may also have chosen.
+ *
+ * The detail is the rule and which of its ends, not the rail: a `during` rule
+ * has stages on two rails and the editor opens the rule either way, while the
+ * role is what tells it which end to put the cursor in.
+ */
+export interface StageSelectedDetail {
+  ruleId: string;
+  role: StageRole;
+}
+
+export const STAGE_SELECTED = "almanac-stage-selected";
 
 /** An endpoint, spelled. A stage on the anchor itself is just the anchor. */
 const endpointLabel = (endpoint: Endpoint): string =>
@@ -79,7 +108,7 @@ const shapeOf = (stage: Stage): string =>
  * convenience — without it that size conveys nothing to anyone not looking at
  * it.
  */
-const spoken = (track: Track): string => {
+const spoken = (track: Track, preview = false): string => {
   if (track.rails.length === 0) {
     return "No stages.";
   }
@@ -90,7 +119,10 @@ const spoken = (track: Track): string => {
           `${offsetLabel(stage.offset)}${stage.enabled ? "" : " (off)"}`,
       )
       .join(", ");
-    const unknown = rail.instant === null ? ", not resolved" : "";
+    // In a preview nothing has been resolved and nothing was expected to be,
+    // so saying so of every rail would be noise rather than information.
+    const unknown =
+      rail.instant === null && !preview ? ", not resolved" : "";
     return `${rail.label}: ${stages}${unknown}`;
   });
   const gaps = track.gaps
@@ -111,6 +143,15 @@ export class AlmanacTrack extends LitElement {
   @property({ attribute: false }) public track?: Track | undefined;
   @property({ reflect: true }) public size: TrackSize = "lane";
 
+  /**
+   * This track is a shape, not a prediction: unresolved is expected, so it is
+   * drawn plainly rather than amber. Set by the editor for a draft.
+   */
+  @property({ type: Boolean, reflect: true }) public preview = false;
+
+  /** The selected rule's id, which highlights every stage that rule owns. */
+  @property() public selected?: string | undefined;
+
   protected override render() {
     const track = this.track;
     if (!track) {
@@ -125,8 +166,8 @@ export class AlmanacTrack extends LitElement {
       <div
         class="rails"
         role="img"
-        aria-label=${spoken(track)}
-        title=${this.size === "micro" ? spoken(track) : ""}
+        aria-label=${spoken(track, this.preview)}
+        title=${this.size === "micro" ? spoken(track, this.preview) : ""}
       >
         ${track.rails.map(
           (rail, index) => html`
@@ -146,11 +187,12 @@ export class AlmanacTrack extends LitElement {
    */
   private _rail(rail: Rail) {
     const point = rail.scale === 0;
-    const unknown = rail.instant === null;
+    const unknown = rail.instant === null && !this.preview;
     const classes = [
       "rail",
       point ? "point" : "",
       unknown ? "unknown" : "",
+      rail.stages.length === 1 ? "single" : "",
     ]
       .filter(Boolean)
       .join(" ");
@@ -164,14 +206,7 @@ export class AlmanacTrack extends LitElement {
         <div class="axis">
           <span class="line"></span>
           <span class="anchor" style="left: 50%"></span>
-          ${rail.stages.map(
-            (stage) => html`
-              <span
-                class="dot ${shapeOf(stage)} ${stage.enabled ? "" : "off"}"
-                style="left: ${position(rail, stage)}%"
-              ></span>
-            `,
-          )}
+          ${rail.stages.map((stage) => this._dot(rail, stage))}
         </div>
         ${this.size === "micro"
           ? nothing
@@ -179,7 +214,9 @@ export class AlmanacTrack extends LitElement {
               ${rail.stages.map(
                 (stage) => html`
                   <span
-                    class="mark mono ${stage.enabled ? "" : "off"}"
+                    class="mark mono ${stage.enabled ? "" : "off"} ${
+                      stage.ruleId === this.selected ? "selected" : ""
+                    }"
                     style="left: ${position(rail, stage)}%"
                     title=${stage.does ?? ""}
                     >${offsetLabel(stage.offset)}</span
@@ -189,6 +226,68 @@ export class AlmanacTrack extends LitElement {
             </div>`}
       </div>
     `;
+  }
+
+
+  /**
+   * One stage. A span at the two reading sizes, a button at the editor's.
+   *
+   * The element changes rather than a handler being attached to a span, because
+   * a native button is the whole of the keyboard story: it takes focus in DOM
+   * order, Enter and Space activate it, and a screen reader announces it as a
+   * control with the `aria-label` below. A div with `@click` and a `tabindex`
+   * would be the same pixels and none of that.
+   *
+   * `aria-pressed` and not `aria-selected`, because the dots are not a listbox
+   * and the selection is a toggle on each one.
+   */
+  private _dot(rail: Rail, stage: Stage) {
+    const selected = stage.ruleId === this.selected;
+    const classes = [
+      "dot",
+      shapeOf(stage),
+      stage.enabled ? "" : "off",
+      selected ? "selected" : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+    const left = `left: ${position(rail, stage)}%`;
+
+    if (this.size !== "full") {
+      return html`<span class=${classes} style=${left}></span>`;
+    }
+    return html`
+      <button
+        type="button"
+        class="${classes} tappable"
+        style=${left}
+        aria-pressed=${selected}
+        aria-label=${this._stageLabel(rail, stage)}
+        title=${stage.does ?? ""}
+        @click=${() => this._select(stage)}
+      ></button>
+    `;
+  }
+
+  /** What a screen reader hears on a stage button: the rail, the offset, the act. */
+  private _stageLabel(rail: Rail, stage: Stage): string {
+    const parts = [
+      `${rail.label} ${offsetLabel(stage.offset)}`,
+      stage.role === "fire" ? null : stage.role,
+      stage.enabled ? null : "off",
+      stage.does,
+    ];
+    return parts.filter((part): part is string => !!part).join(", ");
+  }
+
+  private _select(stage: Stage): void {
+    this.dispatchEvent(
+      new CustomEvent<StageSelectedDetail>(STAGE_SELECTED, {
+        detail: { ruleId: stage.ruleId, role: stage.role },
+        bubbles: true,
+        composed: true,
+      }),
+    );
   }
 
   /**
@@ -202,14 +301,15 @@ export class AlmanacTrack extends LitElement {
    * nothing is marked in the wrong place.
    */
   private _gap(gap: Gap) {
-    const unknown = gap.seconds === null;
+    const missing = gap.seconds === null;
+    const unknown = missing && !this.preview;
     return html`
       <div class="gap ${unknown ? "unknown" : ""} ${gap.unstable ? "varies" : ""}">
         <span class="hair"></span>
-        ${this.size === "micro"
+        ${this.size === "micro" || (missing && this.preview)
           ? nothing
           : html`<span class="elapsed mono"
-              >${unknown ? "?" : duration(gap.seconds!)}</span
+              >${missing ? "?" : duration(gap.seconds!)}</span
             >`}
         ${this.size !== "micro" && gap.unstable
           ? html`<span
@@ -225,10 +325,13 @@ export class AlmanacTrack extends LitElement {
   static override styles = [
     almanacTokens,
     almanacText,
+    // Before the block below, deliberately: `.dot` sets a background and
+    // `.tappable` clears one, and the dot has to win.
+    almanacHitTarget,
     css`
       :host {
         display: block;
-        /* The two sizes differ in these four numbers and in what is drawn at
+        /* The three sizes differ in these five numbers and in what is drawn at
            all; nothing in the layout below is written twice. */
         --rail-w: 168px;
         --point-w: 72px;
@@ -243,6 +346,14 @@ export class AlmanacTrack extends LitElement {
         --gap-w: 14px;
         --dot: 6px;
         --axis-h: 8px;
+      }
+
+      :host([size="full"]) {
+        --rail-w: 240px;
+        --point-w: 104px;
+        --gap-w: 128px;
+        --dot: 14px;
+        --axis-h: 22px;
       }
 
       .rails {
@@ -378,6 +489,38 @@ export class AlmanacTrack extends LitElement {
 
       .mark.off {
         text-decoration: line-through;
+      }
+
+      /* The editor's selection, on the dot and on its offset label both — a ring
+         alone is a colour difference, and finding 17's argument about colour
+         applies to selection as much as to state. */
+      .dot.selected {
+        box-shadow: 0 0 0 3px var(--almanac-now);
+      }
+
+      .dot.off.selected {
+        box-shadow:
+          inset 0 0 0 2px var(--almanac-disarmed),
+          0 0 0 3px var(--almanac-now);
+      }
+
+      .mark.selected {
+        color: var(--primary-text-color);
+        font-weight: 600;
+      }
+
+      /* The hit target is 44px tall and narrower than that, because the rail is
+         horizontal: two stages on one rail can only collide along x, and a
+         square target would make the left one of a close pair unreachable by
+         pointer in half its own area. A rail with a single stage has nothing to
+         collide with and gets the full square. Keyboard reaches every dot
+         regardless, which is the other half of why this is safe. */
+      :host([size="full"]) .dot.tappable::after {
+        width: 28px;
+      }
+
+      :host([size="full"]) .rail.single .dot.tappable::after {
+        width: 44px;
       }
 
       .gap {
