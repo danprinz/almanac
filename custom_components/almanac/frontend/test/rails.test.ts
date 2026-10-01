@@ -46,7 +46,11 @@ const schedule = (rules: StoredRule[]): StoredSchedule => ({
   recurrence: { kind: "weekdays", weekdays: ["fri"] },
   date_window: { from: null, until: null },
   rules,
-  completion: {},
+  completion: {
+    finished_when: { kind: "never" },
+    then: { kind: "keep" },
+    count_on: "scheduled",
+  },
 });
 
 const resolver = (key: string, offset: number): StoredAnchor => ({

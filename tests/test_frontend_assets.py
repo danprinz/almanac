@@ -371,10 +371,13 @@ def test_the_bundles_are_resolved_from_the_package_not_the_config_dir() -> None:
 def test_the_pure_modules_import_nothing_at_run_time() -> None:
     """D132 — D70's technique again, for an unrelated reason.
 
-    Two files hold everything in the frontend that can be decided without a
+    Three files hold everything in the frontend that can be decided without a
     browser. `rails.ts` has the arithmetic: D73's rails and their local scales,
     D76's order check, D79's two endpoints. `draft.ts` has the edit algebra:
     D139's draft and D140's diff, which is to say what the Save button sends.
+    `form.ts` has the conversions between a native input and the schema, which
+    joined them at step 9e when five components started reading the same
+    `<input>` elements.
     Both are tested by `node --test`, which runs TypeScript by stripping the
     types and nothing else — in particular it does not resolve a bare specifier
     like `lit` or an extensionless relative one. So a single run-time import in
@@ -393,6 +396,13 @@ def test_the_pure_modules_import_nothing_at_run_time() -> None:
         assert statements, f"{name}: the regex stopped matching, not the rule"
         for statement in statements:
             assert statement.startswith("import type "), f"{name}: {statement}"
+
+    # `form.ts` is checked by the stronger rule rather than the same one: it has
+    # no import at all, type-only included, so the non-empty assertion above
+    # would fail on it for the opposite reason to the one it guards against.
+    assert not re.findall(
+        r"^import\b.*$", (SRC / "form.ts").read_text(encoding="utf-8"), re.MULTILINE
+    )
 
 
 def test_the_test_tsconfig_carries_the_flag_the_build_cannot() -> None:
@@ -432,5 +442,6 @@ def test_the_unit_tests_are_wired_to_a_script_and_a_directory() -> None:
     assert tests.is_dir()
     assert sorted(path.name for path in tests.glob("*.test.ts")) == [
         "draft.test.ts",
+        "form.test.ts",
         "rails.test.ts",
     ]

@@ -1682,7 +1682,8 @@ to — a template helper entity is evaluated, never enumerated, so it never touc
 9b. The track — D73–D79 read, and §16.2's D132–D138
 9c. The write boundary and the pick-list — §16.3's D139–D146
 9d. The editor — §16.4's D147–D151
-9e. The action and condition builders — split out of 9d by D149
+9e. The action, condition, desired-state and completion builders — §16.5's D152–D158,
+    which is where D149 is lifted
 9f. More-info and the footprint's links — D62, and D78's deferred half
 10. **Import from `scheduler-component`, last** — D60
 
@@ -2170,10 +2171,11 @@ is the one editing action with no keyboard equivalent, so it has to arrive toget
 rather than instead of one. Shipping it first would make the fastest path through the editor the
 one a keyboard user cannot take.
 
-**D149 — the editor edits when things happen, not what they do.** In scope: the schedule's name,
-`object_id`, description and recurrence; a rule's arming, its anchors, its offsets, a `during`
-rule's end; and adding or removing rules. Out of scope and preserved untouched: actions,
-conditions, `condition_policy`, completion, desired state, `on_exit`, `latch` and `grace`.
+**D149 — the editor edits when things happen, not what they do.** **Lifted at step 9e; see
+D152.** In scope at 9d: the schedule's name, `object_id`, description and recurrence; a rule's
+arming, its anchors, its offsets, a `during` rule's end; and adding or removing rules. Out of
+scope and preserved untouched: actions, conditions, `condition_policy`, completion, desired state,
+`on_exit`, `latch` and `grace`.
 
 *Why this is a correctness decision and not a schedule:* a partial action editor renders the
 `service` and `target` it understands and silently drops the `data` keys it does not — and D140's
@@ -2186,8 +2188,15 @@ showed nothing about them reads as a schedule with none, and the Save button the
 about to write that. "11 actions, carried through unchanged" is the sentence that makes the limit
 a limit rather than a loss.
 
-*What it costs:* the editor cannot yet create a working schedule from nothing — a new schedule
-gets a time and no action. That is the honest state of a half-built editor and is why 9e exists.
+*What it cost:* the editor could not create a working schedule from nothing — a new schedule got
+a time and no action. That was the honest state of a half-built editor and is why 9e existed.
+
+*How it was lifted, and why the argument matters after the limit is gone:* not by accepting the
+truncation risk, but by removing the premise. D152 edits a payload as JSON text, so there is no
+key the editor understands and none it drops; the round trip through the control is the identity.
+The decision is kept here rather than deleted because it is the reason the payload question was
+answered first, and because the same argument forbids the schema-driven form that will look
+attractive again the next time somebody reads `hass.services`.
 
 **D150 — the editor lives in the panel, and the card opens it.** This departs from D61's table,
 which assigns rule editing to the card and the timeline to the panel.
@@ -2253,6 +2262,167 @@ would silently round a stored thirty-second offset away the first time the field
 all real and none of them is typed in `ha.ts` or verifiable here, so the editor is built from
 native `<input>`, `<select>` and `<button>`. The cost is visual: it will not inherit a theme's
 input styling. The alternative is a tag name that may be wrong and would render as nothing.
+
+### 16.5 What step 9e found
+
+The four builders — actions, conditions, desired state and the schedule's own completion — which
+is to say the half of the editor D149 held back. What made them safe to build was answering one
+question first, and it is not the question the build order implied: not "how do you draw a
+condition tree", but "what does a payload look like on screen". D149's correctness argument was
+never about actions in general. It was about `data`.
+
+**D152 — `data`, `fields` and `attributes` are edited as JSON text, never as key/value widgets.**
+One `<textarea>` per payload, monospaced, holding whatever the stored mapping serialises to.
+
+*Why this is the decision that lifts D149:* `_service_data` validates these as `vol.Schema(dict)`
+and stops, deliberately, because the valid key set belongs to the target service and almanac does
+not have it. A key/value widget is therefore an editor for the keys it happens to know about —
+which is D149's data-loss bug at a smaller scale and harder to see, because the widget would look
+complete. A text area has no key set. There is nothing it understands and nothing it drops, so
+round-tripping an imported action through it is the identity, and that is what makes the diff in
+D140 safe to run over an action list the editor has opened.
+
+*Why not a schema-driven form:* core has `selector` metadata for service fields and
+`hass.services` would supply it. It is a real option and it is rejected for D17's reason: almanac
+resolves the service at *call* time, so a schedule may legitimately name a service belonging to an
+integration that is currently unloaded, and a form built from what is loaded now would render that
+action as having no fields at all. The failure mode is the same one — silent truncation — reached
+by a more respectable route.
+
+*What it costs:* a user editing `data` is typing JSON, with no completion and no field list. That
+is worse than a form for the common case and better than a form for every uncommon one, and it is
+the only version that cannot lose anything.
+
+**D153 — an unparseable payload does not block Save. ⚠️ Flagged for the owner.** The text stays
+exactly as typed, the border goes red, and the line under it says the payload is left as it was.
+The schedule saves, carrying the last mapping that parsed.
+
+*Why not block:* blocking needs the editor to track every payload's validity across rule
+additions, removals and selection changes — a counter, in a component that does not otherwise hold
+per-child state. A counter that drifts either blocks a save for no visible reason or allows one
+the screen says is broken, and both of those are worse than the thing being prevented.
+
+*Why this is a judgement call and not an obvious trade:* the user can type a broken payload, press
+Save, and get a schedule whose stored payload is the *old* one. The screen says so at the moment
+it happens, in the line under the field — but it says so in a place the user has already decided
+to leave. The alternative reading is that an unparseable payload should be a `problems()` entry
+like any other, which would be more consistent and would need the counter. Flagged because it is a
+silent-outcome decision, which is the class the owner has asked to see.
+
+**D154 — a condition's value has its type chosen, not inferred.** Three options beside the value
+field: text, a number, true/false.
+
+*Why:* `_scalar` accepts `str`, `int`, `float` and `bool`, and the comparison operators mean
+different things across them — `"9" > "20"` is true as text and false as a number. Inferring from
+the typed characters would make the meaning of a condition depend on whether the user happened to
+type `20` or `20.0` or `twenty`, and would change it under them when they corrected a typo. So the
+type is a control, and while it says text the screen carries the `"9" is above "20"` warning rather
+than silently doing the string comparison the user asked for.
+
+**D155 — the top-level condition list is an AND stated in words, and a group is how an OR is
+spelled.** No operator control at the top level; one `or` / `all of these do` control inside a
+group; groups one level deep, which is §7.1's existing limit.
+
+*Why not a top-level and/or toggle like today's card:* `CONDITIONS_SCHEMA` has no top-level
+operator — the list *is* a conjunction — so a control offering a choice would be a control whose
+second position cannot be stored. Saying "all of these have to be true" in a sentence is the
+honest rendering of a fact that is not a setting.
+
+*Why a group rather than a flat list with a mode:* today's card's `condition_type` applies one
+operator to every condition in a timeslot, which is why "weekday AND (hot OR someone home)" cannot
+be expressed in it at all. One level of grouping is what that sentence needs, and §7.1 already
+refused the second level.
+
+**D156 — the service name is a text field and the entity datalists are uncapped.** No service
+picker; a `<datalist>` of every entity in the instance for the entity fields, and one of every
+`script.` entity for the script field.
+
+*Why no picker:* D17's rule again, in the same shape as D152 — a two-level dropdown built from
+`hass.services` has no row for an unloaded integration's service, and a schedule is allowed to
+name one. The field accepts anything and suggests nothing it cannot justify.
+
+*Why the suggestion list is not capped:* a `<datalist>` is not laid out — the browser builds the
+popup and does the matching — so the cost of every entity is DOM nodes and not reflow. A cap would
+be the worse half of both options: a list that silently stops at some number is a list that
+misrepresents what the field accepts, and the field accepts anything.
+
+**D157 — each builder reports one event carrying its whole value, tagged with a name the host
+assigned.** `almanac-actions-changed`, `almanac-conditions-changed`, `almanac-desired-changed` and
+`almanac-mapping-changed`, each with a `name` the parent set on the element and the detail echoes
+back; the host registers one listener per event type and routes on that name.
+
+*Why whole values:* a rule's `actions` is one field as far as `replaceRuleAt` is concerned. An
+event per action field, carrying an index and a key, would make the editor reassemble a list it
+does not otherwise touch — and reassembly is where D149's truncation bug would come back.
+
+*Why a name rather than a listener per element:* Lit's `@name=` binding cannot take a constant, so
+a per-element listener would spell the event name as a literal in a template where nothing compares
+it to the exported constant. This is the arrangement `track.ts`'s `STAGE_SELECTED` already uses and
+`tests/test_frontend_assets.py` already relies on. A rule panel holds up to four action lists and
+two condition lists, so the name is doing real work: `actions`, `enter`, `exit`, `then`, `override`.
+
+*And a builder stops the events of the builders nested inside it.* A desired state contains an
+action list, which contains payloads; each level stops what it has consumed, and each also checks
+the name rather than trusting that it was stopped — so a missing `stopPropagation` shows up as a
+control that does nothing rather than as a write to the wrong field.
+
+**D158 — `completion` is sent whole, every time, and the editor restates its three defaults.**
+Changing one axis writes all three.
+
+*Why:* `_COMPLETION_SCHEMA` gives each of `finished_when`, `then` and `count_on` a `vol.Optional`
+default, and D140's update is a shallow top-level merge. Sending `{finished_when: ...}` alone would
+re-default the other two — silently, to values the user may have changed on a previous visit. The
+merge is the right shape for the rest of the body and the wrong shape for a sub-object whose keys
+all have defaults, and the editor is the side that can tell.
+
+*What it costs, and it is the one restatement in the frontend that carries a real risk:* a draft
+that has never been saved has no `completion`, and three dropdowns have to show something. So
+`DEFAULT_COMPLETION` in `editor.ts` repeats `never` / `keep` / `scheduled`, and nothing compares
+it to the schema — there is no defaults-comparison machinery in `tests/test_wire_contract.py` to
+hang a check on. What limits the damage is that the value is only ever *shown*: `toCreate` sends
+`completion` only once the user has touched it, so a drift would mislabel three dropdowns rather
+than write a wrong schedule. The docstring says so, which is the whole of the mitigation.
+
+#### What the step refined rather than decided
+
+**D149 is lifted, and its argument is what shaped D152.** The limit was never a schedule — it was
+the observation that a partial action editor silently truncates `data` and D140 then sends the
+truncation as a change. D152 removes the premise rather than accepting the cost: there is no
+partial rendering of a payload the editor does not understand, because it does not render payloads
+by understanding them. The counts `_untouched()` put on screen are gone, replaced by the controls
+they were standing in for.
+
+**`StoredTarget`'s five selectors are optional, and typing that found a crash.** `_TARGET_SCHEMA`
+makes each selector a `vol.Optional` with **no default**, so a target written with entities alone
+has no `device_id` key at all. `wire.ts`'s convention is that no stored field is optional, and this
+is the documented exception. What it exposed: `footprintOf` read `target.device_id.length`
+unguarded, which is a `TypeError` on any schedule whose target names one selector — which is most
+of them. The editor is what made the absence matter, because the action builder reads each selector
+to draw a field; the bug was already there and nothing had the type to see it.
+
+**`form.ts` is the third pure module, and it has no imports at all.** The input conversions moved
+out of `editor.ts` when five components started reading the same native `<input>` elements. It
+joins D132's rule under a stronger version of it — not "every import is type-only" but "there are
+no imports" — and `tests/test_frontend_assets.py` checks it that way, because the non-empty
+assertion that guards against a dead regex would fail on it for the opposite reason.
+
+**`almanacForm` is the second shared stylesheet, for the same reason `almanacTokens` was the
+first.** Each builder renders into its own shadow root, so the `.field`, `.panel`, 40px-control and
+one-meaning-per-colour button rules had to be either shared or copied five times. Five copies are
+five chances to disagree about what a disabled input looks like.
+
+**The on-exit `restore` note is UX finding #2, partly applied.** `tick.py` reads the exit behaviour
+from the promise made when the interval was *entered*, not from the rule — so "put back what was
+there before" means the snapshot taken at entry, and an edit mid-interval takes effect next time.
+Both facts are now on screen. The finding's larger half — per-entity ownership when two schedules
+hold the same entity — still has no D-number and is still open.
+
+**D146 gained nothing at 9e, deliberately.** The builders produce values the schema accepts by
+construction: an action is built by `newServiceAction`, an operator change goes through
+`withOperator`, a target through `withTargetIds`. The one thing a user can type that the schema
+would refuse is an unparseable payload, and D153 says that is not a `problems()` entry. So
+`problems()` is still not a mirror of `schema.py`, and the reason is still that a check nothing can
+trigger is a check nobody maintains.
 
 ---
 

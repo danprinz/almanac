@@ -18,21 +18,35 @@ import assert from "node:assert/strict";
 
 import {
   DEFAULT_CLOCK_TIME,
+  DEFAULT_SCRIPT_TIMEOUT,
   addRule,
+  asScalarType,
   clockAtRule,
   draftOf,
   footprintOf,
+  formatMapping,
   isDirty,
+  looksLikeATemplate,
+  newComparison,
+  newDesiredState,
   newDraft,
+  newGroup,
+  newScriptAction,
+  newServiceAction,
+  parseMapping,
   problems,
   removeRuleAt,
   replaceRuleAt,
   rulesOf,
+  scalarType,
+  takesAList,
   toCreate,
   toUpdate,
   withBody,
   withName,
   withObjectId,
+  withOperator,
+  withWait,
 } from "../src/draft.ts";
 import type { StoredRule, StoredSchedule } from "../src/stored.ts";
 
@@ -45,7 +59,7 @@ const lamp: StoredRule = {
   anchor: { kind: "clock", at: "07:00:00" },
   actions: [],
   conditions: [],
-  condition_policy: { kind: "all" },
+  condition_policy: { kind: "skip" },
   grace: null,
 };
 
@@ -58,7 +72,11 @@ const stored: StoredSchedule = {
   recurrence: { kind: "weekdays", weekdays: ["fri"] },
   date_window: { from: null, until: null },
   rules: [lamp],
-  completion: {},
+  completion: {
+    finished_when: { kind: "never" },
+    then: { kind: "keep" },
+    count_on: "scheduled",
+  },
 };
 
 // --- a schedule that does not exist yet -------------------------------------
@@ -324,5 +342,295 @@ test("the footprint of a draft with nothing in it is four empty lists", () => {
     scripts: [],
     services: [],
     unexpanded: 0,
+  });
+});
+
+// --- the pieces, and the conversions the schema forces (9e) -----------------
+
+test("switching to a list operator wraps the value the user already typed", () => {
+  // Lossless, and the reading the user expects: "above 20" to "one of 20".
+  const above = withOperator(
+    { ...newComparison(), entity_id: "sensor.rooms", value: { kind: "constant", value: 20 } },
+    "gt",
+  );
+  const oneOf = withOperator(above, "in");
+
+  assert.deepEqual(oneOf.value, { kind: "constant", value: [20] });
+  assert.equal(oneOf.operator, "in");
+});
+
+test("switching away from a list operator keeps the first element", () => {
+  // The only element every non-empty list has. Dropping all of them would make
+  // a mis-click destructive with no undo behind it.
+  const oneOf = withOperator(
+    { ...newComparison(), value: { kind: "constant", value: ["home", "away"] } },
+    "in",
+  );
+
+  assert.deepEqual(withOperator(oneOf, "eq").value, {
+    kind: "constant",
+    value: "home",
+  });
+});
+
+test("an entity operand survives a scalar operator and not a list one", () => {
+  // `_comparison` refuses `in` against another entity outright, so the editor
+  // hides that direction — this is the defence behind the hiding.
+  const against = {
+    ...newComparison(),
+    entity_id: "sensor.inside",
+    value: { kind: "entity" as const, entity_id: "sensor.outside", attribute: null, offset: 0 },
+  };
+
+  assert.deepEqual(withOperator(against, "gt").value, against.value);
+  assert.deepEqual(withOperator(against, "in").value, {
+    kind: "constant",
+    value: [""],
+  });
+});
+
+test("an operator the list check does not claim keeps its scalar untouched", () => {
+  // The no-op arm. `eq` to `lte` changes one field and nothing else, which is
+  // what makes the three conversions above readable as the exceptions.
+  const held = { ...newComparison(), value: { kind: "constant" as const, value: "on" } };
+
+  assert.deepEqual(withOperator(held, "lte"), { ...held, operator: "lte" });
+  assert.equal(takesAList("lte"), false);
+  assert.equal(takesAList("not_in"), true);
+});
+
+test("waiting for a script moves the timeout with it, both ways", () => {
+  // D30 refuses both halves of the inconsistent pair, so the checkbox cannot be
+  // a checkbox over one field.
+  const script = newScriptAction();
+  const waiting = withWait(script, true);
+  assert.equal(waiting.timeout, DEFAULT_SCRIPT_TIMEOUT);
+
+  const notWaiting = withWait({ ...waiting, timeout: 15 }, false);
+  assert.equal(notWaiting.timeout, null);
+
+  // And the user's own number comes back rather than ours, because unticking a
+  // box and reticking it is not a request to be given a default.
+  assert.equal(withWait({ ...waiting, timeout: 15 }, true).timeout, 15);
+});
+
+test("a scalar's type is a stored fact, and the editor moves it deliberately", () => {
+  // `_scalar` keeps the type the user typed because `"9" > "20"` is true as
+  // strings. So a text sensor whose state is genuinely "20" has to be
+  // expressible, which is what rules out inferring the type from the text.
+  assert.equal(scalarType("20"), "text");
+  assert.equal(scalarType(20), "number");
+  assert.equal(scalarType(true), "boolean");
+
+  assert.equal(asScalarType("20", "number"), 20);
+  assert.equal(asScalarType(20, "text"), "20");
+  assert.equal(asScalarType("true", "boolean"), true);
+  assert.equal(asScalarType("on", "boolean"), false);
+
+  // Wrong where the user can see it, rather than a dropdown that looks broken.
+  assert.equal(asScalarType("not a number", "number"), 0);
+});
+
+test("a payload round-trips as JSON, and an empty one is empty text", () => {
+  assert.equal(formatMapping({}), "");
+  assert.equal(formatMapping({ brightness: 120 }), '{\n  "brightness": 120\n}');
+
+  assert.deepEqual(parseMapping(""), { ok: true, value: {} });
+  assert.deepEqual(parseMapping('{"brightness": 120}'), {
+    ok: true,
+    value: { brightness: 120 },
+  });
+});
+
+test("a payload that is not a set of named fields is refused, not coerced", () => {
+  // The three shapes JSON admits and `_service_data` does not. A list or a bare
+  // number would reach the schema as the wrong type and come back as a
+  // voluptuous marker; this says it in the user's terms first.
+  for (const text of ["[1, 2]", "42", "null"]) {
+    const parsed = parseMapping(text);
+    assert.equal(parsed.ok, false, `${text} should not parse as a payload`);
+  }
+
+  const broken = parseMapping("{oops");
+  assert.equal(broken.ok, false);
+});
+
+test("a payload with a template in it is flagged, because D58 sends it as text", () => {
+  // `_service_data`'s own docstring says the editor warns and the schema does
+  // not refuse. This is that warning.
+  assert.equal(looksLikeATemplate({ message: "{{ states('sensor.x') }}" }), true);
+  assert.equal(looksLikeATemplate({ message: "literally fine" }), false);
+  assert.equal(looksLikeATemplate({ nested: { deep: "{{ x }}" } }), true);
+});
+
+// --- what the pre-flight can now say (D146 again) ---------------------------
+
+test("a half-built action is named, by rule and by position", () => {
+  const draft = withBody(newDraft("Evening"), {
+    rules: [
+      { ...clockAtRule("18:00:00"), actions: [newServiceAction(), newScriptAction()] },
+    ],
+  });
+
+  assert.deepEqual(problems(draft), [
+    "Rule 1, action 1 has no service to call.",
+    "Rule 1, action 2 has no script to run.",
+  ]);
+});
+
+test("a comparison with no entity is named, inside a group as well as outside", () => {
+  const draft = withBody(newDraft("Evening"), {
+    rules: [
+      {
+        ...clockAtRule("18:00:00"),
+        conditions: [newComparison(), newGroup()],
+      },
+    ],
+  });
+
+  assert.deepEqual(problems(draft), [
+    "Rule 1, condition 1 names no entity.",
+    "Rule 1, condition 2, part 1, names no entity.",
+    "Rule 1, condition 2, part 2, names no entity.",
+  ]);
+});
+
+test("a desired-state row describing nothing is the schema's own refusal, early", () => {
+  // `_desired_entity` refuses a row with neither a state nor any attributes.
+  // `newDesiredEntity` leaves `state` null rather than "" precisely so this can
+  // be said — "" is a state, the empty one, and would pass.
+  const draft = withBody(newDraft("Shabbat"), {
+    rules: [
+      {
+        kind: "during",
+        start_anchor: { kind: "clock", at: "18:00:00" },
+        end: { kind: "duration", duration: 3600 },
+        state: {
+          entities: [
+            { entity_id: "", state: null, attributes: {} },
+            { entity_id: "light.dining", state: null, attributes: {} },
+          ],
+          override: [],
+        },
+      },
+    ],
+  });
+
+  assert.deepEqual(problems(draft), [
+    "Rule 1's desired state, entity 1: nothing chosen.",
+    "Rule 1's desired state, light.dining: neither a state nor any " +
+      "attributes, so it describes nothing.",
+  ]);
+});
+
+test("completion's two populated arms are checked like any rule's", () => {
+  const draft = withBody(newDraft("One-off"), {
+    rules: [clockAtRule("18:00:00")],
+    completion: {
+      finished_when: { kind: "condition", conditions: [newComparison()] },
+      then: { kind: "action", actions: [newServiceAction()] },
+      count_on: "scheduled",
+    },
+  });
+
+  assert.deepEqual(problems(draft), [
+    "Finished-when check 1 names no entity.",
+    "Completion action 1 has no service to call.",
+  ]);
+});
+
+test("a draft with nothing missing is a draft with no problems", () => {
+  // The honest half of D146: an empty list is not a promise, and this test is
+  // not asserting one. It asserts that the 9e checks do not fire on a schedule
+  // that has filled them in — which is the thing a check that over-fires breaks.
+  const draft = withBody(newDraft("Evening"), {
+    rules: [
+      {
+        ...clockAtRule("18:00:00"),
+        actions: [{ ...newServiceAction(), service: "light.turn_on" }],
+        conditions: [{ ...newComparison(), entity_id: "binary_sensor.home" }],
+      },
+    ],
+  });
+
+  assert.deepEqual(problems(draft), []);
+});
+
+// --- the footprint, widened --------------------------------------------------
+
+test("a condition's entities are reads, on both sides of the comparison", () => {
+  // D97 — an unreadable condition changes nothing, which is a different failure
+  // from a lamp that will not turn on and belongs in the same list as an anchor.
+  const draft = withBody(newDraft("Evening"), {
+    rules: [
+      {
+        ...clockAtRule("18:00:00"),
+        conditions: [
+          {
+            ...newComparison(),
+            entity_id: "sensor.inside",
+            operator: "gt",
+            value: {
+              kind: "entity",
+              entity_id: "sensor.outside",
+              attribute: null,
+              offset: 0,
+            },
+          },
+          {
+            kind: "group",
+            operator: "or",
+            conditions: [
+              { ...newComparison(), entity_id: "binary_sensor.home" },
+              { kind: "day_set", day_set_id: "01JDAYSET", negate: true, label: null },
+            ],
+            label: null,
+          },
+        ],
+      },
+    ],
+  });
+
+  assert.deepEqual(footprintOf(draft).reads, [
+    "binary_sensor.home",
+    "sensor.inside",
+    "sensor.outside",
+  ]);
+  // A day set is not an entity, so it is in none of the four lists.
+  assert.deepEqual(footprintOf(draft).entities, []);
+});
+
+test("what runs when a schedule finishes is in the footprint too", () => {
+  // Completion sits outside the rule loop, so leaving it out was the easy
+  // mistake — and it is the action most likely to be a surprise.
+  const draft = withBody(newDraft("One-off"), {
+    rules: [clockAtRule("18:00:00")],
+    completion: {
+      finished_when: { kind: "never" },
+      then: {
+        kind: "action",
+        actions: [
+          {
+            kind: "script",
+            script: "script.all_done",
+            fields: {},
+            wait: false,
+            timeout: null,
+          },
+        ],
+      },
+      count_on: "scheduled",
+    },
+  });
+
+  assert.deepEqual(footprintOf(draft).scripts, ["script.all_done"]);
+});
+
+test("a new desired state is one row naming nothing, which is a thing to edit", () => {
+  // The empty-list alternative draws a block with no rows and no way to learn
+  // what goes in one, which is `newDraft`'s argument about rules again.
+  assert.deepEqual(newDesiredState(), {
+    entities: [{ entity_id: "", state: null, attributes: {} }],
+    override: [],
   });
 });

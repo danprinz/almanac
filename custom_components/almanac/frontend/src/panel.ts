@@ -152,7 +152,7 @@ export class AlmanacPanel extends LitElement {
   }
 
   /**
-   * D149's mounting point, and a departure from D61's table, which assigns rule
+   * D150's mounting point, and a departure from D61's table, which assigns rule
    * editing to the card and gives the panel the timeline.
    *
    * The reason is that the editor needs width and the card does not have it: a

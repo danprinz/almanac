@@ -26,9 +26,20 @@ import type {
   StoredAction,
   StoredAnchor,
   StoredAtRule,
+  StoredComparisonCondition,
+  StoredComparisonOperator,
+  StoredCondition,
+  StoredDaySetCondition,
+  StoredDesiredEntity,
   StoredDesiredState,
   StoredDuringRule,
+  StoredGroupCondition,
+  StoredLeafCondition,
+  StoredScalar,
   StoredSchedule,
+  StoredScriptAction,
+  StoredServiceAction,
+  StoredTarget,
 } from "./stored";
 
 /**
@@ -202,6 +213,299 @@ const checkedRules = (draft: Draft, index: number): WritableRule[] => {
 };
 
 /**
+ * The pieces a rule is made of, and the conversions the schema's cross-field
+ * relations force on them.
+ *
+ * Here rather than in the components for this file's own reason: "what does
+ * switching the operator to `in` do to the value the user already typed" is one
+ * function call here and a browser anywhere else. Every one of these is also a
+ * place where the schema refuses a combination rather than reinterpreting it, so
+ * the editor has to move two fields at once or offer a shape that cannot be
+ * saved.
+ *
+ * None of them has a writable half, and the asymmetry with `WritableRule` is
+ * worth saying out loud. A draft *rule* is genuinely incomplete: `_rule_id`
+ * mints the `id` the frontend does not have, so the rule the editor holds is
+ * missing a field the stored one always has. An action is not like that —
+ * `service` is required and every other field has a default, so an action is
+ * fully populated from the moment it exists and the only thing wrong with a new
+ * one is that its service name is the empty string. `problems()` says so; the
+ * type does not pretend otherwise.
+ */
+
+/** D27's two action kinds, each with nothing to call yet. */
+export const newServiceAction = (): StoredServiceAction => ({
+  kind: "service",
+  service: "",
+  target: null,
+  data: {},
+});
+
+export const newScriptAction = (): StoredScriptAction => ({
+  kind: "script",
+  script: "",
+  fields: {},
+  wait: false,
+  timeout: null,
+});
+
+/**
+ * D30's relation, as the only two states the editor can put a script in.
+ *
+ * `wait: true` with no timeout is the one setting that turns a slow script into
+ * a stuck scheduler and `_script_action` refuses it; `wait: false` with a
+ * timeout is refused in the other direction, as a stored number that does
+ * nothing. So "wait for it" cannot be a checkbox over one field — it has to move
+ * both, and a default timeout has to come from somewhere.
+ *
+ * A minute is that default: long enough that no reasonable "prepare, then act"
+ * script reaches it, short enough that reaching it is not mistaken for the
+ * scheduler having stopped. The previous timeout is preferred over it, so a user
+ * who unticks the box and ticks it again gets their own number back rather than
+ * ours.
+ */
+export const DEFAULT_SCRIPT_TIMEOUT = 60;
+
+export const withWait = (
+  action: StoredScriptAction,
+  wait: boolean,
+): StoredScriptAction => ({
+  ...action,
+  wait,
+  timeout: wait ? (action.timeout ?? DEFAULT_SCRIPT_TIMEOUT) : null,
+});
+
+/**
+ * One selector of a service call's target, written or cleared.
+ *
+ * Two things are kept straight here, and both are `_target`'s. An empty target
+ * is refused — so clearing the last selector has to produce `target: null`, not
+ * `{}` — and a selector with nothing in it is not stored at all, which keeps the
+ * stored shape the same one that arrived and so keeps D140's diff quiet about a
+ * field the user never touched.
+ *
+ * The five names are not listed anywhere in this file on purpose. They are
+ * `StoredTarget`'s keys, `tests/test_wire_contract.py` already pairs those
+ * against `const.py::TARGET_SELECTORS`, and a list here would be a sixth
+ * spelling of the same five strings that no test compares.
+ */
+export const withTargetIds = (
+  action: StoredServiceAction,
+  selector: keyof StoredTarget,
+  ids: string[],
+): StoredServiceAction => {
+  const merged: StoredTarget = { ...(action.target ?? {}), [selector]: ids };
+  const kept = Object.fromEntries(
+    Object.entries(merged).filter(([, held]) => (held ?? []).length > 0),
+  ) as StoredTarget;
+  return {
+    ...action,
+    target: Object.keys(kept).length === 0 ? null : kept,
+  };
+};
+
+/** `const.py::LIST_OPERATORS`. The relation `_comparison` enforces. */
+export const LIST_OPERATORS = ["in", "not_in"] as const;
+
+export const takesAList = (operator: StoredComparisonOperator): boolean =>
+  (LIST_OPERATORS as readonly string[]).includes(operator);
+
+/**
+ * A comparison on nothing yet: equality against the empty string.
+ *
+ * `eq` rather than a cleverer guess because the entity is not chosen yet, and
+ * every operator but equality implies something about the entity's type.
+ */
+export const newComparison = (): StoredComparisonCondition => ({
+  kind: "comparison",
+  entity_id: "",
+  attribute: null,
+  operator: "eq",
+  value: { kind: "constant", value: "" },
+  for: null,
+  label: null,
+});
+
+export const newDaySetCondition = (
+  daySetId: string,
+): StoredDaySetCondition => ({
+  kind: "day_set",
+  day_set_id: daySetId,
+  negate: false,
+  label: null,
+});
+
+/**
+ * A group of two, because `_GROUP_SCHEMA` has `Length(min=2)`.
+ *
+ * `or` rather than `and`: the rule's own `conditions` list is already the AND
+ * (§7.1), so a group is what an OR is spelled with and an `and` group is the
+ * thing somebody built by mistake. It is still offered, for the reason
+ * `const.py` gives — a group the user changed their mind about should not have
+ * to be rebuilt — but it is not what a new one starts as.
+ */
+export const newGroup = (): StoredGroupCondition => ({
+  kind: "group",
+  operator: "or",
+  conditions: [newComparison(), newComparison()],
+  label: null,
+});
+
+/**
+ * Change a comparison's operator, carrying the value across the list boundary.
+ *
+ * The conversion is the whole point. `_comparison` refuses `gt` against a list
+ * and `in` against a scalar, so a bare operator swap would produce a condition
+ * that cannot be saved — and the editor would be offering a dropdown whose
+ * every other entry breaks the thing below it.
+ *
+ * Three cases, each chosen so that a mis-click costs as little as possible:
+ *
+ * - *scalar to list*: the scalar becomes the list's one element. Lossless, and
+ *   "above 20" to "one of 20" is the reading the user will expect.
+ * - *list to scalar*: the first element is kept. It is the only element every
+ *   non-empty list has, and dropping all of them would make an accidental click
+ *   destructive in a way no undo covers.
+ * - *an entity operand to a list operator*: the entity is discarded for an empty
+ *   list, because `_comparison` refuses the combination outright and no value
+ *   the editor could invent out of an entity id would mean what the entity
+ *   meant. The editor does not offer this direction — it hides the entity choice
+ *   while a list operator is set — so this arm is the defence, not the path.
+ */
+export const withOperator = (
+  condition: StoredComparisonCondition,
+  operator: StoredComparisonOperator,
+): StoredComparisonCondition => {
+  const wantsList = takesAList(operator);
+  const operand = condition.value;
+  if (operand.kind === "entity") {
+    return wantsList
+      ? { ...condition, operator, value: { kind: "constant", value: [""] } }
+      : { ...condition, operator };
+  }
+  const held = operand.value;
+  if (Array.isArray(held) === wantsList) {
+    return { ...condition, operator };
+  }
+  const value: StoredScalar | StoredScalar[] = Array.isArray(held)
+    ? (held[0] ?? "")
+    : [held];
+  return { ...condition, operator, value: { kind: "constant", value } };
+};
+
+/**
+ * Which of the three types a stored scalar is, and how to move it to another.
+ *
+ * The editor offers this as a choice rather than inferring it from the text, and
+ * that is a decision with a cost on both sides. `_scalar` keeps the type the
+ * user typed — deliberately, because coercing a threshold of `20` to `"20"`
+ * turns a numeric comparison into a string one in which `"9" > "20"` — so the
+ * type is a stored fact the editor has to render. Inference would render it by
+ * guessing: a text sensor whose state is genuinely `"20"` could then never be
+ * compared, because every spelling of the value would be read as a number.
+ *
+ * An unparseable conversion lands on `0`. The alternative — keep the text and
+ * leave the selector saying "text" — makes the dropdown look broken; `0` is
+ * wrong where the user can see it.
+ */
+export type ScalarType = "text" | "number" | "boolean";
+
+export const scalarType = (value: StoredScalar): ScalarType => {
+  if (typeof value === "number") {
+    return "number";
+  }
+  return typeof value === "boolean" ? "boolean" : "text";
+};
+
+export const asScalarType = (
+  value: StoredScalar,
+  type: ScalarType,
+): StoredScalar => {
+  if (type === "number") {
+    const parsed = Number(String(value).trim());
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  if (type === "boolean") {
+    return value === true || String(value).trim().toLowerCase() === "true";
+  }
+  return String(value);
+};
+
+/**
+ * A service call's payload, as text and back.
+ *
+ * **The payload is edited as JSON, and that is the one place in the editor where
+ * the user types a syntax.** It is not a shortcut. `_service_data` validates
+ * only that the mapping has string keys, and says why: the set of valid keys
+ * belongs to the target service, not to almanac, and a whitelist here would go
+ * stale every time an integration adds a field. A widget cannot be built for a
+ * schema that is explicitly not ours — so a field-by-field editor would be a
+ * field editor for the keys it happened to know, and D140's diff would send the
+ * truncated payload as a change. That is D149's data-loss bug, and the reason
+ * the whole step exists; JSON text is the one representation that cannot have it.
+ *
+ * A parse failure keeps the previous value and is reported. The editor does not
+ * write a half-typed payload, and it does not silently discard one either.
+ */
+export const formatMapping = (value: Record<string, unknown>): string =>
+  Object.keys(value).length === 0 ? "" : JSON.stringify(value, null, 2);
+
+export type ParsedMapping =
+  | { ok: true; value: Record<string, unknown> }
+  | { ok: false; error: string };
+
+export const parseMapping = (text: string): ParsedMapping => {
+  if (text.trim() === "") {
+    return { ok: true, value: {} };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text) as unknown;
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return {
+      ok: false,
+      error: "A payload is a set of named fields, not a list or a single value.",
+    };
+  }
+  return { ok: true, value: parsed as Record<string, unknown> };
+};
+
+/**
+ * D58, on screen. A payload containing `{{ ... }}` is stored and sent verbatim
+ * and will reach the service as literal text, which is the honest outcome of
+ * having no template layer. `_service_data`'s own docstring says the editor
+ * warns and the schema does not refuse; this is that warning's test.
+ */
+export const looksLikeATemplate = (value: Record<string, unknown>): boolean =>
+  JSON.stringify(value).includes("{{");
+
+/**
+ * D28's desired state, with the row the schema would refuse.
+ *
+ * `state: null` rather than `""`, and the difference matters: `_desired_entity`
+ * refuses a row naming neither a state nor any attributes, and `""` is a state
+ * — the empty one — so it would pass the schema and then ask
+ * `async_reproduce_state` for a state no entity has. `null` is the shape
+ * `problems()` can name.
+ */
+export const newDesiredEntity = (): StoredDesiredEntity => ({
+  entity_id: "",
+  state: null,
+  attributes: {},
+});
+
+export const newDesiredState = (): StoredDesiredState => ({
+  entities: [newDesiredEntity()],
+  override: [],
+});
+
+/**
  * What a create would send. Throws for a draft that has already been saved.
  *
  * The body is spread whole, defaults and all, because a create has no stored
@@ -273,9 +577,94 @@ export const isDirty = (draft: Draft, original: StoredSchedule | null): boolean 
  * `rails.ts::draftTrack` cannot draw: a rule with no anchor has no position, so
  * without this the editor would list a rule that is simply missing from its own
  * track, which reads as a rendering bug rather than as an unfinished rule.
+ *
+ * Step 9e added the action, condition and desired-state checks, and the choice of
+ * *which* is the same choice as before. A new service action has no service name
+ * and a new comparison has no entity, so the first thing the builders do is make
+ * incomplete items easy to create; those are stated here. The schema's
+ * cross-field relations — D30's wait and timeout, `in` against a scalar, a group
+ * of one — are **not**, because the builders cannot produce them: `withWait`,
+ * `withOperator` and `newGroup` move both fields together, so a check for them
+ * would be a check for a shape no gesture reaches.
  */
 export const problems = (draft: Draft): string[] => {
   const found: string[] = [];
+
+  const checkActions = (
+    actions: StoredAction[] | undefined,
+    where: string,
+  ): void => {
+    (actions ?? []).forEach((action, at) => {
+      const nth = at + 1;
+      if (action.kind === "service") {
+        if (action.service.trim() === "") {
+          found.push(`${where} ${nth} has no service to call.`);
+        }
+        return;
+      }
+      if (action.script.trim() === "") {
+        found.push(`${where} ${nth} has no script to run.`);
+      }
+    });
+  };
+
+  const checkLeaf = (condition: StoredLeafCondition, where: string): void => {
+    if (condition.kind !== "comparison") {
+      return;
+    }
+    if (condition.entity_id.trim() === "") {
+      found.push(`${where} names no entity.`);
+    }
+    if (
+      condition.value.kind === "entity" &&
+      condition.value.entity_id.trim() === ""
+    ) {
+      found.push(`${where} compares against no entity.`);
+    }
+  };
+
+  const checkConditions = (
+    conditions: StoredCondition[] | undefined,
+    where: string,
+  ): void => {
+    (conditions ?? []).forEach((condition, at) => {
+      const nth = at + 1;
+      if (condition.kind === "group") {
+        condition.conditions.forEach((leaf, inner) => {
+          checkLeaf(leaf, `${where} ${nth}, part ${inner + 1},`);
+        });
+        return;
+      }
+      checkLeaf(condition, `${where} ${nth}`);
+    });
+  };
+
+  const checkState = (
+    state: StoredDesiredState | null | undefined,
+    where: string,
+  ): void => {
+    if (!state) {
+      return;
+    }
+    if (state.entities.length === 0) {
+      found.push(`${where} names no entities.`);
+    }
+    state.entities.forEach((entity, at) => {
+      const nth = at + 1;
+      if (entity.entity_id.trim() === "") {
+        found.push(`${where}, entity ${nth}: nothing chosen.`);
+      } else if (
+        entity.state === null &&
+        Object.keys(entity.attributes).length === 0
+      ) {
+        found.push(
+          `${where}, ${entity.entity_id}: neither a state nor any ` +
+            `attributes, so it describes nothing.`,
+        );
+      }
+    });
+    checkActions(state.override, `${where}'s override action`);
+  };
   if (draft.name.trim() === "") {
     found.push("A schedule needs a name.");
   }
@@ -290,10 +679,12 @@ export const problems = (draft: Draft): string[] => {
   }
   rulesOf(draft).forEach((rule, index) => {
     const nth = index + 1;
+    checkConditions(rule.conditions, `Rule ${nth}, condition`);
     if (rule.kind === "at") {
       if (!rule.anchor) {
         found.push(`Rule ${nth} has no time.`);
       }
+      checkActions(rule.actions, `Rule ${nth}, action`);
       return;
     }
     if (!rule.start_anchor) {
@@ -302,7 +693,21 @@ export const problems = (draft: Draft): string[] => {
     if (!rule.end) {
       found.push(`Rule ${nth} has no end.`);
     }
+    checkState(rule.state, `Rule ${nth}'s desired state`);
+    checkActions(rule.enter_actions, `Rule ${nth}, entry action`);
+    checkActions(rule.exit_actions, `Rule ${nth}, exit action`);
+    if (rule.on_exit?.kind === "apply") {
+      checkState(rule.on_exit.state, `Rule ${nth}'s state on exit`);
+    }
   });
+
+  const completion = draft.body.completion;
+  if (completion?.finished_when.kind === "condition") {
+    checkConditions(completion.finished_when.conditions, "Finished-when check");
+  }
+  if (completion?.then.kind === "action") {
+    checkActions(completion.then.actions, "Completion action");
+  }
   return found;
 };
 
@@ -312,9 +717,10 @@ export const problems = (draft: Draft): string[] => {
  * Four lists rather than one, because "touches" covers three different
  * relationships and a single list would conflate them. An entity a desired
  * state writes to is a thing this schedule changes; an entity an `entity_time`
- * anchor names is a thing it *reads a time from*, and when that one goes
- * unavailable the schedule does not misfire — it fails to fire at all, which is
- * a different question to ask of a different entity. Scripts and services are
+ * anchor or a condition names is a thing it *reads*, and when that one goes
+ * unavailable the schedule does not misfire — it fails to fire at all, or D97
+ * says it changes nothing, which is a different question to ask of a different
+ * entity. Scripts and services are
  * named separately because a script is an entity with a `mode` and D31's
  * pre-flight reads it, while a service is not an entity at all.
  *
@@ -330,7 +736,12 @@ export const problems = (draft: Draft): string[] => {
 export interface Footprint {
   /** Entities a desired state or an action target writes to. */
   entities: string[];
-  /** Entities an `entity_time` anchor reads a time from. */
+  /**
+   * Entities the schedule reads rather than writes: an `entity_time` anchor's,
+   * and a condition's — both sides of a comparison, including an `entity`
+   * operand's. The two arrived at different steps and belong in one list
+   * because the question they raise is the same one.
+   */
   reads: string[];
   scripts: string[];
   services: string[];
@@ -361,14 +772,35 @@ export const footprintOf = (draft: Draft): Footprint => {
     if (!target) {
       return;
     }
-    for (const id of target.entity_id) {
+    // Every selector `?? []`, because `_TARGET_SCHEMA` makes each of the five a
+    // `vol.Optional` with no default: a target written with entities alone has
+    // no `device_id` key at all. This read was `target.device_id.length` until
+    // step 9e typed the absence, and that is a `TypeError` on any schedule
+    // whose target names one selector -- which is most of them.
+    for (const id of target.entity_id ?? []) {
       entities.add(id);
     }
     unexpanded +=
-      target.device_id.length +
-      target.area_id.length +
-      target.floor_id.length +
-      target.label_id.length;
+      (target.device_id ?? []).length +
+      (target.area_id ?? []).length +
+      (target.floor_id ?? []).length +
+      (target.label_id ?? []).length;
+  };
+
+  const fromCondition = (value: StoredCondition): void => {
+    if (value.kind === "group") {
+      value.conditions.forEach(fromCondition);
+      return;
+    }
+    if (value.kind !== "comparison") {
+      return;
+    }
+    if (value.entity_id.trim() !== "") {
+      reads.add(value.entity_id);
+    }
+    if (value.value.kind === "entity" && value.value.entity_id.trim() !== "") {
+      reads.add(value.value.entity_id);
+    }
   };
 
   const fromState = (value: StoredDesiredState | null | undefined): void => {
@@ -382,6 +814,7 @@ export const footprintOf = (draft: Draft): Footprint => {
   };
 
   for (const rule of rulesOf(draft)) {
+    (rule.conditions ?? []).forEach(fromCondition);
     if (rule.kind === "at") {
       fromAnchor(rule.anchor);
       (rule.actions ?? []).forEach(fromAction);
@@ -397,6 +830,18 @@ export const footprintOf = (draft: Draft): Footprint => {
     if (rule.on_exit?.kind === "apply") {
       fromState(rule.on_exit.state);
     }
+  }
+
+  // Completion is a schedule-level field, so it is outside the rule loop — but
+  // its two populated arms reach the same services and entities any rule does,
+  // and a footprint that left them out would under-report the one action most
+  // likely to be a surprise: the thing that runs when the schedule is finished.
+  const completion = draft.body.completion;
+  if (completion?.then.kind === "action") {
+    completion.then.actions.forEach(fromAction);
+  }
+  if (completion?.finished_when.kind === "condition") {
+    completion.finished_when.conditions.forEach(fromCondition);
   }
 
   const sorted = (found: Set<string>): string[] => [...found].sort();

@@ -77,6 +77,173 @@ export const almanacText = css`
 `;
 
 /**
+ * The form vocabulary, shared by the editor and the four builders under it.
+ *
+ * It moved out of `editor.ts` at step 9e for the ordinary reason — five
+ * components now draw the same field, and five copies of the same rule drift —
+ * but also because the rules here are decisions, not taste. The visible label,
+ * the 40px control, the one-meaning-per-colour button classes: each is written
+ * down once so that a builder cannot quietly disagree with the editor it is
+ * nested inside.
+ *
+ * `--almanac-*` tokens are used throughout, so this is only usable alongside
+ * `almanacTokens`.
+ */
+export const almanacForm = css`
+  h3 {
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin: 0 0 var(--almanac-gap-sm);
+    color: var(--secondary-text-color);
+  }
+
+  h4 {
+    font-size: 0.8125rem;
+    margin: 0;
+    color: var(--secondary-text-color);
+  }
+
+  section {
+    display: flex;
+    flex-direction: column;
+    gap: var(--almanac-gap-sm);
+  }
+
+  /* A nested surface is the one thing that is not the page, so it gets an edge.
+     Everything else sits flat on the card. */
+  .panel {
+    border: 1px solid var(--almanac-rail);
+    border-radius: 12px;
+    padding: var(--almanac-gap-md);
+  }
+
+  .row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--almanac-gap-xs);
+  }
+
+  .field {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--almanac-gap-sm);
+  }
+
+  /* Pushes whatever follows it to the end of a .row — a remove button, the
+     arrows that reorder an action — without making the row a grid. */
+  .spacer {
+    flex: 1 1 auto;
+  }
+
+  /* Visible, always, and never a placeholder standing in for one: a label that
+     vanishes once the field has content takes the field's meaning with it, and
+     these fields hold slugs and signed numbers. */
+  .field > span:first-child {
+    flex: 0 0 7rem;
+    font-size: 0.875rem;
+    color: var(--secondary-text-color);
+  }
+
+  .field input,
+  .field select,
+  .field textarea {
+    flex: 1 1 12rem;
+    min-width: 0;
+    min-height: 40px;
+    box-sizing: border-box;
+    padding: 0 var(--almanac-gap-sm);
+    font: inherit;
+    color: var(--primary-text-color);
+    background: var(--secondary-background-color);
+    border: 1px solid var(--almanac-rail);
+    border-radius: 8px;
+  }
+
+  .field input:disabled,
+  .field select:disabled,
+  .field textarea:disabled {
+    opacity: 0.6;
+  }
+
+  .field input[type="number"] {
+    flex: 0 0 6rem;
+  }
+
+  /* A payload is JSON, so it is monospaced and it wraps. The zero padding from
+     the rule above would put the first line against the border. */
+  .field textarea {
+    flex: 1 1 100%;
+    padding: var(--almanac-gap-sm);
+    min-height: 88px;
+    resize: vertical;
+    font-family: var(--ha-font-family-code, ui-monospace, monospace);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+  }
+
+  .field textarea.bad {
+    border-color: var(--almanac-failed);
+  }
+
+  .check {
+    display: flex;
+    align-items: center;
+    gap: var(--almanac-gap-sm);
+    font-size: 0.875rem;
+  }
+
+  button {
+    font: inherit;
+    color: inherit;
+    border-radius: 10px;
+    border: 1px solid var(--almanac-rail);
+    background: none;
+    min-height: 40px;
+    padding: 0 var(--almanac-gap-sm);
+  }
+
+  button:disabled {
+    opacity: 0.5;
+  }
+
+  .chip {
+    padding: 0 var(--almanac-gap-sm);
+    min-height: 36px;
+  }
+
+  .chip.selected {
+    border-color: var(--almanac-known);
+    color: var(--almanac-known);
+  }
+
+  .primary {
+    border-color: var(--almanac-known);
+    color: var(--almanac-known);
+  }
+
+  .danger {
+    border-color: var(--almanac-failed);
+    color: var(--almanac-failed);
+  }
+
+  p {
+    margin: 0;
+    font-size: 0.875rem;
+  }
+
+  /* The label gives up its column before the control gives up its width. A
+     7rem label beside a 12rem field needs 19rem, and a phone in portrait does
+     not have it. */
+  @media (max-width: 600px) {
+    .field > span:first-child {
+      flex: 1 1 100%;
+    }
+  }
+`;
+
+/**
  * A 44×44 hit target wherever something is tappable. The visible mark is often
  * much smaller than that — a stage dot on a micro-track is 8px — so the target
  * is grown with padding rather than by growing the mark.

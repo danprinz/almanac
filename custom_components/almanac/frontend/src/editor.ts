@@ -7,15 +7,21 @@
 // stages clickable. What is left here is the arrangement: which control sits
 // where, what each one writes, and which of them is not offered at all.
 //
-// **D149 — the scope is anchors, arming, ends, rules and the schedule's own
-// identity, and nothing else.** Actions, conditions, completion and desired
-// state are read from the draft, carried through a save untouched, and shown as
-// counts. That is not a staging convenience; it is the only safe way to ship an
-// editor before the action builder exists. A partial action editor renders the
-// `service` and `target` it understands and silently drops the `data` keys it
-// does not, and D140's diff would then send the truncated action as a change —
-// so opening an imported or YAML-authored schedule and pressing Save would
-// *destroy* it. Showing a count destroys nothing. The builders are step 9e.
+// **D149 is lifted, and the reason it existed is what shapes what replaced
+// it.** The limit said this editor touched anchors, arming, ends, rules and
+// identity and nothing else, because a partial action editor renders the
+// `service` and `target` it understands, silently drops the `data` keys it does
+// not, and then D140's diff sends the truncation as a change — opening an
+// imported schedule and pressing Save would *destroy* it. What made the
+// builders safe was answering the payload question first: `mapping.ts` edits
+// `data`, `fields` and `attributes` as JSON text, so there is no key the editor
+// knows about and no key it does not. D152 has that argument in full.
+//
+// So the four builders are here now — `<almanac-actions>`, `<almanac-conditions>`,
+// `<almanac-desired>` and the completion section below — and each one owns its
+// own value whole. This file's remaining job is the arrangement: which builder
+// sits in which rule kind, what it is called, and where its value lands in the
+// draft.
 //
 // **D141 — a non-admin is told before typing, not after saving.** Core wraps
 // create, update and delete in `require_admin` with no opt-out while `/list`
@@ -37,6 +43,9 @@
 import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
+import "./actions";
+import { ACTIONS_CHANGED } from "./actions";
+import type { ActionsChangedDetail } from "./actions";
 import {
   createSchedule,
   deleteSchedule,
@@ -47,6 +56,12 @@ import {
   updateSchedule,
 } from "./api";
 import type { DaySetRow } from "./api";
+import "./conditions";
+import { CONDITIONS_CHANGED } from "./conditions";
+import type { ConditionsChangedDetail } from "./conditions";
+import "./desired";
+import { DESIRED_CHANGED } from "./desired";
+import type { DesiredChangedDetail } from "./desired";
 import {
   DEFAULT_CLOCK_TIME,
   addRule,
@@ -54,6 +69,7 @@ import {
   draftOf,
   footprintOf,
   isDirty,
+  newDesiredState,
   newDraft,
   problems,
   removeRuleAt,
@@ -66,16 +82,36 @@ import {
   withObjectId,
 } from "./draft";
 import type { Draft, WritableDuringRule, WritableRule } from "./draft";
+import {
+  clockValue,
+  countFrom,
+  inputChecked,
+  inputValue,
+  secondsFrom,
+} from "./form";
 import { duration, offsetLabel } from "./format";
 import type { HomeAssistant } from "./ha";
 import { draftTrack } from "./rails";
 import type {
+  StoredAction,
   StoredAnchor,
+  StoredCompletion,
+  StoredCondition,
+  StoredConditionPolicy,
+  StoredCountOn,
   StoredEnd,
+  StoredFinishedWhen,
+  StoredOnExit,
   StoredRecurrence,
   StoredSchedule,
+  StoredThen,
 } from "./stored";
-import { almanacHitTarget, almanacText, almanacTokens } from "./styles";
+import {
+  almanacForm,
+  almanacHitTarget,
+  almanacText,
+  almanacTokens,
+} from "./styles";
 import "./track";
 import { STAGE_SELECTED } from "./track";
 import type { StageSelectedDetail } from "./track";
@@ -135,8 +171,82 @@ const DEFAULT_DURATION = 3600;
 const offeringValue = (offering: { domain: string; key: string }): string =>
   `resolver:${offering.domain}:${offering.key}`;
 
+/**
+ * A never-saved schedule's completion, restated.
+ *
+ * The one restatement in this file that carries a real risk, and it is written
+ * down rather than hidden: `_COMPLETION_SCHEMA` gives each of the three axes a
+ * `vol.Optional` default, and D140's update is a shallow top-level merge — so a
+ * *partial* `completion` would silently re-default the two axes left out. The
+ * editor therefore has to send the object whole, and to send it whole it has to
+ * have something to show for a draft that has never been saved.
+ *
+ * These three values are `schema.py`'s, and nothing compares them: there is no
+ * defaults-comparison machinery in `tests/test_wire_contract.py` to hang a
+ * check on. What limits the damage is that this value is only ever *shown* —
+ * `toCreate` sends `completion` only once the user has touched it, so a drift
+ * here would mislabel the three dropdowns rather than write a wrong schedule.
+ * If the schema's defaults ever change, these are the strings to change too.
+ */
+const DEFAULT_COMPLETION: StoredCompletion = {
+  finished_when: { kind: "never" },
+  then: { kind: "keep" },
+  count_on: "scheduled",
+};
+
+/** D46's three axes, labelled. The values are `const.py`'s. */
+const FINISHED_KINDS: [string, string][] = [
+  ["never", "Never — it just keeps running"],
+  ["one_rule_fired", "Once any one rule has fired"],
+  ["cycle", "Once every armed rule has fired"],
+  ["occurrences", "After a number of occurrences"],
+  ["date", "On a day"],
+  ["condition", "When something becomes true"],
+];
+
+const THEN_KINDS: [string, string][] = [
+  ["keep", "Keep it, finished"],
+  ["disable", "Switch it off"],
+  ["delete", "Delete it"],
+  ["action", "Run something"],
+];
+
+const COUNT_ON_KINDS: [StoredCountOn, string][] = [
+  ["scheduled", "every occurrence that came due"],
+  ["conditions_passed", "only the ones whose conditions passed"],
+  ["actions_succeeded", "only the ones that actually did something"],
+];
+
 /** The datalist id the entity anchor's input reads from. */
 const ENTITY_LIST = "almanac-time-entities";
+
+/**
+ * The other two datalists: every entity, and every script.
+ *
+ * Every entity, uncapped, which is the one place this component renders a node
+ * per entity in the instance. It is affordable because a `<datalist>` is not
+ * laid out — the browser builds the popup and does the matching — so the cost
+ * is DOM nodes and not reflow. A cap would be worse than the cost: a suggestion
+ * list that silently stops at five hundred entities is a list that lies about
+ * what the field accepts, and the field accepts anything (D17's rule again).
+ */
+const ANY_ENTITY_LIST = "almanac-entities";
+const SCRIPT_LIST = "almanac-scripts";
+
+/**
+ * Today, for the one field that needs a day to start from.
+ *
+ * D64 forbids the *engine* from sampling a clock; it says nothing about a form
+ * default, and this value is never evaluated — it is what the date input shows
+ * the moment the user picks "On a day", so that the field is not blank and the
+ * save is not refused by `_day`.
+ */
+const today = (): string => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${now.getFullYear()}-${month}-${day}`;
+};
 
 @customElement("almanac-editor")
 export class AlmanacEditor extends LitElement {
@@ -168,6 +278,16 @@ export class AlmanacEditor extends LitElement {
     // event is `composed`, which is what lets it cross the track's shadow
     // boundary and reach this listener.
     this.addEventListener(STAGE_SELECTED, this._onStage as EventListener);
+    // The same arrangement, three more times. Each builder dispatches one event
+    // for its whole value and tags it with the `name` this component gave it,
+    // because a rule panel holds up to four action lists and two condition
+    // lists and Lit cannot bind a listener to a constant per element.
+    this.addEventListener(ACTIONS_CHANGED, this._onActions as EventListener);
+    this.addEventListener(
+      CONDITIONS_CHANGED,
+      this._onConditions as EventListener,
+    );
+    this.addEventListener(DESIRED_CHANGED, this._onDesired as EventListener);
     this._load();
     void this._catalogues();
   }
@@ -175,6 +295,12 @@ export class AlmanacEditor extends LitElement {
   public override disconnectedCallback(): void {
     super.disconnectedCallback();
     this.removeEventListener(STAGE_SELECTED, this._onStage as EventListener);
+    this.removeEventListener(ACTIONS_CHANGED, this._onActions as EventListener);
+    this.removeEventListener(
+      CONDITIONS_CHANGED,
+      this._onConditions as EventListener,
+    );
+    this.removeEventListener(DESIRED_CHANGED, this._onDesired as EventListener);
   }
 
   protected override willUpdate(changed: Map<string, unknown>): void {
@@ -270,6 +396,22 @@ export class AlmanacEditor extends LitElement {
       .sort();
   }
 
+  /** Everything, sorted. See `ANY_ENTITY_LIST` for why it is not filtered. */
+  private get _anyEntities(): string[] {
+    return Object.keys(this.hass?.states ?? {}).sort();
+  }
+
+  /**
+   * The script entities.
+   *
+   * By domain prefix rather than by looking for a `mode` attribute, because an
+   * unavailable script still has `script.` and still has a name worth
+   * suggesting — and D30's pre-flight reads `mode` at call time, not here.
+   */
+  private get _scripts(): string[] {
+    return this._anyEntities.filter((id) => id.startsWith("script."));
+  }
+
   // --- rendering ------------------------------------------------------------
 
   protected override render() {
@@ -298,12 +440,28 @@ export class AlmanacEditor extends LitElement {
           : html`<ul class="problems">
               ${found.map((note) => html`<li class="problem">${note}</li>`)}
             </ul>`}
-        ${this._untouched()} ${this._footprint()}
+        ${this._completion()} ${this._footprint()}
         ${this._error ? html`<p class="problem">${this._error}</p>` : nothing}
         ${this._footer(found)}
       </div>
       <datalist id=${ENTITY_LIST}>
         ${this._timeEntities.map(
+          (entityId) =>
+            html`<option value=${entityId}>
+              ${this._entityName(entityId) ?? entityId}
+            </option>`,
+        )}
+      </datalist>
+      <datalist id=${ANY_ENTITY_LIST}>
+        ${this._anyEntities.map(
+          (entityId) =>
+            html`<option value=${entityId}>
+              ${this._entityName(entityId) ?? entityId}
+            </option>`,
+        )}
+      </datalist>
+      <datalist id=${SCRIPT_LIST}>
+        ${this._scripts.map(
           (entityId) =>
             html`<option value=${entityId}>
               ${this._entityName(entityId) ?? entityId}
@@ -646,9 +804,7 @@ export class AlmanacEditor extends LitElement {
             .checked=${rule.enabled ?? true}
             ?disabled=${!this._canWrite}
             @change=${(event: Event) =>
-              this._patchRule(index, {
-                enabled: (event.target as HTMLInputElement).checked,
-              })}
+              this._patchRule(index, { enabled: inputChecked(event) })}
           />
           <span>Armed</span>
         </label>
@@ -657,18 +813,256 @@ export class AlmanacEditor extends LitElement {
           still what the schedule says; it just does not fire.
         </p>
         ${rule.kind === "at"
-          ? this._anchorFields("Time", rule.anchor, (anchor) =>
-              this._patchRule(index, { anchor }),
-            )
+          ? html`
+              ${this._anchorFields("Time", rule.anchor, (anchor) =>
+                this._patchRule(index, { anchor }),
+              )}
+              ${this._conditions("conditions", rule.conditions ?? [])}
+              ${this._policy(index, rule.condition_policy ?? { kind: "skip" })}
+              ${this._grace(index, rule.grace ?? null)}
+              ${this._actions("actions", "What it does", rule.actions ?? [])}
+            `
           : html`
               ${this._anchorFields("Starts", rule.start_anchor, (anchor) =>
                 this._patchRule(index, { start_anchor: anchor }),
               )}
               ${this._endFields(index, rule)}
+              ${this._conditions("conditions", rule.conditions ?? [])}
+              <almanac-desired
+                name="state"
+                .state=${rule.state ?? null}
+                ?disabled=${!this._canWrite}
+                entityList=${ANY_ENTITY_LIST}
+                scriptList=${SCRIPT_LIST}
+              ></almanac-desired>
+              ${this._onExit(index, rule.on_exit ?? { kind: "leave" })}
+              <label class="check">
+                <input
+                  type="checkbox"
+                  .checked=${rule.latch ?? false}
+                  ?disabled=${!this._canWrite}
+                  @change=${(event: Event) =>
+                    this._patchRule(index, { latch: inputChecked(event) })}
+                />
+                <span>Keep going even if the conditions stop holding</span>
+              </label>
+              <p class="muted">
+                Unlatched, the conditions govern the exit and the interval ends
+                when they stop holding. Latched, it runs to the end above
+                regardless (D4) — "once the lights are on for the evening, leave
+                them on even if the motion sensor gives up".
+              </p>
+              ${this._actions("enter", "When it starts", rule.enter_actions ?? [])}
+              ${this._actions("exit", "When it ends", rule.exit_actions ?? [])}
             `}
       </section>
     `;
   }
+
+  /**
+   * One action list, named for the handler below.
+   *
+   * Three of these are reachable from one rule panel, a fourth from inside a
+   * desired state and a fifth from the completion section, which is the whole
+   * reason the builders carry a `name` (D157): the editor gets one event per
+   * list and has to know which list it was.
+   */
+  private _actions(name: string, label: string, actions: StoredAction[]) {
+    return html`
+      <almanac-actions
+        name=${name}
+        label=${label}
+        .actions=${actions}
+        ?disabled=${!this._canWrite}
+        entityList=${ANY_ENTITY_LIST}
+        scriptList=${SCRIPT_LIST}
+      ></almanac-actions>
+    `;
+  }
+
+  private _conditions(
+    name: string,
+    conditions: StoredCondition[],
+    label = "Only when",
+  ) {
+    return html`
+      <almanac-conditions
+        name=${name}
+        label=${label}
+        .conditions=${conditions}
+        .daySets=${this._daySets}
+        ?disabled=${!this._canWrite}
+        entityList=${ANY_ENTITY_LIST}
+      ></almanac-conditions>
+    `;
+  }
+
+  /**
+   * D26's two policies, and the deadline one of them requires.
+   *
+   * The wording is the point. Today's card offers "re-evaluate when conditions
+   * change", which is an unbounded wait described as a refresh — the thing D26
+   * exists to name. So the choice here is between skipping the occurrence and
+   * waiting for it, and the wait says how long it is prepared to wait.
+   */
+  private _policy(index: number, policy: StoredConditionPolicy) {
+    return html`
+      <div class="anchor">
+        <label class="field">
+          <span>If they fail</span>
+          <select
+            ?disabled=${!this._canWrite}
+            @change=${(event: Event) =>
+              this._patchRule(index, {
+                condition_policy:
+                  inputValue(event) === "wait_until"
+                    ? {
+                        kind: "wait_until",
+                        deadline:
+                          policy.kind === "wait_until" ? policy.deadline : 3600,
+                      }
+                    : { kind: "skip" },
+              })}
+          >
+            <option value="skip" ?selected=${policy.kind === "skip"}>
+              Skip this one
+            </option>
+            <option
+              value="wait_until"
+              ?selected=${policy.kind === "wait_until"}
+            >
+              Wait for them, up to a point
+            </option>
+          </select>
+        </label>
+        ${policy.kind === "wait_until"
+          ? html`
+              <label class="field">
+                <span>Waiting at most</span>
+                <input
+                  type="number"
+                  step="any"
+                  min="1"
+                  .value=${String(policy.deadline / 60)}
+                  ?disabled=${!this._canWrite}
+                  @change=${(event: Event) =>
+                    this._patchRule(index, {
+                      condition_policy: {
+                        kind: "wait_until",
+                        deadline: Math.max(
+                          1,
+                          Math.abs(secondsFrom(inputValue(event))),
+                        ),
+                      },
+                    })}
+                />
+                <span class="muted">minutes</span>
+              </label>
+              <p class="muted">
+                A deadline is required when it waits (D26). Without one the wait
+                is unbounded, which is what today's "re-evaluate when conditions
+                change" silently does.
+              </p>
+            `
+          : nothing}
+      </div>
+    `;
+  }
+
+  /**
+   * D41's catch-up window, blank meaning none.
+   *
+   * Blank is the default and the safe one: a missed occurrence is logged and not
+   * fired unless the rule opts in, because replaying an announcement three hours
+   * late is worse than not making it.
+   */
+  private _grace(index: number, grace: number | null) {
+    return html`
+      <label class="field">
+        <span>If it was missed</span>
+        <input
+          type="number"
+          step="any"
+          min="0"
+          placeholder="do not catch up"
+          .value=${grace === null ? "" : String(grace / 60)}
+          ?disabled=${!this._canWrite}
+          @change=${(event: Event) => {
+            const typed = inputValue(event).trim();
+            this._patchRule(index, {
+              grace:
+                typed === ""
+                  ? null
+                  : Math.max(1, Math.abs(secondsFrom(typed))),
+            });
+          }}
+        />
+        <span class="muted">minutes late, still fire</span>
+      </label>
+    `;
+  }
+
+  /** D3's three exits, and the state the third one carries. */
+  private _onExit(index: number, onExit: StoredOnExit) {
+    return html`
+      <label class="field">
+        <span>On the way out</span>
+        <select
+          ?disabled=${!this._canWrite}
+          @change=${(event: Event) =>
+            this._patchRule(index, {
+              on_exit: this._onExitFor(inputValue(event), onExit),
+            })}
+        >
+          <option value="leave" ?selected=${onExit.kind === "leave"}>
+            Leave everything as it is
+          </option>
+          <option value="restore" ?selected=${onExit.kind === "restore"}>
+            Put back what was there before
+          </option>
+          <option value="apply" ?selected=${onExit.kind === "apply"}>
+            Set something else
+          </option>
+        </select>
+      </label>
+      ${onExit.kind === "restore"
+        ? html`<p class="muted">
+            "Before" is what almanac read when the interval started, saved then
+            and not looked at again — so if something else changed those
+            entities in the meantime, this puts back the older value, not
+            theirs.
+          </p>`
+        : nothing}
+      ${onExit.kind === "apply"
+        ? html`<almanac-desired
+            name="on_exit"
+            label="Set this on the way out"
+            required
+            .state=${onExit.state}
+            ?disabled=${!this._canWrite}
+            entityList=${ANY_ENTITY_LIST}
+            scriptList=${SCRIPT_LIST}
+          ></almanac-desired>`
+        : nothing}
+      <p class="muted">
+        Changing this does not change an interval that is already running: the
+        exit is decided when the interval is entered and read back from that
+        promise, so an edit mid-interval takes effect next time.
+      </p>
+    `;
+  }
+
+  /** What picking an exit produces, carrying the state across where it can. */
+  private _onExitFor(value: string, current: StoredOnExit): StoredOnExit {
+    if (value === "apply") {
+      return {
+        kind: "apply",
+        state: current.kind === "apply" ? current.state : newDesiredState(),
+      };
+    }
+    return value === "restore" ? { kind: "restore" } : { kind: "leave" };
+  }
+
 
   /**
    * One anchor: its kind, and whatever that kind needs.
@@ -960,56 +1354,272 @@ export class AlmanacEditor extends LitElement {
       remaining === 0 ? undefined : String(Math.min(index, remaining - 1));
   }
 
-  // --- what the editor does not edit ---------------------------------------
+  // --- the schedule's own completion (D46) ----------------------------------
 
   /**
-   * D149's limit, stated on screen rather than implied by an absence.
+   * D46's three axes, one section.
    *
-   * Counts, not controls. The point is that the user can see these exist and are
-   * being preserved — a schedule with eleven actions that showed nothing about
-   * them would read as a schedule with none, and the Save button would look like
-   * it was about to write that.
+   * Three because they are three separate questions and today's scheduler
+   * answers them with one word: "Stop" means pause and "Delete" means delete,
+   * and for a multi-slot scheme "after it triggers" is undocumented. So *when*
+   * it is finished, *what* happens then, and *which* occurrences count towards
+   * it are each asked, and each has a visible value rather than an absence.
+   *
+   * Written whole, every time, and `DEFAULT_COMPLETION` is why: D140's update is
+   * a shallow top-level merge, so sending `{finished_when: ...}` alone would
+   * re-default `then` and `count_on` to whatever the schema says. One axis
+   * changing has to carry the other two with it.
    */
-  private _untouched() {
-    const rules = this._rules;
-    const count = (pick: (rule: WritableRule) => number): number =>
-      rules.reduce((total, rule) => total + pick(rule), 0);
-    const actions = count((rule) =>
-      rule.kind === "at"
-        ? (rule.actions?.length ?? 0)
-        : (rule.enter_actions?.length ?? 0) + (rule.exit_actions?.length ?? 0),
-    );
-    const conditions = count((rule) => rule.conditions?.length ?? 0);
-    const states = count((rule) =>
-      rule.kind === "during" && rule.state ? 1 : 0,
-    );
-    if (actions + conditions + states === 0) {
-      return nothing;
-    }
-    const parts = [
-      actions === 1 ? "1 action" : actions > 0 ? `${actions} actions` : null,
-      conditions === 1
-        ? "1 condition"
-        : conditions > 0
-          ? `${conditions} conditions`
-          : null,
-      states === 1
-        ? "1 desired state"
-        : states > 0
-          ? `${states} desired states`
-          : null,
-    ].filter((part): part is string => part !== null);
+  private _completion() {
+    const completion = this._draft.body.completion ?? DEFAULT_COMPLETION;
+    const finished = completion.finished_when;
+    const then = completion.then;
     return html`
       <section>
-        <h3>Carried through unchanged</h3>
+        <h3>When it is finished</h3>
+        <label class="field">
+          <span>Finished</span>
+          <select
+            ?disabled=${!this._canWrite}
+            @change=${(event: Event) =>
+              this._writeCompletion({
+                finished_when: this._finishedFor(inputValue(event), finished),
+              })}
+          >
+            ${FINISHED_KINDS.map(
+              ([kind, label]) => html`
+                <option value=${kind} ?selected=${finished.kind === kind}>
+                  ${label}
+                </option>
+              `,
+            )}
+          </select>
+        </label>
+        ${finished.kind === "occurrences"
+          ? html`
+              <label class="field">
+                <span>After</span>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  .value=${String(finished.count)}
+                  ?disabled=${!this._canWrite}
+                  @change=${(event: Event) =>
+                    this._writeCompletion({
+                      finished_when: {
+                        kind: "occurrences",
+                        count: countFrom(inputValue(event), finished.count),
+                      },
+                    })}
+                />
+                <span class="muted">of them</span>
+              </label>
+            `
+          : nothing}
+        ${finished.kind === "date"
+          ? html`
+              <label class="field">
+                <span>On</span>
+                <input
+                  type="date"
+                  .value=${finished.date}
+                  ?disabled=${!this._canWrite}
+                  @change=${(event: Event) => {
+                    // A cleared date keeps the old one. `_day` refuses an empty
+                    // string, and a field the user can empty into a save that
+                    // fails at the backend is a field that validates nowhere.
+                    const typed = inputValue(event);
+                    this._writeCompletion({
+                      finished_when: {
+                        kind: "date",
+                        date: typed === "" ? finished.date : typed,
+                      },
+                    });
+                  }}
+                />
+              </label>
+              <p class="muted">
+                The day named is included (D96): "finish on 31 December" means
+                through the 31st, not up to it.
+              </p>
+            `
+          : nothing}
+        ${finished.kind === "condition"
+          ? this._conditions(
+              "finished_when",
+              finished.conditions,
+              "Finished when",
+            )
+          : nothing}
+        <label class="field">
+          <span>Then</span>
+          <select
+            ?disabled=${!this._canWrite}
+            @change=${(event: Event) =>
+              this._writeCompletion({
+                then: this._thenFor(inputValue(event), then),
+              })}
+          >
+            ${THEN_KINDS.map(
+              ([kind, label]) => html`
+                <option value=${kind} ?selected=${then.kind === kind}>
+                  ${label}
+                </option>
+              `,
+            )}
+          </select>
+        </label>
+        ${then.kind === "action"
+          ? this._actions("then", "Run when finished", then.actions)
+          : nothing}
+        ${then.kind === "disable" || then.kind === "delete"
+          ? html`<p class="muted">
+              It waits for any interval still being held (D47). A schedule that
+              switched itself off mid-interval would leave the world in a state
+              it created and nothing left to undo it.
+            </p>`
+          : nothing}
+        <label class="field">
+          <span>Counting</span>
+          <select
+            ?disabled=${!this._canWrite}
+            @change=${(event: Event) =>
+              this._writeCompletion({
+                count_on: inputValue(event) as StoredCountOn,
+              })}
+          >
+            ${COUNT_ON_KINDS.map(
+              ([kind, label]) => html`
+                <option value=${kind} ?selected=${completion.count_on === kind}>
+                  ${label}
+                </option>
+              `,
+            )}
+          </select>
+        </label>
         <p class="muted">
-          ${parts.join(", ")}. This editor does not change what a rule
-          <em>does</em> yet, only when it happens. Saving leaves all of it exactly
-          as it is.
+          "Actually did something" is stricter than it looks: a rule with nothing
+          to do has not succeeded at anything, so a schedule counting that never
+          advances on an occurrence that performed no actions. That is the point
+          — it is what makes "delete after it triggers" mean after it triggered.
         </p>
       </section>
     `;
   }
+
+  /** What picking a *finished when* produces, carrying across what it can. */
+  private _finishedFor(
+    value: string,
+    current: StoredFinishedWhen,
+  ): StoredFinishedWhen {
+    if (value === "occurrences") {
+      return {
+        kind: "occurrences",
+        count: current.kind === "occurrences" ? current.count : 1,
+      };
+    }
+    if (value === "date") {
+      return {
+        kind: "date",
+        date: current.kind === "date" ? current.date : today(),
+      };
+    }
+    if (value === "condition") {
+      return {
+        kind: "condition",
+        conditions: current.kind === "condition" ? current.conditions : [],
+      };
+    }
+    if (value === "one_rule_fired" || value === "cycle") {
+      return { kind: value };
+    }
+    return { kind: "never" };
+  }
+
+  private _thenFor(value: string, current: StoredThen): StoredThen {
+    if (value === "action") {
+      return {
+        kind: "action",
+        actions: current.kind === "action" ? current.actions : [],
+      };
+    }
+    if (value === "disable" || value === "delete") {
+      return { kind: value };
+    }
+    return { kind: "keep" };
+  }
+
+  private _writeCompletion(patch: Partial<StoredCompletion>): void {
+    this._draft = withBody(this._draft, {
+      completion: {
+        ...(this._draft.body.completion ?? DEFAULT_COMPLETION),
+        ...patch,
+      },
+    });
+  }
+
+  // --- what the builders send back ------------------------------------------
+  //
+  // One handler per builder, routing on the `name` the template gave it. Each
+  // one writes a whole value: a rule's `actions` is one field of the draft as
+  // far as `replaceRuleAt` is concerned, and the alternative — an event per
+  // action field, carrying an index and a key — would make this file reassemble
+  // a list it does not otherwise touch.
+
+  private _onActions = (event: CustomEvent<ActionsChangedDetail>): void => {
+    const index = this._selectedIndex;
+    const { name, actions } = event.detail;
+    if (name === "then") {
+      this._writeCompletion({ then: { kind: "action", actions } });
+      return;
+    }
+    if (index === null) {
+      return;
+    }
+    if (name === "actions") {
+      this._patchRule(index, { actions });
+    } else if (name === "enter") {
+      this._patchRule(index, { enter_actions: actions });
+    } else if (name === "exit") {
+      this._patchRule(index, { exit_actions: actions });
+    }
+    // Anything else is a list belonging to a builder that should have stopped
+    // the event itself -- a desired state's `override`. Ignored rather than
+    // guessed at, so a missing `stopPropagation` shows up as a control that
+    // does nothing rather than as a write to the wrong field.
+  };
+
+  private _onConditions = (
+    event: CustomEvent<ConditionsChangedDetail>,
+  ): void => {
+    const { name, conditions } = event.detail;
+    if (name === "finished_when") {
+      this._writeCompletion({ finished_when: { kind: "condition", conditions } });
+      return;
+    }
+    const index = this._selectedIndex;
+    if (name === "conditions" && index !== null) {
+      this._patchRule(index, { conditions });
+    }
+  };
+
+  private _onDesired = (event: CustomEvent<DesiredChangedDetail>): void => {
+    const index = this._selectedIndex;
+    const { name, state } = event.detail;
+    if (index === null) {
+      return;
+    }
+    if (name === "state") {
+      this._patchRule(index, { state });
+    } else if (name === "on_exit" && state !== null) {
+      // `required` on that element means null never arrives, and the check is
+      // here as well because `on_exit: apply` has nowhere to put one: the arm
+      // carries `state` as a required key, so a null would have to become a
+      // different arm, which is a choice this handler must not make silently.
+      this._patchRule(index, { on_exit: { kind: "apply", state } });
+    }
+  };
 
   /** D78's footprint, as text. */
   private _footprint() {
@@ -1153,6 +1763,12 @@ export class AlmanacEditor extends LitElement {
   static override styles = [
     almanacTokens,
     almanacText,
+    // `almanacForm` holds every control rule this file used to carry its own
+    // copy of. It moved at step 9e, when four builders started rendering the
+    // same `.field`, `.panel` and button classes inside their own shadow roots:
+    // a copy apiece is four chances to disagree about what a disabled input
+    // looks like.
+    almanacForm,
     almanacHitTarget,
     css`
       :host {
@@ -1181,79 +1797,7 @@ export class AlmanacEditor extends LitElement {
         flex: 1 1 auto;
       }
 
-      h3 {
-        font-size: 0.8125rem;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        margin: 0 0 var(--almanac-gap-sm);
-        color: var(--secondary-text-color);
-      }
 
-      section {
-        display: flex;
-        flex-direction: column;
-        gap: var(--almanac-gap-sm);
-      }
-
-      /* The selected rule's panel is the one surface that is not the page, so it
-         gets an edge. Everything else sits flat on the card. */
-      .panel {
-        border: 1px solid var(--almanac-rail);
-        border-radius: 12px;
-        padding: var(--almanac-gap-md);
-      }
-
-      .row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: var(--almanac-gap-xs);
-      }
-
-      .field {
-        display: flex;
-        align-items: center;
-        flex-wrap: wrap;
-        gap: var(--almanac-gap-sm);
-      }
-
-      /* Visible, always, and never a placeholder standing in for one: a label
-         that vanishes once the field has content takes the field's meaning with
-         it, and these fields hold slugs and signed numbers. */
-      .field > span:first-child {
-        flex: 0 0 7rem;
-        font-size: 0.875rem;
-        color: var(--secondary-text-color);
-      }
-
-      .field input,
-      .field select {
-        flex: 1 1 12rem;
-        min-width: 0;
-        min-height: 40px;
-        box-sizing: border-box;
-        padding: 0 var(--almanac-gap-sm);
-        font: inherit;
-        color: var(--primary-text-color);
-        background: var(--secondary-background-color);
-        border: 1px solid var(--almanac-rail);
-        border-radius: 8px;
-      }
-
-      .field input:disabled,
-      .field select:disabled {
-        opacity: 0.6;
-      }
-
-      .field input[type="number"] {
-        flex: 0 0 6rem;
-      }
-
-      .check {
-        display: flex;
-        align-items: center;
-        gap: var(--almanac-gap-sm);
-        font-size: 0.875rem;
-      }
 
       .anchor {
         display: flex;
@@ -1269,39 +1813,6 @@ export class AlmanacEditor extends LitElement {
         padding-left: var(--almanac-gap-sm);
       }
 
-      button {
-        font: inherit;
-        color: inherit;
-        border-radius: 10px;
-        border: 1px solid var(--almanac-rail);
-        background: none;
-        min-height: 40px;
-        padding: 0 var(--almanac-gap-sm);
-      }
-
-      button:disabled {
-        opacity: 0.5;
-      }
-
-      .chip {
-        padding: 0 var(--almanac-gap-sm);
-        min-height: 36px;
-      }
-
-      .chip.selected {
-        border-color: var(--almanac-known);
-        color: var(--almanac-known);
-      }
-
-      .primary {
-        border-color: var(--almanac-known);
-        color: var(--almanac-known);
-      }
-
-      .danger {
-        border-color: var(--almanac-failed);
-        color: var(--almanac-failed);
-      }
 
       .rules {
         list-style: none;
@@ -1349,50 +1860,14 @@ export class AlmanacEditor extends LitElement {
         gap: var(--almanac-gap-sm);
       }
 
-      p {
-        margin: 0;
-        font-size: 0.875rem;
-      }
 
       almanac-track {
         overflow-x: auto;
       }
 
-      @media (max-width: 600px) {
-        .field > span:first-child {
-          flex: 1 1 100%;
-        }
-      }
     `,
   ];
 }
-
-/** The typed value of whatever fired an `input` or `change`. */
-const inputValue = (event: Event): string =>
-  (event.target as HTMLInputElement | HTMLSelectElement).value;
-
-/**
- * `<input type="time">` gives `HH:MM` with no seconds unless the user types
- * them, and D40's stored form is `HH:MM:SS`. The schema's `_clock_time` accepts
- * both; normalising here means the draft's value and the stored value are the
- * same string, so D140's diff does not see a change that is only a spelling.
- */
-const clockValue = (typed: string): string =>
-  typed.length === 5 ? `${typed}:00` : typed;
-
-/**
- * Minutes, as typed, to stored seconds.
- *
- * Minutes because that is the unit every offset in this domain is spoken in —
- * "forty-five minutes before candle lighting" — and `step="any"` because the
- * alternative, `step="1"`, silently rounds a stored thirty-second offset away
- * the first time the field is touched. `Math.round` on the way back keeps the
- * stored value an integer number of seconds, which is what the schema takes.
- */
-const secondsFrom = (typed: string): number => {
-  const minutes = Number(typed);
-  return Number.isFinite(minutes) ? Math.round(minutes * 60) : 0;
-};
 
 declare global {
   interface HTMLElementTagNameMap {

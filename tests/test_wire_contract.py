@@ -439,6 +439,23 @@ STORED = {
     "_SCRIPT_ACTION_SCHEMA": "StoredScriptAction",
     "_DESIRED_ENTITY_SCHEMA": "StoredDesiredEntity",
     "DESIRED_STATE_SCHEMA": "StoredDesiredState",
+    "_ON_EXIT_SCHEMA[apply]": "StoredApplyOnExit",
+    # The conditions, the policy and the completion block joined the sweep at
+    # step 9e, when the builders gave the frontend a reason to look inside them.
+    # Before that they were open records in `stored.ts` and sat in
+    # `NOT_CHECKED_OPAQUE`; an editor that writes these keys has to agree with
+    # the schema on every one of them, so the pairing is what the step added.
+    "_OPERAND_SCHEMA[constant]": "StoredConstantOperand",
+    "_OPERAND_SCHEMA[entity]": "StoredEntityOperand",
+    "_COMPARISON_FIELDS": "StoredComparisonCondition",
+    "_DAY_SET_CONDITION_SCHEMA": "StoredDaySetCondition",
+    "_GROUP_SCHEMA": "StoredGroupCondition",
+    "_CONDITION_POLICY_SCHEMA[wait_until]": "StoredWaitUntilPolicy",
+    "_FINISHED_WHEN_SCHEMA[occurrences]": "StoredFinishedOccurrences",
+    "_FINISHED_WHEN_SCHEMA[date]": "StoredFinishedDate",
+    "_FINISHED_WHEN_SCHEMA[condition]": "StoredFinishedCondition",
+    "_THEN_SCHEMA[action]": "StoredThenAction",
+    "_COMPLETION_SCHEMA": "StoredCompletion",
     "_AT_RULE_SCHEMA": "StoredAtRule",
     "_DURING_RULE_SCHEMA": "StoredDuringRule",
     "_DATE_WINDOW_SCHEMA": "StoredDateWindow",
@@ -449,14 +466,13 @@ STORED = {
 # reasons. Listed rather than omitted, for `OFF_WIRE`'s reason: an empty set and
 # a set somebody looked at are different answers.
 #
-# Opaque on purpose -- the four shapes the track does not read. `stored.ts`
-# leaves them as open records because writing them out would be writing the
-# editor's types before the editor, so there is nothing here to compare.
+# Opaque on purpose -- and after step 9e there is one, not four. The other three
+# were written out when the condition and completion builders gave the frontend
+# a reason to look inside them. Recurrence stays an open record because D151
+# means the editor reads four of its five arms for their `kind` alone, and the
+# two it builds it writes whole, so there are no keys it depends on to compare.
 NOT_CHECKED_OPAQUE = {
     "StoredRecurrence",
-    "StoredCondition",
-    "StoredConditionPolicy",
-    "StoredCompletion",
 }
 
 # Unions and aliases, not interfaces. The parser reads `export interface` bodies;
@@ -471,6 +487,15 @@ NOT_CHECKED_UNIONS = {
     "StoredAction",
     "StoredOnExit",
     "StoredRule",
+    "StoredScalar",
+    "StoredOperand",
+    "StoredComparisonOperator",
+    "StoredLeafCondition",
+    "StoredCondition",
+    "StoredConditionPolicy",
+    "StoredFinishedWhen",
+    "StoredThen",
+    "StoredCountOn",
 }
 
 # Spreads and comprehensions the sweep cannot follow, each against the name that

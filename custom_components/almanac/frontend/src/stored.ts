@@ -15,8 +15,8 @@
 // `tests/test_wire_contract.py` compares the key names here against the
 // voluptuous schemas that produce them, interface by interface, for the same
 // reason it does the `as_dict()` sweep: a renamed storage key is silent in both
-// directions. Three shapes are deliberately left opaque and the test declares
-// them so — see `StoredRecurrence` below.
+// directions. One shape is deliberately left opaque and the test declares it so
+// — see `StoredRecurrence` below.
 
 import type { Day } from "./wire";
 
@@ -79,12 +79,32 @@ export interface StoredScriptAction {
 
 export type StoredAction = StoredServiceAction | StoredScriptAction;
 
+/**
+ * A service call's target: the five selectors, each of which may be absent.
+ *
+ * The `?:` is the exception to the no-optionals convention `wire.ts` sets out,
+ * and it is `_TARGET_SCHEMA` that makes it one. Every selector there is a
+ * `vol.Optional` with **no default**, so a stored target holds exactly the
+ * selectors that were written to it: `{"entity_id": ["light.hall"]}` has no
+ * `device_id` key at all. That is unlike the rest of this file, where the
+ * schemas fill an absent field with `None` and the key is always present.
+ *
+ * Step 9e is what made the difference matter. The track never looked inside a
+ * target, so five required keys were a harmless over-claim; the action builder
+ * reads each selector to draw a field, and under `strictNullChecks` the
+ * over-claim is what stops it from being asked whether the key is there.
+ *
+ * `_target` refuses a target whose every selector is empty — `{}` beside a
+ * `data` without `entity_id` is a call at every entity the service accepts —
+ * while `target: null` stays legal, for the services that genuinely have none.
+ * `withTargetIds` is where those two facts are kept straight.
+ */
 export interface StoredTarget {
-  entity_id: string[];
-  device_id: string[];
-  area_id: string[];
-  floor_id: string[];
-  label_id: string[];
+  entity_id?: string[];
+  device_id?: string[];
+  area_id?: string[];
+  floor_id?: string[];
+  label_id?: string[];
 }
 
 export interface StoredDesiredEntity {
@@ -98,10 +118,155 @@ export interface StoredDesiredState {
   override: StoredAction[];
 }
 
+/**
+ * D3's third exit. An interface rather than an inline arm because it carries a
+ * key: `state` could be renamed in `schema.py` and nothing would notice, which
+ * is the whole reason `tests/test_wire_contract.py` exists. The other two arms
+ * stay inline — they are `kind` and nothing else, so an interface apiece would
+ * be two interfaces carrying one key.
+ */
+export interface StoredApplyOnExit {
+  kind: "apply";
+  state: StoredDesiredState;
+}
+
 export type StoredOnExit =
   | { kind: "leave" }
   | { kind: "restore" }
-  | { kind: "apply"; state: StoredDesiredState };
+  | StoredApplyOnExit;
+
+// --- conditions, the policy and completion (D23, D26, D46) -----------------
+//
+// Written out at step 9e, where the condition and completion builders needed
+// them. Until then they were open records, which was the honest shape for a
+// track that never looked inside one; an editor that does look has to agree with
+// `schema.py` key by key, so they joined the sweep at the same time.
+
+/**
+ * One JSON scalar, with the type left alone.
+ *
+ * `number | string | boolean` and deliberately not `string`: `schema.py`'s
+ * `_scalar` keeps the type the user typed, because coercing a threshold of `20`
+ * to `"20"` turns a numeric comparison into a string one in which `"9" > "20"`.
+ * The editor's value field therefore has to decide a type too.
+ */
+export type StoredScalar = string | number | boolean;
+
+export interface StoredConstantOperand {
+  kind: "constant";
+  /** A list only for `in` / `not_in`, which `_comparison` enforces. */
+  value: StoredScalar | StoredScalar[];
+}
+
+export interface StoredEntityOperand {
+  kind: "entity";
+  entity_id: string;
+  /** `null` is the entity's state, which is not an attribute called `state`. */
+  attribute: string | null;
+  /** Signed. Its unit is decided at evaluation, not here — see `schema.py`. */
+  offset: number;
+}
+
+export type StoredOperand = StoredConstantOperand | StoredEntityOperand;
+
+/** `const.py::COMPARISON_OPERATORS`, in its order. */
+export type StoredComparisonOperator =
+  | "eq"
+  | "ne"
+  | "gt"
+  | "gte"
+  | "lt"
+  | "lte"
+  | "in"
+  | "not_in";
+
+export interface StoredComparisonCondition {
+  kind: "comparison";
+  entity_id: string;
+  attribute: string | null;
+  operator: StoredComparisonOperator;
+  value: StoredOperand;
+  /** D23's "state held for a duration", in whole seconds. */
+  for: number | null;
+  label: string | null;
+}
+
+export interface StoredDaySetCondition {
+  kind: "day_set";
+  day_set_id: string;
+  /** "…unless it is a holiday", without a second level of nesting. */
+  negate: boolean;
+  label: string | null;
+}
+
+/** §7.1's one level of nesting: a group's members are leaves, never groups. */
+export type StoredLeafCondition =
+  | StoredComparisonCondition
+  | StoredDaySetCondition;
+
+export interface StoredGroupCondition {
+  kind: "group";
+  operator: "and" | "or";
+  conditions: StoredLeafCondition[];
+  label: string | null;
+}
+
+export type StoredCondition = StoredLeafCondition | StoredGroupCondition;
+
+/** D26 — the deadline is required, so the arm is an interface. */
+export interface StoredWaitUntilPolicy {
+  kind: "wait_until";
+  deadline: number;
+}
+
+export type StoredConditionPolicy = { kind: "skip" } | StoredWaitUntilPolicy;
+
+export interface StoredFinishedOccurrences {
+  kind: "occurrences";
+  count: number;
+}
+
+export interface StoredFinishedDate {
+  kind: "date";
+  date: Day;
+}
+
+export interface StoredFinishedCondition {
+  kind: "condition";
+  conditions: StoredCondition[];
+}
+
+/** D46's first axis, with D83's `never` as the default and commonest value. */
+export type StoredFinishedWhen =
+  | { kind: "never" }
+  | { kind: "one_rule_fired" }
+  | { kind: "cycle" }
+  | StoredFinishedOccurrences
+  | StoredFinishedDate
+  | StoredFinishedCondition;
+
+export interface StoredThenAction {
+  kind: "action";
+  actions: StoredAction[];
+}
+
+export type StoredThen =
+  | { kind: "keep" }
+  | { kind: "disable" }
+  | { kind: "delete" }
+  | StoredThenAction;
+
+/** D46's third axis — what a completion *counts*. */
+export type StoredCountOn =
+  | "scheduled"
+  | "conditions_passed"
+  | "actions_succeeded";
+
+export interface StoredCompletion {
+  finished_when: StoredFinishedWhen;
+  then: StoredThen;
+  count_on: StoredCountOn;
+}
 
 export interface StoredAtRule {
   kind: "at";
@@ -144,19 +309,19 @@ export interface StoredSchedule {
 }
 
 /**
- * The three shapes the track does not read, left as open records.
+ * The one shape still left as an open record, and why it stays one.
  *
- * Writing them out would be writing the editor's types before the editor, and
- * the first one of them to change would change for a reason the track does not
- * participate in. They are named here so that `stored.ts` still describes a
- * whole schedule — a type that silently omitted `recurrence` would let a reader
- * believe a schedule has no recurrence — and `tests/test_wire_contract.py`
- * carries them in its `NOT_CHECKED` set rather than inferring the omission.
+ * Three of the original four were written out at step 9e, when the condition and
+ * completion builders had to agree with `schema.py` key by key. Recurrence did
+ * not join them, because D151 means the editor never looks inside four of its
+ * five arms: `dates`, `nth_weekday` and `every_n` are read for their `kind`
+ * alone and rendered read-only, and the two it does build it writes whole. A
+ * type spelling out keys nothing reads would be a claim the editor does not
+ * depend on, which is the kind of restatement D143 warns about.
+ * `tests/test_wire_contract.py` carries it in `NOT_CHECKED_OPAQUE` rather than
+ * inferring the omission.
  */
 export type StoredRecurrence = { kind: string } & Record<string, unknown>;
-export type StoredCondition = { kind: string } & Record<string, unknown>;
-export type StoredConditionPolicy = { kind: string } & Record<string, unknown>;
-export type StoredCompletion = Record<string, unknown>;
 
 /**
  * D19's date window. Both keys are always present: `date_window` defaults to
