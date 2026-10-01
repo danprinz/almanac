@@ -272,4 +272,30 @@ export const almanacHitTarget = css`
     outline: 2px solid var(--almanac-now);
     outline-offset: 2px;
   }
+
+  /* A pill that is also a button. The tappable rule zeroes the border and the
+     padding so that a bare glyph becomes a 44px target without growing
+     visually, and it is declared after the pill rule -- so on an element
+     carrying both, the zeroes win and the pill loses its outline. Two classes
+     beat one, which puts it back.
+
+     The dotted underline is here rather than on tappable because it is what
+     distinguishes these pills from the ones beside them: D62's footprint lists
+     entities that open a dialog next to services that cannot, and identical
+     pills with different behaviour is worse than no affordance at all. */
+  .pill.tappable {
+    padding: 2px var(--almanac-gap-sm);
+    border: 1px solid var(--almanac-rail);
+    text-decoration: underline;
+    text-decoration-style: dotted;
+    text-underline-offset: 2px;
+  }
+
+  /* Hover and focus share one rule because a pointer cursor is invisible on a
+     touch screen, which is where a footprint is most often read. */
+  .pill.tappable:hover,
+  .pill.tappable:focus-visible {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+  }
 `;

@@ -28,14 +28,27 @@ import {
 } from "./derive";
 import { dayAndTime, relative } from "./format";
 import type { HomeAssistant, LovelaceCardConfig } from "./ha";
+import { openMoreInfo } from "./moreinfo";
 import { armedRules, buildTrack } from "./rails";
 import type { StoredSchedule } from "./stored";
-import { almanacText, almanacTokens } from "./styles";
+import { almanacHitTarget, almanacText, almanacTokens } from "./styles";
 import { summaryLine } from "./track";
 import type { WireScheduleTimeline } from "./wire";
 
 /** How far ahead a card looks. One week answers "what is next" for anything weekly. */
 const LOOKAHEAD_DAYS = 8;
+
+/**
+ * Where the panel lives, and the parameter it reads for one schedule (D161).
+ *
+ * Two literals, repeated in `more-info-body.ts` and `panel.ts` and held against
+ * `const.py` by `tests/test_frontend_assets.py`. They are not imported from a
+ * shared module because the module that would own them is the panel bundle, and
+ * D70 keeps the two bundles disjoint -- a shared import is how Rollup is given
+ * permission to hoist a chunk the card entry would then pull on every page.
+ */
+const PANEL_PATH = "/almanac";
+const EDIT_PARAM = "edit";
 
 export interface AlmanacCardConfig extends LovelaceCardConfig {
   title?: string;
@@ -177,6 +190,26 @@ export class AlmanacCardBody extends LitElement {
     return typeof name === "string" ? name : undefined;
   };
 
+  /**
+   * D161's leaving half, from the card.
+   *
+   * A plain `href` and not core's navigation event. The event would be a second
+   * verbatim third-party identifier of the same silent-failure class as the
+   * more-info one (D159) for no gain: if Home Assistant's router intercepts the
+   * click the navigation is instant, and if nothing does the browser loads the
+   * panel itself. The worst case is a slower correct answer rather than a dead
+   * link, which is the only trade worth making for an identifier this
+   * environment cannot certify.
+   *
+   * A query parameter and not `/almanac/<id>`, because `panel_custom` registers
+   * one url path and nothing routes below it: the path form is a 404 on exactly
+   * the cold load this link exists to survive. `const.py` holds the same two
+   * strings, and `tests/test_frontend_assets.py` compares them.
+   */
+  private _editHref(scheduleId: string): string {
+    return `${PANEL_PATH}?${EDIT_PARAM}=${encodeURIComponent(scheduleId)}`;
+  }
+
   private _row(lane: WireScheduleTimeline) {
     const hass = this.hass!;
     const next = nextOccurrence(lane.plan, this._at);
@@ -200,7 +233,22 @@ export class AlmanacCardBody extends LitElement {
     return html`
       <li class="lane">
         <div class="head">
-          <span class="name">${lane.name ?? lane.schedule_id}</span>
+          ${
+            // D62 — the row's name opens the entity's dialog, which is what a
+            // name in a Lovelace card does everywhere else in Home Assistant,
+            // and almanac's half of that dialog is `more-info-body.ts`. The
+            // second route is deliberate rather than redundant: the dialog
+            // answers "what is this doing", the Edit link answers "change it",
+            // and sending both through one target would make the common
+            // question cost the dangerous answer's number of clicks.
+            html`<button
+              class="name tappable"
+              title="Open ${lane.name ?? lane.schedule_id}"
+              @click=${() => openMoreInfo(this, lane.entity_id)}
+            >
+              ${lane.name ?? lane.schedule_id}
+            </button>`
+          }
           ${track && track.rails.length > 0
             ? html`<almanac-track
                 class="micro"
@@ -219,6 +267,12 @@ export class AlmanacCardBody extends LitElement {
                 >`
               : html`<span class="pill">${entity?.state ?? "unknown"}</span>`
           }
+          <a
+            class="edit tappable"
+            href=${this._editHref(lane.schedule_id)}
+            title="Edit this schedule in almanac"
+            >Edit</a
+          >
         </div>
         ${summary === ""
           ? nothing
@@ -241,6 +295,7 @@ export class AlmanacCardBody extends LitElement {
   static override styles = [
     almanacTokens,
     almanacText,
+    almanacHitTarget,
     css`
       .body {
         padding: 0 var(--almanac-gap-md) var(--almanac-gap-md);
@@ -265,10 +320,23 @@ export class AlmanacCardBody extends LitElement {
         gap: var(--almanac-gap-sm);
       }
 
+      /* A button, so it needs the text alignment back that the shared tappable
+         rule does not carry: that rule zeroes a button's chrome, and a button's
+         centred text is chrome the browser applies rather than the rule. */
       .name {
         font-weight: 500;
         flex: 1 1 auto;
         min-width: 0;
+        text-align: left;
+      }
+
+      .edit {
+        flex: 0 0 auto;
+        font-size: 0.8125rem;
+        color: var(--almanac-now);
+        text-decoration: underline;
+        text-decoration-style: dotted;
+        text-underline-offset: 2px;
       }
 
       /* D74's smallest size: about 120px for two rails, and it must not be what

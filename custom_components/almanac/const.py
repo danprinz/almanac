@@ -104,6 +104,24 @@ PANEL_ICON: Final = "mdi:calendar-clock"
 # because D62's more-info entry point will have to create one by tag name.
 CARD_COMPONENT: Final = f"{DOMAIN}-card"
 
+# D159's half of the more-info contract, and the only route into that dialog.
+# `more-info-content` reads an entity's `custom_ui_more_info` attribute *before*
+# it dispatches on domain, and treats the value as an element tag name; the
+# per-domain control map it would otherwise consult is a closed object literal
+# with no registration hook (`ux/FINDINGS.md` finding 11). So publishing this
+# attribute on the schedule switch is what puts almanac's own region in the
+# dialog, and `tests/test_frontend_assets.py` asserts that the tag below is the
+# one `frontend/src/card.ts` registers -- the two halves cannot be checked
+# by anything at run time, because a tag nobody defined renders as nothing.
+ATTR_CUSTOM_UI_MORE_INFO: Final = "custom_ui_more_info"
+MORE_INFO_COMPONENT: Final = f"{DOMAIN}-more-info"
+
+# Where a small surface sends the user when it wants the editor (D161). A query
+# parameter and not a path segment: `panel_custom` registers one url path and
+# nothing routes below it, so `/almanac/<id>` would be a 404 on a cold load
+# while `/almanac?edit=<id>` is the panel with an argument.
+PANEL_EDIT_PARAM: Final = "edit"
+
 # --- schedule fields -------------------------------------------------------
 
 CONF_COMPLETION: Final = "completion"

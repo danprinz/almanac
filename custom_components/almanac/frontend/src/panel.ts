@@ -56,6 +56,34 @@ const RANGES = [
 
 type Range = (typeof RANGES)[number];
 
+/**
+ * D161 — the parameter a small surface uses to ask for one schedule's editor.
+ *
+ * A query parameter and not a path segment, because `panel_custom` registers
+ * one url path and nothing routes below it: `/almanac/<id>` is a 404 on a cold
+ * load, and a cold load is exactly what an anchor from a dashboard produces.
+ * `const.py` holds the same name on the Python side; nothing compares them at
+ * run time, so `tests/test_frontend_assets.py` does.
+ */
+const EDIT_PARAM = "edit";
+
+/**
+ * What the URL is asking for, read once.
+ *
+ * `window.location` and `URLSearchParams` are platform APIs rather than Home
+ * Assistant ones, which is the whole reason D161 is shaped this way: the
+ * alternative was core's navigation event, a verbatim third-party identifier of
+ * the same silent-failure class as the more-info event, and this needs none.
+ *
+ * It is read at construction rather than on every update because it is a
+ * request, not a state. Acting on it twice would reopen the editor the user had
+ * just closed.
+ */
+const requestedEdit = (): string | undefined => {
+  const value = new URLSearchParams(window.location.search).get(EDIT_PARAM);
+  return value !== null && value !== "" ? value : undefined;
+};
+
 @customElement("almanac-panel")
 export class AlmanacPanel extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant | undefined;
@@ -78,8 +106,21 @@ export class AlmanacPanel extends LitElement {
    */
   @state() private _editing?: { schedule: StoredSchedule | null } | undefined;
 
+  /**
+   * A schedule the URL named but the collection does not have.
+   *
+   * Separate from `_error` because it must not replace the screen: the user
+   * followed a link to a schedule that has since been deleted, and the useful
+   * answer is the list plus a sentence, not an empty panel. `_error` is for a
+   * read that failed, where there is no list to show.
+   */
+  @state() private _notFound?: string | undefined;
+
   private _timer?: number | undefined;
   private _inFlight = false;
+
+  /** D161's request, consumed once by `_openRequested`. */
+  private _requested = requestedEdit();
 
   public override connectedCallback(): void {
     super.connectedCallback();
@@ -139,6 +180,9 @@ export class AlmanacPanel extends LitElement {
       this._at = at;
       this._error = undefined;
       this._notLoaded = false;
+      // After the collection is in hand and not before: the request names an
+      // id, and the editor takes the schedule.
+      this._openRequested();
     } catch (error) {
       if (isNotLoaded(error)) {
         this._notLoaded = true;
@@ -169,6 +213,29 @@ export class AlmanacPanel extends LitElement {
    */
   private _edit(schedule: StoredSchedule | null): void {
     this._editing = { schedule };
+  }
+
+  /**
+   * D161's arriving half.
+   *
+   * The parameter is left in the URL rather than cleared with
+   * `history.replaceState`, which means reloading the page reopens the editor.
+   * That is what a link should do — the alternative is a URL that stops meaning
+   * what it said as soon as it is used — and closing the editor still returns to
+   * the list, because the request has already been consumed in this session.
+   */
+  private _openRequested(): void {
+    const id = this._requested;
+    if (id === undefined || this._editing !== undefined) {
+      return;
+    }
+    this._requested = undefined;
+    const schedule = this._stored?.get(id);
+    if (schedule) {
+      this._edit(schedule);
+      return;
+    }
+    this._notFound = id;
   }
 
   private _onEditorClosed = (event: CustomEvent<EditorClosedDetail>): void => {
@@ -221,6 +288,11 @@ export class AlmanacPanel extends LitElement {
             >now ${clockTime(this.hass, this._at.toISOString())}</span
           >
         </header>
+        ${this._notFound === undefined
+          ? nothing
+          : html`<p class="problem">
+              almanac was asked to open a schedule that is not there any more.
+            </p>`}
         ${this._content()}
       </div>
     `;

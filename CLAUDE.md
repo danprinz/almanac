@@ -9,7 +9,7 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 
 ## Status — 2026-10-01
 
-**Build steps 1–9e of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
+**Build steps 1–9 of `DESIGN.md` §15 are written, tested and pushed — step 9 is finished.** Schema and storage, the
 resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
 actions and completion and the tick that drives them, observability, the `hdate` resolver, and —
 at step 8 — the timeline query and the dry run, with the two websocket commands the panel is
@@ -21,16 +21,18 @@ the boundary the editor sits on: `almanac/resolvers`, core's three write command
 pure draft algebra that produces what they are sent — at step 9d the editor itself,
 mounted in the panel, drawing an unsaved schedule through the same geometry as a saved one, and
 at step 9e the four builders that make it a whole editor: actions, conditions, desired state and
-the schedule's own completion.
-621 Python tests pass, plus 74 TypeScript ones (`npm test`); among them
+the schedule's own completion — and at step 9f the links between the three surfaces: almanac's own
+region inside core's more-info dialog, the footprint's names turned into things that open, and
+`/almanac?edit=<id>` from a card row.
+625 Python tests pass, plus 78 TypeScript ones (`npm test`); among them
 `tests/test_flagship.py` and
 `tests/test_anchor_span_day_sets.py`, which enumerate the brief's flagship scenario end to end
 twice over — once from `hdate`'s prebuilt Shabbat and once from a span the user wrote. Remote
 is `git@github.com:danprinz/almanac.git`.
 
-Decisions now run D1–D158. Each build step closes the gaps it found in its own subsection
+Decisions now run D1–D161. Each build step closes the gaps it found in its own subsection
 (`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2, §16.2, §16.3, §16.4, §16.5,
-§17.1) rather than editing the decision it refines. **D149 is the one exception and it is marked
+§16.6, §17.1) rather than editing the decision it refines. **D149 is the one exception and it is marked
 as such:** step 9e lifted it, so its entry says so in place rather than being deleted — the
 argument under it is why the payload question had to be answered first, and it is what forbids
 the schema-driven service form that looks attractive every time somebody reads `hass.services`.
@@ -159,22 +161,33 @@ cannot take a constant. And **`completion` is written whole, every time** (D158)
 axes has a `vol.Optional` default and D140's update is a shallow merge, so a partial `completion`
 silently re-defaults the axes left out.
 
-**Next step:** step 9f — D62's more-info entry point, which also carries D78's deferred half: the
-footprint ships as names rather than links because each link needs core's more-info event name, a
-verbatim third-party identifier this environment cannot certify, whose misspelling fails
-*silently*. The card's `getConfigElement` is still deliberately absent rather than stubbed. The
-other 17 UX findings in `ux/FINDINGS.md` are all still unapplied — except half of #2, which 9e
-applied on screen: the on-exit note now says that `restore` means the snapshot taken when the
-interval was entered, and that editing the exit mid-interval takes effect next time. Its larger
-half, per-entity ownership when two schedules hold one entity, still has no D-number.
-`ux/prototype/15-new-shabbat-2.html` still claims the pre-flight check is a guarantee, which is
-what D80 says to fix. Then 10 (importer, last — D60). The `almanac` namespace check is **done** — clear in core, in the HACS
-default list, and in a GitHub manifest-domain search (`DESIGN.md` "Remaining checks").
+**Step 9f is the one to read before touching any link between surfaces, and §16.6 has it.**
+Core's more-info event is spelled in exactly one file, `frontend/src/moreinfo.ts`, and a test
+asserts the literal appears nowhere else under `src/` (**D159**) — because it is the only
+identifier in the repository that is wrong *silently*: `dispatchEvent` with a name nobody listens
+for returns `true`, logs nothing, opens nothing. A.15 is the verification: five presence searches
+over the installed `home-assistant-frontend` 20260826.7, which also established that the detail key
+is `entityId`, that the listener is on an **ancestor** element, and therefore that `bubbles` and
+`composed` are both required and neither is a default. **D160** put a second always-loaded stub in
+`card.ts` — allowed despite D70 because `more-info-content` creates the tag with *no loader at
+all*, so the definition must already exist before any dialog opens; the entry still builds to
+1.4 KB. **D161** is the route into the editor: `/almanac?edit=<id>` by a plain anchor, not core's
+navigation event, because an anchor's worst case is a full page load and a misspelled event's is
+nothing happening.
+
+**Next step: step 10 — the importer, last (D60).** The card's `getConfigElement` is still
+deliberately absent rather than stubbed. The other 16 UX findings in `ux/FINDINGS.md` are still
+unapplied — except half of #2, which 9e applied on screen, and #11, which 9f applied: the
+footprint's entities, time reads and scripts now open. #2's larger half, per-entity ownership when
+two schedules hold one entity, still has no D-number. `ux/prototype/15-new-shabbat-2.html` still
+claims the pre-flight check is a guarantee, which is what D80 says to fix. The `almanac` namespace
+check is **done** — clear in core, in the HACS default list, and in a GitHub manifest-domain
+search (`DESIGN.md` "Remaining checks").
 
 **Still missing for a release:** the D71 workflow that builds and zips from *inside*
 `custom_components/almanac/`. Nothing exists yet, and D131 means a broken one degrades quietly.
 
-**Nine judgement calls are flagged for the owner** and are marked as such where they are
+**Ten judgement calls are flagged for the owner** and are marked as such where they are
 recorded: D91 (disarming mid-interval exits immediately), D97 (an unreadable condition changes
 nothing), D104 (the re-enumeration period when D44's horizon comes back empty), D109 (`run_now`
 fires no occurrence event) and D114 (`diaspora` and the two candle-lighting offsets have no user
@@ -189,7 +202,12 @@ the text stays as typed, the border goes red, the line under it says the payload
 was, and the schedule saves carrying the mapping that last parsed; blocking would need the editor
 to track every payload's validity across rule additions, removals and selection changes, and a
 counter that drifts either blocks a save for no visible reason or allows one the screen says is
-broken). **Step 9d's D149 has left this list:** 9e lifted it.
+broken), plus step 9f's one: **D160's cost** (publishing `custom_ui_more_info` on the schedule
+switch **replaces** the switch's native control rather than adding to it — core checks that
+attribute *before* it dispatches on domain, so the stock toggle is gone from the dialog. That is
+why almanac's dialog body leads with its own Arm/Disarm button, and the alternative — not
+publishing the attribute, and a schedule's dialog saying nothing about the schedule — is a real
+option the owner may prefer). **Step 9d's D149 has left this list:** 9e lifted it.
 
 D116 is the one decision step 8 made that changes existing behaviour rather than adding to it:
 `run_now` now fires `almanac_execution`, so a manual run appears on the timeline's past half.

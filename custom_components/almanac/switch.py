@@ -16,7 +16,14 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-from .const import ATTR_RECENT_EXECUTIONS, CONF_ENABLED, SCHEDULE_PLATFORM
+from .const import (
+    ATTR_CUSTOM_UI_MORE_INFO,
+    ATTR_RECENT_EXECUTIONS,
+    ATTR_SCHEDULE_ID,
+    CONF_ENABLED,
+    MORE_INFO_COMPONENT,
+    SCHEDULE_PLATFORM,
+)
 from .entity import AlmanacScheduleEntity, async_setup_collection_platform
 from .storage import AlmanacData
 
@@ -60,7 +67,13 @@ class AlmanacScheduleSwitch(AlmanacScheduleEntity, SwitchEntity):
     # accepted consequence is that the attribute shows the last few occurrences
     # *since Home Assistant started* and nothing older; the older answer is a
     # recorder query against `almanac_occurrence`, which is the trade D48 makes.
-    _unrecorded_attributes = frozenset({ATTR_RECENT_EXECUTIONS})
+    # D159's two attributes are display instructions rather than state, and they
+    # never change, so they would cost one extra pair of strings in every
+    # attribute blob the recorder dedupes -- not churn, but not history either.
+    # Nothing would ever ask what `custom_ui_more_info` was last Tuesday.
+    _unrecorded_attributes = frozenset(
+        {ATTR_CUSTOM_UI_MORE_INFO, ATTR_RECENT_EXECUTIONS, ATTR_SCHEDULE_ID}
+    )
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -72,12 +85,27 @@ class AlmanacScheduleSwitch(AlmanacScheduleEntity, SwitchEntity):
         schedule has been doing. The rejected alternative was the next-trigger
         sensor, which would have made a `device_class: timestamp` entity's
         more-info dialog mostly about something other than its own value.
+
+        The same sentence is why D159's `custom_ui_more_info` is published here
+        and on nothing else almanac owns. It is the attribute core's
+        `more-info-content` reads instead of dispatching on domain, so it
+        *replaces* the switch's native control -- which is a cost, not a bonus,
+        and the reason the replacement has to carry an arm control of its own.
+        §16.6 has that argument and flags it.
+
+        `schedule_id` is published alongside it because the element core creates
+        is handed a `stateObj` and nothing else. The schedule's id is in the
+        entity registry as the `unique_id`, which a custom element inside the
+        dialog cannot read, and deriving it from the `entity_id` would make D66's
+        one-way slug into a two-way mapping. One attribute is cheaper than either.
         """
         status = self.status
         return {
+            ATTR_CUSTOM_UI_MORE_INFO: MORE_INFO_COMPONENT,
+            ATTR_SCHEDULE_ID: self.schedule_id,
             ATTR_RECENT_EXECUTIONS: (
                 status.async_recent(self.schedule_id) if status is not None else []
-            )
+            ),
         }
 
     @property

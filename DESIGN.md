@@ -1684,7 +1684,8 @@ to — a template helper entity is evaluated, never enumerated, so it never touc
 9d. The editor — §16.4's D147–D151
 9e. The action, condition, desired-state and completion builders — §16.5's D152–D158,
     which is where D149 is lifted
-9f. More-info and the footprint's links — D62, and D78's deferred half
+9f. More-info and the footprint's links — D62, D78's deferred half, and §16.6's
+    D159–D161
 10. **Import from `scheduler-component`, last** — D60
 
 The packaging decisions D67–D71 are settled ahead of step 1, not at step 9: the repository layout
@@ -2236,11 +2237,12 @@ code: a default the user did not choose must not be presented as a choice they m
 
 #### What the step refined rather than decided
 
-**D78's footprint ships as names, not links.** Each entry would open more-info, which needs core's
-`hass-more-info` event — a verbatim third-party identifier, the one class Appendix B says this
-environment cannot certify, and one whose misspelling fails *silently*: nothing opens, nothing is
-logged, and the bug is invisible to every check in the repository. It moves to 9f with D62, where
-one verification covers both. Same reasoning as D138.
+**D78's footprint ships as names, not links.** *Discharged at 9f — see §16.6.* Each entry would
+open more-info, which needs core's `hass-more-info` event — a verbatim third-party identifier, the
+one class Appendix B says this environment cannot certify, and one whose misspelling fails
+*silently*: nothing opens, nothing is logged, and the bug is invisible to every check in the
+repository. It moved to 9f with D62, where one verification covered both. Same reasoning as D138.
+The verification is A.15 and the decision that keeps it to one spelling is D159.
 
 **The footprint's four lists are four because "touches" is three relationships.** An entity a
 desired state writes to is something the schedule changes. An entity an `entity_time` anchor names
@@ -2423,6 +2425,118 @@ construction: an action is built by `newServiceAction`, an operator change goes 
 would refuse is an unparseable payload, and D153 says that is not a `problems()` entry. So
 `problems()` is still not a mirror of `schema.py`, and the reason is still that a check nothing can
 trigger is a check nobody maintains.
+
+### 16.6 What step 9f found
+
+D62's more-info region, and the links out of D78's footprint. The two were deferred together at
+9d and 9e for one reason — both need `hass-more-info`, the identifier Appendix B says this
+environment cannot certify — so the step begins with the verification rather than with a screen.
+A.15 records it: the installed `home-assistant-frontend` bundle, searched for presence, which
+`CLAUDE.md` lists among the facts to trust in practice because a one-token rewrite of rendered
+content cannot make a string appear in a file that does not contain it.
+
+What the search established is more than the spelling. The detail key is `entityId`, not
+`entity_id`. The listener is registered on an *ancestor* element inside a `firstUpdated`, so the
+event has to bubble **and** be composed to escape almanac's shadow roots. And core's own
+`fireEvent` defaults both flags to true, which is exactly why an outside caller has to set them:
+every example of the call that anyone would copy omits them.
+
+**D159 — core's more-info event is spelled in exactly one file, `frontend/src/moreinfo.ts`, and
+`tests/test_frontend_assets.py` asserts the literal appears nowhere else under `src/`.**
+
+*Why a decision and not a tidy-up:* this is the only identifier in the repository that is wrong
+*silently*. Everything else the frontend can get wrong announces itself — a missing property is a
+type error, a bad websocket command is a rejected call with a message, a mis-shaped template
+throws. `dispatchEvent` with a name nobody listens for returns `true`, logs nothing, and leaves a
+button that does not work. There is no run-time check to add, so the only available discipline is
+to have one spelling, verified once, and a test that forbids a second. The sweep is a substring
+search rather than an import check, because the failure it guards against is someone writing the
+string inline in a `@click` — which no import graph would show.
+
+*The same decision names the other half of the contract.* `const.py` holds
+`ATTR_CUSTOM_UI_MORE_INFO` and `MORE_INFO_COMPONENT`; the frontend holds the tag. Nothing compares
+them at run time — a tag nobody defined renders as nothing at all — so the asset test does.
+
+**D160 — the more-info element is a second always-loaded stub in `card.ts`.**
+
+*Why there, of all places:* D70 exists because `card.ts` runs on every frontend page, and adding a
+second element to it looks like exactly the regression D70 forbids. It is not, and the reason is
+that this element has *no* loader hook available. `more-info-content` reads the entity's
+`custom_ui_more_info` attribute, creates that tag, and renders it; there is no registration call,
+no event to answer, no promise to return. If the definition does not already exist when the dialog
+opens, the dialog's body is empty and nothing reports it. So the definition has to be on the
+always-loaded path, and the stub shape is what makes that free: `card.ts` builds to 1.4 KB with
+both stubs in it, and Lit arrives only when a dialog actually opens.
+
+*What it costs, and the cost is a judgement call.* **⚠️ Flagged for the owner:** publishing
+`custom_ui_more_info` **replaces** the switch's native control rather than adding to it —
+the decompiled logic checks the attribute *before* it dispatches on domain, and returns almanac's
+tag instead of `more-info-switch`. So a schedule's dialog loses the stock toggle. That is why
+`more-info-body.ts` leads with an Arm/Disarm button of its own, and why the alternative — not
+publishing the attribute, and accepting that a schedule's dialog says nothing about the schedule —
+is a real option the owner may prefer. The header, the cog, the attribute expander and the
+history and logbook tabs are in `more-info-dialog` and are unaffected either way.
+
+*The dialog publishes `schedule_id` as well*, because core hands the element a `stateObj` and
+nothing else. Deriving the id from the `entity_id` would need D66's slug to run backwards, and it
+does not. Both attributes are in `_unrecorded_attributes`: they are display instructions that never
+change, so nothing would ever ask what `custom_ui_more_info` was last Tuesday.
+
+**D161 — the way from a small surface into the editor is `/almanac?edit=<id>`, reached by a plain
+anchor.**
+
+*Why an anchor and not core's navigation event:* the event would be a second identifier of
+D159's class, with the same silent failure, for no gain. An anchor's worst case is that nothing
+intercepts the click and the browser loads the panel itself — slower, and correct. A dead link is
+not among its failure modes.
+
+*Why a query parameter and not a path segment:* `panel_custom` registers one url path and nothing
+routes below it, so `/almanac/<id>` is a 404 on exactly the cold load this link exists to survive.
+
+*Where it is read:* the panel takes it from `window.location.search` once, at construction, and
+resolves it against the stored collection after the first refresh — the editor takes a
+`StoredSchedule`, which does not exist until then. It is a request and not a state, so it is
+consumed once; acting on it twice would reopen the editor the user had just closed. The parameter
+is deliberately left in the URL, so reloading the page reopens the same schedule.
+
+*A schedule named by the URL but absent from the collection* gets a sentence above the list rather
+than replacing the screen. The user followed a link to something that has since been deleted, and
+the list is still the useful answer; `_error` is for a read that failed, where there is nothing to
+show.
+
+**The known gap, recorded rather than engineered around:** a panel that is *already mounted* when
+a client-side route arrives does not re-read the URL, because the read happens once at
+construction. In practice both writers are anchors from outside the panel, which means a
+navigation and a fresh element. A link from inside the panel to itself would need a `route`
+property, which `panel_custom` does supply and nothing here is typed for.
+
+#### What the step refined rather than decided
+
+**The footprint's fourth list stays as text.** Entities, time reads and scripts all name
+something Home Assistant can open, so they became buttons. A `domain.service` pair names no entity
+and has no dialog, so a link there would lead nowhere — and the footprint's whole job is to be
+believed. `script.*` ids are in the linkable set and not the service one, because D78 collects them
+from `script.turn_on` targets and the `script.<name>` form alike, and both are entities.
+
+**The card row got two routes, not one.** The name opens the entity's dialog, which is what a name
+in a Lovelace card does everywhere else in Home Assistant; a separate `Edit` link goes to the
+editor. Sending both through one target would make the common question — *what is this doing* —
+cost the dangerous answer's number of clicks. D150 said the card would open the editor and this is
+that, by the anchor rather than by hosting it.
+
+**A pill that is also a button needed a style rule.** `.tappable` zeroes a button's border and
+padding so a bare glyph can carry a 44px target without growing, and it is declared after `.pill`
+— so an element with both lost its outline. `.pill.tappable` in `styles.ts` restores it and adds
+the dotted underline that distinguishes a linkable pill from the plain one beside it, which
+matters precisely because the footprint puts the two kinds in the same paragraph.
+
+**`more-info-body.ts` does not reuse `<almanac-card-body>`.** The card's config arrives through a
+`setConfig` *method*, which a Lit template cannot call declaratively; calling it from `updated()`
+with a fresh object risks a fetch loop. It is written against the same primitives instead —
+`fetchTimeline`, `fetchSchedules`, `buildTrack`, `summaryLine`, `armedRules`, `nextOccurrence` —
+and the dialog's content differs from the card's anyway.
+
+**D146 gained nothing at 9f.** Nothing in this step produces a value the schema could refuse.
 
 ---
 
@@ -2861,6 +2975,37 @@ writing the call rather than by observing the hang, which is the only reason it 
 not a defect in the history. A second benefit fell out: every runtime record is already persisted
 when a `then` fires, so the re-evaluation its write triggers sees the state this pass decided on
 rather than the state it started from.
+
+**A.15 — core's more-info event, its detail key and its two required flags. Verified
+2026-10-01** against `home-assistant-frontend` 20260826.7, installed in this repository's `.venv`
+at `lib/python3.14/site-packages/hass_frontend/`. Five presence searches over
+`frontend_latest/*.js`:
+
+| Searched for | Found |
+| --- | --- |
+| the event name | `hass-more-info`, in dozens of chunks |
+| the detail shape | dispatch sites read `"hass-more-info",{entityId:` — so the key is `entityId` |
+| where it is handled | `this.addEventListener("hass-more-info"` inside a `firstUpdated`, i.e. on an **ancestor** element, not the document |
+| what core's own helper sends | `fireEvent` builds the event with `bubbles: void 0 === n.bubbles \|\| n.bubbles` and the same shape for `composed` — both default true *inside* core |
+| the extension hook | `custom_ui_more_info` is present, and read **before** the domain dispatch |
+
+*Why a presence search is the right check and not a weaker one.* `CLAUDE.md` names "presence or
+absence of a symbol" among the facts to trust in practice, because the read layer's rewrite is a
+rename: it can change which token a reader sees, but it cannot make a string appear in a file that
+does not contain it. A verbatim quote of the surrounding code is the class not to trust, and
+nothing above depends on one — each row is an answer to "is this exact string in there".
+
+*What it decided:* D159 (one spelling, one file, enforced by a test), D160 (the stub has to be on
+the always-loaded path, because the extension point has no loader), and the shape of
+`openMoreInfo` — `bubbles` and `composed` both explicitly true, since the listener is on an
+ancestor across a shadow boundary and core's defaults do not reach an outside caller.
+
+*The fifth row is the one with a cost.* The decompiled branch is
+`if (this.stateObj.attributes && "custom_ui_more_info" in this.stateObj.attributes) t =
+this.stateObj.attributes.custom_ui_more_info; else { … t = \`more-info-${domain}\` }` — an
+`else`, so the custom element **replaces** the domain control rather than joining it. That is the
+judgement call flagged under D160, and it is why almanac's dialog body carries its own arm
+control.
 
 ---
 

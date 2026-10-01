@@ -31,6 +31,7 @@ from custom_components.almanac.const import (
     ATTR_AT,
     ATTR_BLOCKING,
     ATTR_CAUSE,
+    ATTR_CUSTOM_UI_MORE_INFO,
     ATTR_KIND,
     ATTR_LATENESS,
     ATTR_RECENT_EXECUTIONS,
@@ -43,6 +44,7 @@ from custom_components.almanac.const import (
     EVENT_EXECUTION,
     EVENT_OCCURRENCE,
     EXECUTION_CACHE_SIZE,
+    MORE_INFO_COMPONENT,
     ON_EXIT_RESTORE,
     OPERAND_CONSTANT,
     RECUR_WEEKDAYS,
@@ -732,6 +734,52 @@ async def test_the_switch_shows_the_last_occurrences_and_keeps_them_out_of_the_d
     assert entry[ATTR_RESULT] == RESULT_FIRED
     assert entry[ATTR_RULE_ID] == "r1"
     assert entry[ATTR_ACTIONS][0]["target"] == "notify.fired"
+
+
+async def test_the_switch_asks_for_almanacs_own_dialog_body(
+    hass: HomeAssistant,
+    tick: AlmanacTick,
+    almanac_data: AlmanacData,
+    timeline: Timeline,
+) -> None:
+    """D62 and D160 — the one hook core offers, and the one it takes away.
+
+    `more-info-content` reads `custom_ui_more_info` off the entity *before* it
+    dispatches on domain, and treats the value as an element tag name. That is
+    the whole extension surface: the per-domain control map it would otherwise
+    consult is a closed object literal with no registration hook (`ux/
+    FINDINGS.md` finding 11), so this attribute is the only way almanac's own
+    region reaches the dialog.
+
+    **And it replaces the domain control rather than adding to it**, which is a
+    cost and not a detail: publishing this takes the switch's native toggle out
+    of the dialog, which is why `more-info-body.ts` leads with an arm control of
+    its own. §16.6 records that as a judgement call for the owner.
+
+    `schedule_id` is published for the same element, because core hands it a
+    `stateObj` and nothing else: deriving the id from the `entity_id` would need
+    D66's slug to run backwards, and it does not.
+    """
+    await create(
+        hass,
+        almanac_data,
+        "Shabbat lights",
+        rules=[at_rule(actions=[service("notify.fired")])],
+    )
+
+    state = hass.states.get("switch.shabbat_lights")
+    assert state is not None
+    assert state.attributes[ATTR_CUSTOM_UI_MORE_INFO] == MORE_INFO_COMPONENT
+    assert state.attributes[ATTR_SCHEDULE_ID] != ""
+
+    # Both are display instructions that never change, so recording them would
+    # buy a reader nothing and cost one more pair of strings in every deduped
+    # attribute blob. Asserted on the class because that frozenset is the
+    # mechanism -- `helpers/entity.py` unions it in `__init_subclass__` and
+    # publishes it through `state_info`, which is what the recorder reads.
+    unrecorded = AlmanacScheduleSwitch._unrecorded_attributes
+    assert ATTR_CUSTOM_UI_MORE_INFO in unrecorded
+    assert ATTR_SCHEDULE_ID in unrecorded
 
 
 async def test_the_display_cache_records_what_did_not_happen(

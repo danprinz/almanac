@@ -49,7 +49,9 @@ from custom_components.almanac.const import (
     DOMAIN,
     FRONTEND_DIST,
     FRONTEND_URL_BASE,
+    MORE_INFO_COMPONENT,
     PANEL_COMPONENT,
+    PANEL_EDIT_PARAM,
     PANEL_ICON,
     PANEL_TITLE,
     PANEL_URL_PATH,
@@ -443,5 +445,89 @@ def test_the_unit_tests_are_wired_to_a_script_and_a_directory() -> None:
     assert sorted(path.name for path in tests.glob("*.test.ts")) == [
         "draft.test.ts",
         "form.test.ts",
+        "moreinfo.test.ts",
         "rails.test.ts",
     ]
+
+
+def test_the_more_info_element_is_the_tag_the_switch_publishes() -> None:
+    """D160 -- the second contract `card.ts` carries, and the quieter one.
+
+    A card whose tag nobody defined gets Lovelace's own "custom element doesn't
+    exist" card, which is at least a visible complaint. The more-info element
+    gets nothing: `more-info-content` reads the entity's `custom_ui_more_info`
+    attribute, creates that tag with no loader and no fallback, and an undefined
+    tag renders as an empty region. The dialog opens, the header and the history
+    tabs are there, and the middle is blank.
+
+    So this is the only check that the attribute `switch.py` publishes names an
+    element this repository actually defines -- and it has to be a text check,
+    because the two sides never meet at run time in any process that could
+    compare them.
+    """
+    card = (SRC / "card.ts").read_text(encoding="utf-8")
+
+    assert f'const MORE_INFO_TAG = "{MORE_INFO_COMPONENT}"' in card
+    # The stub's lazy half, and the name is derived rather than independent so
+    # that the two cannot drift into two unrelated strings.
+    assert f'const MORE_INFO_IMPL_TAG = "{MORE_INFO_COMPONENT}-body"' in card
+    assert 'await import("./more-info-body")' in card
+    assert f'@customElement("{MORE_INFO_COMPONENT}-body")' in (
+        SRC / "more-info-body.ts"
+    ).read_text(encoding="utf-8")
+
+
+def test_cores_more_info_event_is_spelled_in_exactly_one_file() -> None:
+    """D159, and the reason it is a decision rather than a tidy-up.
+
+    The event name is a verbatim third-party identifier, which Appendix B says
+    this environment cannot certify, and it is the kind that fails *silently*:
+    `dispatchEvent` with a name nobody listens for returns `True`, logs nothing
+    and opens nothing. One spelling can be verified once against the installed
+    frontend bundle and then trusted; a second spelling somewhere else is a
+    second thing to verify that nobody will know to check.
+
+    The assertion is a plain substring sweep rather than a parse, because the
+    failure it guards against is someone writing the string inline in a `@click`
+    -- which no import graph would show.
+    """
+    holder = SRC / "moreinfo.ts"
+    literal = "hass-more-info"
+
+    assert literal in holder.read_text(encoding="utf-8")
+    elsewhere = [
+        path.name
+        for path in sorted(SRC.glob("*.ts"))
+        if path != holder and literal in path.read_text(encoding="utf-8")
+    ]
+
+    assert elsewhere == [], f"D159: the event is also spelled in {elsewhere}"
+
+
+def test_the_edit_link_and_the_panel_agree_on_the_route() -> None:
+    """D161 -- three files build or read one URL, and nothing joins them.
+
+    The card row and the more-info dialog both write
+    `/<panel>?<param>=<schedule id>`; the panel reads the parameter back out of
+    `window.location.search`. A disagreement is not an error anywhere: the panel
+    loads, the list renders, and the schedule the user asked for simply is not
+    open -- which looks like a slow page rather than a broken link.
+
+    The two literals are deliberately repeated rather than imported from a shared
+    module, because D70 keeps the card and panel bundles disjoint and a shared
+    import is permission for Rollup to hoist a chunk onto every page. So the
+    repetition is the design and this is what holds it together.
+    """
+    writers = ("card-body.ts", "more-info-body.ts")
+    for name in writers:
+        source = (SRC / name).read_text(encoding="utf-8")
+        assert f'const PANEL_PATH = "/{PANEL_URL_PATH}"' in source, name
+        assert f'const EDIT_PARAM = "{PANEL_EDIT_PARAM}"' in source, name
+        # Built, not hand-spelled: a literal `?edit=` beside the constants would
+        # be a fourth copy that this test does not see.
+        assert "${PANEL_PATH}?${EDIT_PARAM}=" in source, name
+
+    panel = (SRC / "panel.ts").read_text(encoding="utf-8")
+
+    assert f'const EDIT_PARAM = "{PANEL_EDIT_PARAM}"' in panel
+    assert "window.location.search" in panel

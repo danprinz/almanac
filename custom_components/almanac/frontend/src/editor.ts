@@ -91,6 +91,7 @@ import {
 } from "./form";
 import { duration, offsetLabel } from "./format";
 import type { HomeAssistant } from "./ha";
+import { openMoreInfo } from "./moreinfo";
 import { draftTrack } from "./rails";
 import type {
   StoredAction,
@@ -1621,14 +1622,28 @@ export class AlmanacEditor extends LitElement {
     }
   };
 
-  /** D78's footprint, as text. */
+  /**
+   * D78's footprint, and D62's links out of it.
+   *
+   * Three of the four groups hold entity ids, and an entity id is something
+   * Home Assistant can open: those become buttons that fire core's more-info
+   * event, which is spelled in exactly one file in this repository (D159,
+   * `./moreinfo`). The fourth holds `domain.service` pairs, which name no entity
+   * and have no dialog, so they stay as plain pills — a link that led nowhere
+   * would be worse than a name, because the footprint's whole job is to be
+   * believed.
+   *
+   * `script.*` ids are in the linkable set and not the service one: D78 collects
+   * them from `script.turn_on` targets and from the `script.<name>` form alike,
+   * and both are entities with a dialog showing the last run.
+   */
   private _footprint() {
     const footprint = footprintOf(this._draft);
-    const groups: [string, string[]][] = [
-      ["Writes to", footprint.entities],
-      ["Reads a time from", footprint.reads],
-      ["Runs", footprint.scripts],
-      ["Calls", footprint.services],
+    const groups: [string, string[], boolean][] = [
+      ["Writes to", footprint.entities, true],
+      ["Reads a time from", footprint.reads, true],
+      ["Runs", footprint.scripts, true],
+      ["Calls", footprint.services, false],
     ];
     const shown = groups.filter(([, items]) => items.length > 0);
     if (shown.length === 0 && footprint.unexpanded === 0) {
@@ -1638,11 +1653,19 @@ export class AlmanacEditor extends LitElement {
       <section>
         <h3>What this touches</h3>
         ${shown.map(
-          ([label, items]) => html`
+          ([label, items, linkable]) => html`
             <p>
               <span class="muted">${label}</span>
-              ${items.map(
-                (item) => html`<span class="pill mono">${item}</span>`,
+              ${items.map((item) =>
+                linkable
+                  ? html`<button
+                      class="pill mono tappable"
+                      title="Open ${item}"
+                      @click=${() => openMoreInfo(this, item)}
+                    >
+                      ${item}
+                    </button>`
+                  : html`<span class="pill mono">${item}</span>`,
               )}
             </p>
           `,
@@ -1654,12 +1677,6 @@ export class AlmanacEditor extends LitElement {
               to entities, so what they reach is not listed here.
             </p>`
           : nothing}
-        <p class="muted">
-          Names, not links. Opening one needs core's more-info event, whose exact
-          spelling this environment cannot certify (Appendix B) and whose
-          misspelling fails silently — nothing opens and nothing is logged. It
-          arrives with step 9f, verified.
-        </p>
       </section>
     `;
   }
