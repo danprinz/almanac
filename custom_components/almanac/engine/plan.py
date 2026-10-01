@@ -357,9 +357,17 @@ async def _async_enumerate_rule(
 ) -> list[Occurrence]:
     """One rule's occurrences, one per recurrence date that resolves.
 
-    `stage_two` is D11's precise filter, applied to the resolved *start* instant
-    of every occurrence -- which is what §5.4 specifies, and what makes "on
-    Shabbat, at 22:00" produce one occurrence out of two candidate days.
+    `stage_two` is D11's precise filter, applied to the *source* instant of every
+    occurrence's start anchor -- the anchor's own event, before D7's offset. D122
+    is why: a day set is the set of days the anchor's event belongs to, and asking
+    it about the offset instant instead rejects every rule with a setup window,
+    for the reason §5.8 measured.
+
+    It still makes "on Shabbat, at 22:00" produce one occurrence out of two
+    candidate days, which is §5.4's motivating example and the thing that must not
+    break. That rule's anchor is a clock at 22:00 with no offset, so its source
+    and its instant are the same value and the filter sees exactly what it always
+    saw: Friday 22:00 is inside the span, Saturday 22:00 is after havdalah.
     """
     rule_id = rule.get(CONF_ID) or ""
     kind = rule[CONF_KIND]
@@ -376,8 +384,8 @@ async def _async_enumerate_rule(
 
     out: list[Occurrence] = []
     for day in dates:
-        resolved = await async_resolve_anchor_on_date(registry, start_anchor, day)
-        if isinstance(resolved, Unresolved):
+        anchored = await async_resolve_anchor_on_date(registry, start_anchor, day)
+        if isinstance(anchored, Unresolved):
             out.append(
                 Occurrence(
                     schedule_id=schedule_id,
@@ -386,19 +394,21 @@ async def _async_enumerate_rule(
                     start_date=day,
                     status=OccurrenceStatus.UNRESOLVED,
                     armed=armed,
-                    problem=resolved,
+                    problem=anchored,
                 )
             )
             continue
-        if resolved is None:
+        if anchored is None:
             # A known nothing: the anchor has no occurrence on this date, as at a
             # polar midsummer. Distinct from unresolved, and correctly invisible —
             # there is nothing the user could fix.
             continue
+        resolved = anchored.at
         horizons.note(rule_id, "start", resolved)
 
         if stage_two is not None:
-            covered = await stage_two(resolved)
+            # D122 -- the anchor's own event, not where the offset put it.
+            covered = await stage_two(anchored.source)
             if isinstance(covered, Unresolved):
                 out.append(
                     Occurrence(
@@ -418,7 +428,10 @@ async def _async_enumerate_rule(
                 # The start is retained deliberately: "Saturday 22:00 was dropped
                 # because Shabbat had already ended" is the sentence the timeline
                 # needs, and it cannot be written without the instant that failed
-                # the test.
+                # the test. For an offset anchor the instant *tested* is
+                # `anchored.source` and the one shown is `resolved`; they differ by
+                # the offset, and showing the start is right because the start is
+                # what the user wrote down.
                 out.append(
                     Occurrence(
                         schedule_id=schedule_id,
@@ -543,14 +556,17 @@ async def _async_pair_end(
     last_day = limit.astimezone(zone).date()
 
     while day <= last_day:
-        resolved = await async_resolve_anchor_on_date(registry, anchor, day)
-        if isinstance(resolved, Unresolved):
+        anchored = await async_resolve_anchor_on_date(registry, anchor, day)
+        if isinstance(anchored, Unresolved):
             # Stop rather than skip to the next day. A day whose answer is unknown
             # might hold an *earlier* end than any later day, so accepting a later
             # one would silently lengthen the interval; D42 would rather the whole
             # occurrence arrive late, once the anchor recovers, than run wrong now.
-            return resolved
-        if resolved is not None:
+            return anchored
+        if anchored is not None:
+            # No stage two here, so only the offset instant matters: D11 filters
+            # an occurrence by where it *starts*, and D38 pairs an end to it.
+            resolved = anchored.at
             horizons.note(rule_id, "end", resolved)
             # "At or after" (D38), so an end exactly at the start is permitted. It
             # yields a zero-length interval, which `Occurrence.holds_at` never

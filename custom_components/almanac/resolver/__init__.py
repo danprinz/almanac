@@ -22,6 +22,7 @@ from .anchor import (
     AnchorForecast,
     anchor_horizon,
     async_forecast_anchor,
+    ResolvedAnchor,
     async_resolve_anchor_on_date,
 )
 from .clock import ClockResolver
@@ -73,6 +74,7 @@ __all__ = [
     "anchor_horizon",
     "async_create_registry",
     "async_forecast_anchor",
+    "ResolvedAnchor",
     "async_resolve_anchor_on_date",
     "known_through",
 ]

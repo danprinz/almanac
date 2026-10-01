@@ -64,6 +64,7 @@ from custom_components.almanac.resolver import (
     Window,
     async_create_registry,
     async_forecast_anchor,
+    ResolvedAnchor,
     async_resolve_anchor_on_date,
 )
 
@@ -550,8 +551,12 @@ async def test_resolving_an_anchor_on_one_civil_date(
     saturday = await async_resolve_anchor_on_date(
         resolvers, anchor, date(2026, 10, 10)
     )
-    assert isinstance(saturday, datetime)
-    assert saturday.date() == date(2026, 10, 10)
+    assert isinstance(saturday, ResolvedAnchor)
+    assert saturday.at.date() == date(2026, 10, 10)
+    # No offset on this anchor, so D122's two instants coincide. That is the case
+    # every anchor in build steps 1-6 was, and it is why one value sufficed for
+    # as long as it did.
+    assert saturday.source == saturday.at
 
     assert (
         await async_resolve_anchor_on_date(resolvers, anchor, date(2026, 10, 13))

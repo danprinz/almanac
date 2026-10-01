@@ -13,9 +13,10 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
 actions and completion and the tick that drives them, observability, the `hdate` resolver, and —
 at step 8 — the timeline query and the dry run, with the two websocket commands step 9's panel is
-built on. 528 tests pass, plus one `xfail` that is the flagship scenario and is meant to fail. Remote is `git@github.com:danprinz/almanac.git`.
+built on. 529 tests pass, the last of them `tests/test_flagship.py`, which enumerates the brief's
+flagship scenario end to end. Remote is `git@github.com:danprinz/almanac.git`.
 
-Decisions now run D1–D121. Each build step closes the gaps it found in its own subsection
+Decisions now run D1–D124. Each build step closes the gaps it found in its own subsection
 (`DESIGN.md` §5.6, §5.7, §7.4, §10.6a, §11.1, §12.1, §12.2) rather than editing the decision it
 refines.
 
@@ -45,19 +46,27 @@ the first commit; anything added since takes the next free number and lives in t
 belongs to. Do **not** renumber to tidy the sequence — see the convention note at the top of
 `DESIGN.md`.
 
-**Step 9 is blocked on a ruling, and the block is the rule model rather than the UI.**
-`DESIGN.md` §5.8 has it in full and `tests/test_flagship.py` is the measurement. The brief's
-Scenario A — *45 minutes before candle lighting, 30 after havdalah, on Shabbat* — does not run.
-Not "runs wrongly": a day-set recurrence and a negative offset are categorically incompatible
-under D11, because stage two tests the *offset* instant and a setup window puts it before the day
-begins. Measured in October 2026: offset 0 schedules all five Fridays, offset **one second**
-schedules none. The cliff is one second wide, so no shorter setup window helps. It also is not
-silent — across a festival one occurrence a month does run, on a day nobody asked about, which is
-why nothing caught it before now. Three candidate fixes, none taken: evaluate the set at the
-anchor's own instant (smallest, and the measurement says it is sufficient), publish both
-granularities from `hdate`, or derive the recurrence from the anchor and drop the day set.
+**The flagship scenario did not run, and fixing it changed the rule model — read §5.8 and
+§6.1 before touching the engine or the day-set schema.** The brief's Scenario A (*45 minutes
+before candle lighting, 30 after havdalah, on Shabbat*) was producing nothing on any Friday,
+because D11's stage two tested the *offset* instant and a setup window puts that before the day
+begins. The cliff was one second wide, so no shorter window helped. **D122** is the ruling: the
+day set is asked about the anchor's own event and the offset is arithmetic applied afterwards, so
+`async_resolve_anchor_on_date` now returns a `ResolvedAnchor` carrying both instants. §5.4's
+motivating example is untouched, because a clock anchor at 22:00 has no offset and its two
+instants coincide — `test_the_motivating_example_still_holds` is there so that cannot silently
+stop being true.
 
-**Next step, once that is ruled on:** step 9 — the UI (D61, D62, D72 onward), built on the two
+**The same ruling set out the model day sets are supposed to follow, which is §6.1.** Three
+layers: basic (clock times and weekdays), **sets** (any span the user builds from two anchors),
+and predefined (Shabbat, holidays, national days, shipped). Layer 3 is a convenience over layer
+2, not a separate mechanism. **D124** is layer 2's missing piece — a day set sourced from a span
+between two anchors, a seventh `source.kind`. Until it exists a day set can only name a prebuilt
+resolver offering or compose sets that already exist, so *"the span from candle lighting to
+havdalah"* is unsayable. **It is the next thing to build, before the UI**, because the UI has to
+render it.
+
+**Next step after that:** step 9 — the UI (D61, D62, D72 onward), built on the two
 websocket commands step 8 left: `almanac/timeline` and `almanac/dry_run`. Their wire form is
 `as_dict()` on `Timeline`, `Plan`, `Occurrence`, `Transition` and `Reconciliation`, and D70 has
 to be read before any card code is written, because the always-loaded-stub constraint cannot be

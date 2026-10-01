@@ -25,6 +25,13 @@ What the module owns, and why each part is here rather than in step 3:
   on and that date belongs to the anchor's source event rather than to the
   instant the offset produces. They are separate functions because the second
   deliberately does **not** filter its answer by the window it computed from.
+- **The two instants an offset anchor *is* (D122).** `async_resolve_anchor_on_date`
+  returns a `ResolvedAnchor` carrying both the source event and the offset
+  instant, because D11's stage two has to be asked about the first and the rule
+  fires at the second. Collapsing them is what made the flagship scenario
+  unschedulable (§5.8), and the two are kept apart here for the same reason step
+  8 pulled `known_through` back off `computed_through`: one value cannot answer
+  two questions, and the place to notice that is the type.
 
 What it does not own: pairing a `During` rule's end to its start (D38), the
 grace window (D41), and anything that decides whether an occurrence fires. Those
@@ -155,8 +162,8 @@ def anchor_horizon(
 
 async def async_resolve_anchor_on_date(
     registry: ResolverRegistry, anchor: dict[str, Any], day: date
-) -> datetime | Unresolved | None:
-    """The instant this anchor resolves to *for one civil date*, or `None`.
+) -> ResolvedAnchor | Unresolved | None:
+    """The instants this anchor resolves to *for one civil date*, or `None`.
 
     This is the shape D1 needs and `async_forecast_anchor` deliberately does not
     provide. Recurrence picks the dates on which a rule **begins**, and the date
@@ -193,7 +200,30 @@ async def async_resolve_anchor_on_date(
     # shape any offering in this design has — a date names at most one sunset and
     # at most one candle lighting — so taking the earliest is a statement about
     # the data model rather than a tie-break.
-    return _shift(_edge(forecast.spans[0], anchor, zone), address.offset)
+    source = _edge(forecast.spans[0], anchor, zone)
+    return ResolvedAnchor(at=_shift(source, address.offset), source=source)
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedAnchor:
+    """One anchor, on one civil date, before and after its offset (D122).
+
+    `source` is the instant the anchor's own event happens — candle lighting at
+    18:18. `at` is where the rule starts once D7's offset has been applied —
+    17:33, forty-five minutes earlier. For a zero offset they are equal, which is
+    every anchor in the first six build steps and is why this was one value for
+    as long as it was.
+
+    They are separate because D11 asks two different questions of them. "Is this
+    on Shabbat" is a question about `source`, since the day set is what the
+    anchor's *event* belongs to; "when do the lights come on" is `at`. Asking the
+    set about `at` is what §5.8 measured: a setup window moves `at` to before the
+    day begins, the membership test fails, and the occurrence is dropped as
+    outside a set it was never outside.
+    """
+
+    at: datetime
+    source: datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -276,6 +306,7 @@ def _shift(instant: datetime, offset: timedelta) -> datetime:
 
 
 __all__ = [
+    "ResolvedAnchor",
     "AnchorForecast",
     "anchor_horizon",
     "async_forecast_anchor",
