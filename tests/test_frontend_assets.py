@@ -368,26 +368,31 @@ def test_the_bundles_are_resolved_from_the_package_not_the_config_dir() -> None:
     assert SRC.parent == package / FRONTEND_DIST.split("/")[0]
 
 
-def test_the_derivation_imports_nothing_at_run_time() -> None:
+def test_the_pure_modules_import_nothing_at_run_time() -> None:
     """D132 — D70's technique again, for an unrelated reason.
 
-    `rails.ts` holds every piece of arithmetic in the frontend: D73's rails and
-    their local scales, D76's order check, D79's two endpoints. It is tested by
-    `node --test`, which runs TypeScript by stripping the types and nothing
-    else — in particular it does not resolve a bare specifier like `lit` or an
-    extensionless relative one. So a single run-time import here does not fail
-    the build and does not fail `tsc`. It fails the unit tests, with a
-    module-resolution error that reads like a broken toolchain, and the cheapest
-    way out of that is to delete the test file.
+    Two files hold everything in the frontend that can be decided without a
+    browser. `rails.ts` has the arithmetic: D73's rails and their local scales,
+    D76's order check, D79's two endpoints. `draft.ts` has the edit algebra:
+    D139's draft and D140's diff, which is to say what the Save button sends.
+    Both are tested by `node --test`, which runs TypeScript by stripping the
+    types and nothing else — in particular it does not resolve a bare specifier
+    like `lit` or an extensionless relative one. So a single run-time import in
+    either does not fail the build and does not fail `tsc`. It fails the unit
+    tests, with a module-resolution error that reads like a broken toolchain, and
+    the cheapest way out of that is to delete the test file.
 
-    Hence this test, which names the real constraint while it still holds.
+    Hence this test, which names the real constraint while it still holds. It is
+    also why `api.ts` imports the two write shapes *from* `draft.ts` rather than
+    defining them: the dependency only points this way.
     """
-    source = (SRC / "rails.ts").read_text(encoding="utf-8")
-    statements = re.findall(r"^import\b.*$", source, flags=re.MULTILINE)
+    for name in ("rails.ts", "draft.ts"):
+        source = (SRC / name).read_text(encoding="utf-8")
+        statements = re.findall(r"^import\b.*$", source, flags=re.MULTILINE)
 
-    assert statements, "the regex stopped matching, not the constraint holding"
-    for statement in statements:
-        assert statement.startswith("import type "), statement
+        assert statements, f"{name}: the regex stopped matching, not the rule"
+        for statement in statements:
+            assert statement.startswith("import type "), f"{name}: {statement}"
 
 
 def test_the_test_tsconfig_carries_the_flag_the_build_cannot() -> None:
@@ -425,4 +430,7 @@ def test_the_unit_tests_are_wired_to_a_script_and_a_directory() -> None:
 
     assert "node --test" in package
     assert tests.is_dir()
-    assert sorted(path.name for path in tests.glob("*.test.ts")) == ["rails.test.ts"]
+    assert sorted(path.name for path in tests.glob("*.test.ts")) == [
+        "draft.test.ts",
+        "rails.test.ts",
+    ]

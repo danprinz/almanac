@@ -1680,6 +1680,7 @@ to — a template helper entity is evaluated, never enumerated, so it never touc
 9. UI — D61, D62, and §17's toolchain
 9a. The delivery path — the toolchain, the Python registration, and §17.1's D129–D131
 9b. The track — D73–D79 read, and §16.2's D132–D138
+9c. The write boundary and the pick-list — §16.3's D139–D146
 10. **Import from `scheduler-component`, last** — D60
 
 The packaging decisions D67–D71 are settled ahead of step 1, not at step 9: the repository layout
@@ -1958,6 +1959,142 @@ clear its output directory, so a rebuild left the previous `chunks/card-body-<ha
 new one. D129 registers the whole `dist/` directory and D71 ships it as a zip asset, so a stale
 chunk is a shipped chunk — and under D131 the symptom of shipping the wrong bytes is quiet. The
 `build` script now runs `clean` first.
+
+---
+
+### 16.3 What step 9c found
+
+§16.1 and §16.2 are about *reading*. This step is the turn: the four reads the frontend needs are
+now three almanac commands and one of core's, and the three writes beside them are core's too.
+Nothing here is a screen. It is the boundary a screen will sit on, built first because two of its
+properties are not negotiable from the component's side and one of them cannot be discovered from
+the frontend at all.
+
+**D145 — the resolver catalogue is a websocket command, flat, with `roles` on every row.**
+`almanac/resolvers` answers with one list of offerings, each carrying its own `domain`, plus the
+domains that have no list at all. It takes no instant.
+
+*Why a command and not a table in the bundle:* which resolvers exist is a property of the
+installation, not of almanac. `hdate` is in the catalogue only if the library imported, and a
+hard-coded list would offer the user a zman that cannot resolve — the failure arriving at
+enumeration time, on a schedule they have already saved.
+
+*Why flat:* D16's pick-list is found by typing "havdalah", not by knowing which library computes
+it. The registry stores a mapping of domain to offerings and the editor may still group by it;
+putting the domain on the row is what makes a single filtered list the cheap case instead of the
+awkward one.
+
+*Why `roles` rather than a boolean beside it:* this is the field the anchor editor reads to decide
+whether to offer D124's `edge` choice, and **the inference is sound because §5.1 defines the
+day-set role as a predicate over a span's interior.** An offering with no interior — a zman, a
+sunset, a candle lighting, every one of them an instant — cannot declare that role; one that does
+declare it has a `start` edge and an `end` edge that are different instants. So
+`roles.includes("day_set")` *is* the test, and sending a derived `has_end_edge` alongside would be
+D133's mistake exactly: one fact on the wire in two shapes, the second needing its own test to
+stay in step with the first. `tests/test_resolver_catalogue.py` pins both halves — the three
+instant offerings declare `anchor` alone, `issur_melacha` declares both.
+
+*Why `parametric` is the complement:* `clock` and `entity_time` offer nothing to list, which is
+the whole design of a parametric resolver (D6 gives each its own anchor kind). Computing the
+second half as "registered but not listed" means there is no third state a domain can be in — a
+`clock` whose `offerings()` returned `[]` would otherwise be silently absent, and the editor would
+stop offering a typed time with no error anywhere.
+
+*And it is not admin-only*, deliberately, by the same argument as the timeline: it says which
+resolvers are installed, which is less than the schedule list already tells any authenticated
+session. Worth a test rather than a comment, because the three writes beside it are admin-only
+and the obvious tidy is to make the set uniform.
+
+**Two properties of core's generated write commands, verified in the installed source rather than
+remembered.** `storage.py` hands `WS_PREFIX_SCHEDULE` to `DictStorageCollectionWebsocket` and core
+generates create, update, delete and list from it. First: **the three mutating commands are
+unconditionally `require_admin`** — `helpers/collection.py` wraps each one with no opt-out, while
+`/list` and `/subscribe` are open. Second: **update is a shallow merge** — almanac's
+`_update_data` is `merged = item | update`, and `UPDATE_FIELDS` is `_body_fields(defaults=False)`,
+so a field the message omits keeps its stored value. Both reach the frontend, and each one decides
+something.
+
+**D139 — the editor edits a draft and writes once.** Every mutation is a pure function from a
+draft to a new draft, in `frontend/src/draft.ts`. Nothing in that file touches a connection, holds
+a component or knows that Lit exists.
+
+*Why not write per keystroke*, which is what an `input_*` helper's dialog does: a half-edited
+schedule is *valid*. A `during` rule whose end anchor has been cleared but whose start has not is
+a rule the engine would enumerate, fire and record — and D116 makes a fired rule permanent on the
+timeline's past half. The draft is therefore the place where a schedule is allowed to be
+incomplete, and the single write is the moment it stops being allowed.
+
+*What it bought:* 17 tests, under `node --test`, over what the Save button sends. D132 again is
+what makes that possible, and `tests/test_frontend_assets.py` now holds the no-run-time-import
+rule over both pure modules. It is also why the two write shapes live in `draft.ts` and `api.ts`
+imports them: the dependency only points that way.
+
+**D140 — an update sends only the fields that changed.** `toUpdate(draft, original)` diffs
+structurally and returns a dict of the differences; `isDirty` is whether that dict is empty.
+
+*Why this is correctness and not economy:* the shallow merge above is what makes a partial message
+mean "leave the rest alone". A bundle that predates a schema addition therefore cannot clobber the
+field it does not know about — which is a real case under D71, where the integration and the
+frontend ship in one zip but a browser caches the old one. The switch entity's own arm/disarm
+write is already `{"enabled": False}`, so the engine and the editor reach storage the same way.
+
+*Why structural and not `JSON.stringify`:* stringify compares key *order*, and would report every
+field of a round-tripped schedule as changed the first time a dict literal on the Python side was
+reordered. A test states this directly, with the same recurrence spelled in the other order.
+
+**D141 — the editor is read-only for a non-admin, and says so before the user starts.** It reads
+`hass.user.is_admin`, not an error code.
+
+*Why up front:* `/list` is open and the writes are not, so a non-admin can open the panel, read
+every schedule and render every track, and be refused at the moment they save. Discovering the
+permission from an `unauthorized` error after the work is done is the worst available order.
+`isUnauthorized` exists for the case this misses — an account demoted mid-session — so the error
+is still told apart from a failure.
+
+**D142 — a newly added rule omits `id`, and the draft addresses rules by position.**
+`schema.py::_rule_id` mints a ULID when the value is absent, so the frontend has no id policy, and
+therefore needs neither a clock nor a source of randomness — both of which would end D132.
+
+*What it costs:* a draft cannot address an unsaved rule by id, so `addRule`, `removeRuleAt` and
+`replaceRuleAt` take an index. That is the honest encoding: the id genuinely does not exist yet,
+and a provisional one invented in the browser would be a value `stored.ts` declares as `string`
+and the backend would replace. A bad index raises rather than returning the draft unchanged,
+because the index comes from the component's own render and never from a user.
+
+**D143 — a new schedule starts with one `at` rule at noon, and restates no other default.**
+
+*Why one rule:* D75 says no surface renders a bare rule, so a schedule with no rules has nothing
+to draw and D73's track would be a blank strip with no way to learn what belongs on it.
+
+*Why noon, fixed:* the obvious alternative is the browser's clock rounded up, which is worse
+twice. The editor's first render would differ on every open, so no test could state what it shows;
+and "now, rounded up" reads as a decision the user made when it is one nobody made. Noon is also
+the one wall-clock time that is never in a DST gap and never ambiguous, which matters because D40
+makes a clock anchor wall time.
+
+*Why nothing else:* `_BODY_DEFAULTS` is the authority on what `enabled`, `recurrence` and
+`date_window` start as. A copy of that list in TypeScript would be a second authority that drifts
+without failing anything, and the create command optionalises every one of them.
+
+**D144 — `object_id` is offered once, at create, and the write types say so structurally.**
+`ScheduleCreate` has the field and `ScheduleUpdate` does not.
+
+*Why:* it is the entity_id's slug (D66). Accepting it on an update would re-slug on rename and
+break every automation, template and card naming the old entity — later, and with no warning. The
+absence is already asserted three times on the Python side, so this needs no new test; it is the
+same statement made in the one language that would otherwise offer the field.
+
+**D146 — `problems(draft)` names the reasons a save will certainly be refused, and does not claim
+the complement.** Two checks: an empty name, and an `object_id` that cannot be a slug.
+
+*Why so few:* `schema.py` is the authority, and re-implementing `_clock_time`, `cv.entity_id` or
+D39's interval check in TypeScript would produce a second validator that disagrees with the first
+somewhere nobody is looking. What is here is the short list the editor can state in the user's own
+terms, instead of relaying `humanize_error` output about a voluptuous marker.
+
+*And the absence of a problem is not a promise*, which is D80's rule about pre-flight checks
+pointed at the editor rather than at the dry run. The prototype screen that claims its pre-flight
+is a guarantee is still the thing D80 says to fix.
 
 ---
 

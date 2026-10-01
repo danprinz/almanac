@@ -9,22 +9,24 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 
 ## Status — 2026-10-01
 
-**Build steps 1–9b of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
+**Build steps 1–9c of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
 resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
 actions and completion and the tick that drives them, observability, the `hdate` resolver, and —
 at step 8 — the timeline query and the dry run, with the two websocket commands the panel is
 built on, at step 8a the anchor-span day set the flagship scenario turned out to need, and at
 step 9a the frontend's delivery path: the Rollup toolchain, the Python registration, D70's
 always-loaded stub, and thin-but-honest first drafts of the panel and the card, and at step 9b
-D73's anchor-relative track, drawn in the panel's lanes and in the card's rows. 598 Python
-tests pass, plus 21 TypeScript ones (`npm test`) that are the project's first; among them
-`tests/test_flagship.py` and `tests/test_anchor_span_day_sets.py`, which enumerate
-the brief's flagship scenario end to end twice over — once from `hdate`'s prebuilt Shabbat and
-once from a span the user wrote. Remote is `git@github.com:danprinz/almanac.git`.
+D73's anchor-relative track, drawn in the panel's lanes and in the card's rows, and at step 9c
+the boundary the editor will sit on: `almanac/resolvers`, core's three write commands, and the
+pure draft algebra that produces what they are sent. 608 Python tests pass, plus 38 TypeScript
+ones (`npm test`); among them `tests/test_flagship.py` and
+`tests/test_anchor_span_day_sets.py`, which enumerate the brief's flagship scenario end to end
+twice over — once from `hdate`'s prebuilt Shabbat and once from a span the user wrote. Remote
+is `git@github.com:danprinz/almanac.git`.
 
-Decisions now run D1–D138. Each build step closes the gaps it found in its own subsection
-(`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2, §16.2, §17.1) rather than
-editing the decision it refines.
+Decisions now run D1–D146. Each build step closes the gaps it found in its own subsection
+(`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2, §16.2, §16.3, §17.1) rather
+than editing the decision it refines.
 
 **Step 8 fixed the engine, which is the part worth knowing.** `Plan` was reporting one fact where
 D44 says there are two: `_Horizons` was built over the window *after* the ninety-day clamp, so
@@ -125,17 +127,23 @@ ships quietly.
 silent in both directions. `tests/test_frontend_assets.py` does the same for
 the delivery path: the bundle filenames against `rollup.config.mjs`, the element names against
 the TypeScript, and D70's rule that `card.ts` has no run-time import. Both read source rather
-than running it, for the same reason `tests/test_design_constraints.py` does for D64.
+than running it, for the same reason `tests/test_design_constraints.py` does for D64. Step 9c
+widened the second one: the no-run-time-import rule now covers `draft.ts` as well as
+`rails.ts`, because both are executed by `node --test` and a plain import in either fails
+nothing but the unit tests.
 
-**Next step:** step 9c — the editor (D72, D78, D80), the track's `full` size (D138 says what
-distinguishes it: hit targets, drag, D78's inline reference creation and D72's recurrence
+**Next step:** step 9d — the editor itself (D72, D78, D80), the track's `full` size (D138 says
+what distinguishes it: hit targets, drag, D78's inline reference creation and D72's recurrence
 control, not a bigger rail), and the card's `getConfigElement`, which is deliberately absent
-rather than stubbed. Then 9d D62's more-info entry point. The other 17 UX findings in
-`ux/FINDINGS.md` are all still unapplied, and `ux/prototype/15-new-shabbat-2.html` still claims
-the pre-flight check is a guarantee, which is what D80 says to fix. Then 10
-(importer, last — D60). The `almanac` namespace check is **done** — clear in
-core, in the HACS default list, and in a GitHub manifest-domain search (`DESIGN.md` "Remaining
-checks").
+rather than stubbed. **Everything it writes through already exists and is tested** —
+`frontend/src/draft.ts` holds D139's draft and D140's diff, `api.ts` the three writes and the
+four reads, and `almanac/resolvers` the anchor picker's list; read §16.3 before writing a
+component, because D141 through D146 decide things a component would otherwise decide badly.
+Then 9e, D62's more-info entry point. The other 17 UX findings in `ux/FINDINGS.md` are all
+still unapplied, and `ux/prototype/15-new-shabbat-2.html` still claims the pre-flight check is
+a guarantee, which is what D80 says to fix. Then 10 (importer, last — D60). The `almanac`
+namespace check is **done** — clear in core, in the HACS default list, and in a GitHub
+manifest-domain search (`DESIGN.md` "Remaining checks").
 
 **Still missing for a release:** the D71 workflow that builds and zips from *inside*
 `custom_components/almanac/`. Nothing exists yet, and D131 means a broken one degrades quietly.

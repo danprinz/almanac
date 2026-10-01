@@ -1,4 +1,4 @@
-// The wire form of `almanac/timeline` and `almanac/dry_run`.
+// The wire form of `almanac/timeline`, `almanac/dry_run` and `almanac/resolvers`.
 //
 // Every interface here is the exact output of an `as_dict()` on the Python side,
 // and `tests/test_wire_contract.py` asserts that the two sets of key names have
@@ -219,7 +219,7 @@ export interface WirePastOccurrence {
   state?: WireActionResult[];
 }
 
-// --- the two command results -----------------------------------------------
+// --- the timeline and the dry run -------------------------------------------
 
 /** `timeline.py::ScheduleTimeline.as_dict` — one lane of D63's view. */
 export interface WireScheduleTimeline {
@@ -250,4 +250,48 @@ export interface WireDryRun {
   at: Instant;
   live: boolean;
   schedules: WireDryRunSchedule[];
+}
+
+// --- the resolver catalogue (D145) -----------------------------------------
+
+/** `resolver/contract.py::Role` — §5.1's two roles. */
+export type ResolverRole = "anchor" | "day_set";
+
+/** `resolver/contract.py::HorizonKind` — D13's declared reach. */
+export type HorizonKind = "unbounded" | "until" | "next_only";
+
+/**
+ * One row of D16's pick-list.
+ *
+ * **`roles` is how the editor decides whether to offer D124's `edge` choice**,
+ * and that is the whole reason the field is on the wire rather than a derived
+ * boolean beside it. §5.1 defines the day-set role as a predicate over a span's
+ * *interior*, so an offering with no interior — a zman, a sunset, a candle
+ * lighting, every one of them an instant — cannot declare it, and an offering
+ * that does declare it has a `start` edge and an `end` edge that are different
+ * instants. `roles.includes("day_set")` is therefore the test, and it is the
+ * declared fact rather than a second shape of it (D133).
+ */
+export interface WireOffering {
+  domain: string;
+  key: string;
+  display_name: string;
+  /** Sorted. Never empty — an offering with no role could not be asked anything. */
+  roles: ResolverRole[];
+  horizon: HorizonKind;
+  /** Non-null only when `horizon === "until"`; nothing shipped declares one yet. */
+  horizon_through: Instant | null;
+}
+
+/**
+ * The whole result of `almanac/resolvers`.
+ *
+ * `parametric` is the domains with no pick-list — `clock`, whose anchor is typed,
+ * and `entity_time`, whose anchor is picked off the entity list. D6 gives each
+ * its own anchor kind in the editor, so the editor needs to know they are there
+ * without having anything to list for them.
+ */
+export interface WireResolverCatalogue {
+  offerings: WireOffering[];
+  parametric: string[];
 }

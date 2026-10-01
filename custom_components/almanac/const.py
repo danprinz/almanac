@@ -65,6 +65,13 @@ WS_PREFIX_DAY_SET: Final = f"{DOMAIN}/day_set"
 WS_TIMELINE: Final = f"{DOMAIN}/timeline"
 WS_DRY_RUN: Final = f"{DOMAIN}/dry_run"
 
+# D145 — the anchor editor's pick-list, which is D16 reaching the wire. A
+# command rather than a table shipped in the bundle, because which resolvers
+# exist is a property of the installation: `hdate` is in the catalogue only if
+# the library imported, and a hard-coded list would offer a zman that cannot
+# resolve.
+WS_RESOLVERS: Final = f"{DOMAIN}/resolvers"
+
 # --- the frontend's delivery path (D67-D71, D129-D131) ---------------------
 #
 # These are the constants D69 warned about: the panel's and the card's URLs are

@@ -55,9 +55,15 @@ PKG = pathlib.Path(__file__).resolve().parent.parent / "custom_components" / DOM
 WIRE_TS = PKG / "frontend" / "src" / "wire.ts"
 
 # Each Python producer against the interface that mirrors it. The left column is
-# a class with an `as_dict()`, or -- for the two envelopes that are assembled by
-# hand rather than by a dataclass -- a module-level function in `events.py` or a
-# websocket handler.
+# a class with an `as_dict()`, or -- for the envelopes that are assembled by hand
+# rather than by a dataclass -- a module-level function in `events.py` or
+# `websocket.py`, or a websocket handler.
+#
+# D145's two are payload functions that are *also* paired, which the ones in
+# `events.py` are not. The difference is that those are reached through SPREADS,
+# so their keys are checked as part of the row they are spread into; the
+# catalogue's are the whole of a command result and have an interface of their
+# own.
 PAIRS = {
     "Timeline": "WireTimeline",
     "ScheduleTimeline": "WireScheduleTimeline",
@@ -72,6 +78,8 @@ PAIRS = {
     "PendingAt": "WirePendingAt",
     "ActionResult": "WireActionResult",
     "websocket_dry_run": "WireDryRun",
+    "catalogue_payload": "WireResolverCatalogue",
+    "offering_payload": "WireOffering",
 }
 
 # The nested dicts, which have no class of their own: `(producer, key)` against

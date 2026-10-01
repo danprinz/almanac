@@ -1,4 +1,5 @@
-"""The two reads step 9's panel is built on: D63's timeline and D64's dry run.
+"""The three reads the frontend is built on: D63's timeline, D64's dry run, D145's
+catalogue.
 
 Registered beside the CRUD commands `helpers/collection.py` gives us for free
 (D33). Those are writes over a storage collection and core owns their shape; these
@@ -42,8 +43,16 @@ from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 
-from .const import ATTR_AT, ATTR_SCHEDULE_ID, DOMAIN, WS_DRY_RUN, WS_TIMELINE
-from .resolver.contract import Window, absolute
+from .const import (
+    ATTR_AT,
+    ATTR_SCHEDULE_ID,
+    DOMAIN,
+    WS_DRY_RUN,
+    WS_RESOLVERS,
+    WS_TIMELINE,
+)
+from .resolver.contract import Offering, Window, absolute
+from .resolver.registry import ResolverRegistry
 from .storage import AlmanacData
 from .timeline import async_timeline
 
@@ -58,6 +67,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     """Register the query commands. Called once, from `async_setup_entry`."""
     websocket_api.async_register_command(hass, websocket_timeline)
     websocket_api.async_register_command(hass, websocket_dry_run)
+    websocket_api.async_register_command(hass, websocket_resolvers)
 
 
 @websocket_api.websocket_command(
@@ -160,6 +170,92 @@ async def websocket_dry_run(
     )
 
 
+@websocket_api.websocket_command({vol.Required("type"): WS_RESOLVERS})
+@callback
+def websocket_resolvers(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """D16's pick-list, as the anchor editor needs it (D145).
+
+    Takes no instant, which is the one way this read differs from the other two:
+    an offering's existence is not a function of when you ask. Its *horizon* is
+    declared rather than computed for the same reason, so nothing here resolves
+    anything and nothing here needs a clock.
+
+    Not admin-only, by the same argument as the timeline, only shorter: this says
+    which resolvers are installed, which is less than the schedule list already
+    tells any authenticated session.
+    """
+    data = _async_data(hass, connection, msg)
+    if data is None:
+        return
+    connection.send_result(msg["id"], catalogue_payload(data.resolvers))
+
+
+def offering_payload(domain: str, offering: Offering) -> dict[str, Any]:
+    """One row of the pick-list.
+
+    `roles` is sent verbatim and the editor reads it, rather than the backend
+    sending a derived `has_end_edge` boolean. The editor needs to know whether to
+    offer D124's `edge` choice at all, and `Role.DAY_SET in roles` is the answer:
+    §5.1 defines the day-set role as a predicate over a span's *interior*, so an
+    offering with no interior — a zman, a sunset, a candle lighting, all of them
+    instants — has nothing to predicate and declares the anchor role alone. An
+    offering that declares both has two distinct edges by that definition. Both
+    shapes of the same fact on the wire is what D133 refused; this is the half of
+    the pair that is declared, so it is the half that travels.
+
+    `horizon_through` is `null` for every resolver shipped today — only an `UNTIL`
+    horizon has a bound, and nothing registers one yet (v2's calendars will). It
+    is on the wire because it is a real field of a real declaration, and a shape
+    that omitted it would let a reader believe the horizon is a single word.
+    """
+    return {
+        "domain": domain,
+        "key": offering.key,
+        "display_name": offering.display_name,
+        "roles": sorted(role.value for role in offering.roles),
+        "horizon": offering.horizon.kind.value,
+        "horizon_through": (
+            None
+            if offering.horizon.bound is None
+            else offering.horizon.bound.isoformat()
+        ),
+    }
+
+
+def catalogue_payload(registry: ResolverRegistry) -> dict[str, Any]:
+    """The whole pick-list, flat, plus the domains that do not have one.
+
+    **Flat rather than grouped by domain.** `async_offerings()` returns a mapping
+    because that is how the registry stores it, but the editor renders one
+    searchable list — D16's whole point is that you find "havdalah" by typing it,
+    not by knowing which integration computes it — and every row carries its own
+    `domain`, so grouping stays available to the frontend without the wire form
+    having to be un-nested first.
+
+    **`parametric` is the complement, and it is a positive statement.** A `clock`
+    anchor is typed and an `entity_time` anchor is picked off the entity list, so
+    neither has anything to list; the editor still has to know those domains are
+    *there*, and D6 gives each its own anchor kind. Computing it as
+    `async_domains()` minus the offering keys means a resolver that is registered
+    and lists nothing can never be invisible in both halves.
+    """
+    offerings = registry.async_offerings()
+    return {
+        "offerings": [
+            offering_payload(domain, offering)
+            for domain, rows in offerings.items()
+            for offering in rows
+        ],
+        "parametric": [
+            domain for domain in registry.async_domains() if domain not in offerings
+        ],
+    }
+
+
 @callback
 def _async_data(
     hass: HomeAssistant,
@@ -255,4 +351,11 @@ def _async_window(
     return Window(start, end)
 
 
-__all__ = ["async_register_websocket", "websocket_dry_run", "websocket_timeline"]
+__all__ = [
+    "async_register_websocket",
+    "catalogue_payload",
+    "offering_payload",
+    "websocket_dry_run",
+    "websocket_resolvers",
+    "websocket_timeline",
+]
