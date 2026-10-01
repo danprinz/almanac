@@ -7,18 +7,21 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 `scheduler-card`): a schedule engine and UI whose rule model is **enumerable**, so that
 "what will happen between now and Friday night" is a view you can actually render.
 
-## Status — 2026-09-30
+## Status — 2026-10-01
 
-**Build steps 1–8 of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
+**Build steps 1–8a of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
 resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
 actions and completion and the tick that drives them, observability, the `hdate` resolver, and —
 at step 8 — the timeline query and the dry run, with the two websocket commands step 9's panel is
-built on. 529 tests pass, the last of them `tests/test_flagship.py`, which enumerates the brief's
-flagship scenario end to end. Remote is `git@github.com:danprinz/almanac.git`.
+built on, and at step 8a the anchor-span day set the flagship scenario turned out to need. 544
+tests pass, the last of them `tests/test_flagship.py` and
+`tests/test_anchor_span_day_sets.py`, which enumerate the brief's flagship scenario end to end
+twice over — once from `hdate`'s prebuilt Shabbat and once from a span the user wrote. Remote is
+`git@github.com:danprinz/almanac.git`.
 
-Decisions now run D1–D124. Each build step closes the gaps it found in its own subsection
-(`DESIGN.md` §5.6, §5.7, §7.4, §10.6a, §11.1, §12.1, §12.2) rather than editing the decision it
-refines.
+Decisions now run D1–D128. Each build step closes the gaps it found in its own subsection
+(`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2) rather than editing the
+decision it refines.
 
 **Step 8 fixed the engine, which is the part worth knowing.** `Plan` was reporting one fact where
 D44 says there are two: `_Horizons` was built over the window *after* the ninety-day clamp, so
@@ -60,13 +63,24 @@ stop being true.
 **The same ruling set out the model day sets are supposed to follow, which is §6.1.** Three
 layers: basic (clock times and weekdays), **sets** (any span the user builds from two anchors),
 and predefined (Shabbat, holidays, national days, shipped). Layer 3 is a convenience over layer
-2, not a separate mechanism. **D124** is layer 2's missing piece — a day set sourced from a span
-between two anchors, a seventh `source.kind`. Until it exists a day set can only name a prebuilt
-resolver offering or compose sets that already exist, so *"the span from candle lighting to
-havdalah"* is unsayable. **It is the next thing to build, before the UI**, because the UI has to
-render it.
+2, not a separate mechanism. **D124** was layer 2's missing piece — a day set sourced from a
+span between two anchors, a seventh `source.kind` — and step 8a built it. *"The span from candle
+lighting to havdalah"* is now sayable, and `tests/test_anchor_span_day_sets.py` runs the flagship
+scenario over a set written that way to prove layer 3 is a convenience over layer 2 and not a
+second mechanism.
 
-**Next step after that:** step 9 — the UI (D61, D62, D72 onward), built on the two
+**What step 8a found is §6.2, and three of its four decisions have one cause:** before D124 no
+day set had an anchor, so nothing that exists because anchors are uncertain had ever been pointed
+at one. D125 bounds the end-edge search at eight days (*owner's judgement call* — unbounded, and
+"stop at the next start edge", are both recorded as rejected, the second because it breaks the
+festival weekend D122 had just fixed). D126 says two spans in one set overlap freely, because
+that is a union and not D39's collision. D127 threads a day set's own anchors into D44's
+`known_through`, under the empty rule id `index.Reference` already uses for a day-set recurrence.
+D128 adds `Usage.DAY_SET_ANCHOR`, because a span edge is the first entity reference whose
+referrer is not a schedule. And one non-gap: **D122 does not apply inside a set** — a set's edge
+*is* its offset, which is the opposite question from the one D122 answers.
+
+**Next step:** step 9 — the UI (D61, D62, D72 onward), built on the two
 websocket commands step 8 left: `almanac/timeline` and `almanac/dry_run`. Their wire form is
 `as_dict()` on `Timeline`, `Plan`, `Occurrence`, `Transition` and `Reconciliation`, and D70 has
 to be read before any card code is written, because the always-loaded-stub constraint cannot be

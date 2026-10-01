@@ -79,6 +79,7 @@ from .day_set import (
     DaySetLookup,
     async_candidate_dates as async_day_set_dates,
     async_covers as async_day_set_covers,
+    day_set_anchors,
     day_window,
 )
 from .occurrence import Occurrence, OccurrenceStatus, absolute
@@ -240,10 +241,24 @@ async def async_enumerate(
     # depend on the whole engine. That is a genuine import cycle rather than a
     # stylistic worry, so `recurrence.start_dates` keeps a guard branch pointing
     # here.
+    # A D124 set is built from anchors of its own, so it has a horizon of its own
+    # (D13) and the plan cannot claim to see further than the set that chose its
+    # dates. Collected rather than recorded directly, because `_Horizons` is built
+    # over the requested window a few lines below and the dates are needed before
+    # it exists. Every other source kind yields nothing here, which is why no day
+    # set contributed a horizon before D124: none of them had an anchor.
+    day_set_declared: tuple[tuple[str, dict[str, Any]], ...] = ()
+    day_set_seen: list[tuple[str, datetime]] = []
+
     if recurrence[CONF_KIND] == RECUR_DAY_SET:
         day_set_id = recurrence[CONF_DAY_SET_ID]
+        day_set_declared = day_set_anchors(day_sets, day_set_id)
         dates = await async_day_set_dates(
-            registry, day_sets, day_set_id, day_window(first, last, zone)
+            registry,
+            day_sets,
+            day_set_id,
+            day_window(first, last, zone),
+            observe=lambda slot, instant: day_set_seen.append((slot, instant)),
         )
         if isinstance(dates, list):
             # Clipped to the search range, so that a generous candidate set cannot
@@ -277,6 +292,15 @@ async def async_enumerate(
     # widening the window widens what `note` accepts without there being anything
     # extra to accept.
     horizons = _Horizons(window, zone)
+    # The recurrence's own anchors, under the empty rule id `Reference` uses for
+    # the same thing (`index.Reference.rule_id`): a day-set recurrence belongs to
+    # the schedule rather than to any one rule, and filing it under a rule would
+    # make the plan's horizon depend on which rule happened to be first.
+    for slot, anchor in day_set_declared:
+        horizons.declare("", slot, registry, anchor)
+    for slot, instant in day_set_seen:
+        horizons.note("", slot, instant)
+
     occurrences: list[Occurrence] = []
 
     for rule in rules:

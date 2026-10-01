@@ -63,6 +63,7 @@ from .const import (
     CONF_EDGE,
     CONF_ENABLED,
     CONF_END,
+    CONF_END_ANCHOR,
     CONF_ENTER_ACTIONS,
     CONF_ENTITIES,
     CONF_ENTITY_ID,
@@ -132,6 +133,7 @@ from .const import (
     RULE_AT,
     RULE_DURING,
     SCRIPT_DOMAIN,
+    SOURCE_ANCHOR_SPAN,
     SOURCE_COMPOSITION,
     SOURCE_OFFERING,
     TARGET_SELECTORS,
@@ -976,6 +978,24 @@ _OFFERING_SOURCE_SCHEMA: Final = vol.Schema(
     }
 )
 
+# D124 -- layer 2 of §6.1, and the only source here the user authors the edges
+# of. `ANCHOR_SCHEMA` by reference, not a narrower copy of it: the owner's
+# sentence for this layer is "with that I can define any span I want", and a
+# restricted anchor would be a list of the spans we had thought of. Offsets come
+# with it (D7), which is what makes "from 45 minutes before candle lighting"
+# expressible as a *set* rather than only as a rule.
+#
+# The two edges are a start and an end rather than D38's three-shaped `end`,
+# because a duration-ended span is the one case that needs no second anchor and
+# can be written as an offset on the first.
+_ANCHOR_SPAN_SOURCE_SCHEMA: Final = vol.Schema(
+    {
+        vol.Required(CONF_KIND): SOURCE_ANCHOR_SPAN,
+        vol.Required(CONF_START_ANCHOR): ANCHOR_SCHEMA,
+        vol.Required(CONF_END_ANCHOR): ANCHOR_SCHEMA,
+    }
+)
+
 # D19 -- one level of set algebra, and the nesting ban cannot be expressed here.
 # Whether a member is itself a composition is a fact about *another* stored item,
 # so the check lives in the collection (`day_sets.py`) where the other items are
@@ -997,11 +1017,17 @@ _COMPOSITION_SOURCE_SCHEMA: Final = vol.Schema(
 # reference. That is what makes D20 true rather than aspirational: "the first
 # Monday of the month" cannot mean one thing as a recurrence and another as a day
 # set, because there is one definition and one generator behind it.
+#
+# An anchor span is deliberately not shared the same way, because there is nothing
+# to share: a recurrence names the dates a rule starts on and a span has two
+# edges. D20 still holds for it -- the set is one object used as recurrence and as
+# condition -- through D11's two stages rather than through a shared generator.
 DAY_SET_SOURCE_SCHEMA: Final = cv.key_value_schemas(
     CONF_KIND,
     {
         **DATE_SOURCE_SCHEMAS,
         SOURCE_OFFERING: _OFFERING_SOURCE_SCHEMA,
+        SOURCE_ANCHOR_SPAN: _ANCHOR_SPAN_SOURCE_SCHEMA,
         SOURCE_COMPOSITION: _COMPOSITION_SOURCE_SCHEMA,
     },
 )

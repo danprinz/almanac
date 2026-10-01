@@ -93,6 +93,10 @@ CONF_KIND: Final = "kind"
 CONF_LATCH: Final = "latch"
 CONF_ON_EXIT: Final = "on_exit"
 CONF_START_ANCHOR: Final = "start_anchor"
+# D124's other edge. A rule says `end: {kind: anchor, anchor: ...}` because an
+# end has three shapes there (D38); a day set's span has exactly one, so the
+# anchor sits directly on the source and needs a key of its own.
+CONF_END_ANCHOR: Final = "end_anchor"
 CONF_STATE: Final = "state"
 
 RULE_AT: Final = "at"
@@ -331,6 +335,9 @@ SOURCE_DATES: Final = RECUR_DATES
 SOURCE_NTH_WEEKDAY: Final = RECUR_NTH_WEEKDAY
 SOURCE_EVERY_N: Final = RECUR_EVERY_N
 SOURCE_OFFERING: Final = "offering"
+# D124 -- layer 2 of §6.1: the span the user builds, rather than one a
+# resolver happened to publish.
+SOURCE_ANCHOR_SPAN: Final = "anchor_span"
 SOURCE_COMPOSITION: Final = "composition"
 
 CONF_MEMBERS: Final = "members"

@@ -667,6 +667,65 @@ anchors declare (D13), and D44's horizon reporting already carries that per rule
 on an entity time is `fully_known` only while the entity is. A set built on two resolver
 offerings is unbounded, like the offering it replaces.
 
+### 6.2 What step 8a found
+
+*Four gaps, closed here rather than by editing D124, per the convention at the top of this file.
+Three of them are consequences of one fact: before D124 no day set had an anchor, so every piece
+of machinery that exists because anchors are uncertain had never been pointed at a day set.*
+
+**D125 — a span's end edge is searched for eight days and no further, and past that the set is
+unresolved.** *Owner's judgement call.* D38's forward walk for a rule's end anchor is bounded by
+D39 — an interval may not outlast its recurrence period — and a day set has no recurrence period
+to be bounded by, so the bound here had to be chosen. Eight days, because the longest continuous
+stretch the motivating calendar produces is a diaspora Sukkot week, and because a bound that
+large cannot be hit by anything a user would call a span.
+
+Two readings were rejected. *Unbounded* means one typo — "from sunrise to candle lighting", on a
+Tuesday — makes the engine walk forward for as long as the compute budget allows, per candidate
+day. *Stop at the next occurrence of the start edge* is the rule that looks obviously right and
+is wrong on the exact case §5.8 had just fixed: `hdate` reports candle lighting on both the
+Friday and the Saturday of a two-day chag while the havdalah that closes it is on the Sunday, so
+the second lighting would truncate the first span and the flagship scenario would break again.
+
+Past the bound the answer is `NO_PAIRING` and not a truncated span, for D12's reason — a set that
+was silently shorter than the user wrote would be indistinguishable from a correct one.
+
+**D126 — two spans in one set overlap freely, and that is a union rather than a collision.** D39
+reads "an interval may not outlast its recurrence period" and `_mark_overlaps` is its backstop,
+and neither applies here. A rule's overlapping intervals are a contradiction about what to do: a
+day set's are two reasons for the same day to be in force, which is what a set is. The festival
+weekend is the worked example — candle lighting on the Friday *and* the Saturday, one havdalah on
+the Sunday, so the two spans nest — and the honest answer is that the day is in the set.
+
+**D127 — a day set's own anchors limit the plan's `known_through`.** §12.2 split one fact into
+two: `computed_through` is how far we were willing to enumerate, `known_through` is how far a
+source would commit. A day-set *recurrence* chooses the dates, so a set built on
+`sensor.candle_lighting` (NEXT_ONLY, D13) makes a plan that cannot honestly claim to see past
+that sensor's single value — however unbounded every rule's own anchor is. Before D124 this
+could not arise, and `_Horizons` was never given a day set's anchors, so it did not see them.
+
+The declarations are filed under the empty rule id, which is the same thing `index.Reference`
+does for a day-set recurrence and for the same reason: the recurrence belongs to the schedule
+rather than to any one rule, and filing it under a rule would make the plan's horizon depend on
+which rule happened to be enumerated first. The slot name carries the member's position in its
+composition (`day_set:<index>:start`), because `_Horizons` keys on `(rule_id, slot)` and two
+members' edges under one key would combine one anchor's declaration with another anchor's data.
+
+**D128 — an entity read for a span edge has a referrer that is not a schedule.** D57's reverse
+index had one shape for an entity: whatever mentions it is a schedule, and `schedules_using_entity`
+returns ids a frontend renders as schedules. A span edge breaks that, so `Usage.DAY_SET_ANCHOR`
+names the case and `day_sets_using_entity` is the other half — two functions rather than one list
+with a flag, mirroring exactly how `Usage.COMPOSITION` already splits the day-set half. A caller
+asking "what breaks if this sensor goes away" wants both and joins them itself, which is what
+`impact.affected_schedules` already does one level deep.
+
+*And one thing that is not a gap.* **D122 does not apply inside a set.** D122 says a *rule's*
+anchor is tested for membership at its own instant with the offset applied afterwards. A set's
+edge is the opposite: the offset *is* the edge, because "from forty-five minutes before candle
+lighting" is a statement about where the span starts. The two are not in tension — one is about
+being filtered, the other about doing the filtering — and `tests/test_anchor_span_day_sets.py`
+asserts both boundaries to the second so neither can drift into the other.
+
 ---
 
 ## 7. Conditions
@@ -1617,7 +1676,7 @@ to — a template helper entity is evaluated, never enumerated, so it never touc
 6. Observability — D48–D52
 7. `hdate` resolver — validates the contract against a second implementation
 8. Timeline and dry run — D12, D44, D63
-8a. Anchor-span day sets — D122, D123, D124
+8a. Anchor-span day sets — D122, D123, D124, and §6.2's D125–D128
 9. UI — D61, D62, and §17's toolchain
 10. **Import from `scheduler-component`, last** — D60
 

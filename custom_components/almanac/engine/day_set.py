@@ -39,6 +39,23 @@ argument rather than an assumption:
 > subtrahend covers *partially* is still a day the difference can cover, and
 > narrowing at date granularity would lose it.
 
+**A source may also be a span the user wrote, which is D124 and §6.1's layer 2.**
+Its two edges are anchors in the same shape a rule's are, so offsets, resolver
+offerings and entity times work in it without anything new being explained, and
+"from candle lighting to havdalah" stops depending on a resolver having thought of
+it. For this source the two stages are derived from one computation: enumerate the
+spans, then project them onto civil days for stage one and test containment for
+stage two. That is the opposite direction from a date-granular source, where stage
+two is the derived no-op, and it is the reason both stages live in one module.
+
+> **Overlapping spans are allowed here and are not a collision.** A set is a union
+> of instants, so two spans that overlap contribute the union of themselves and
+> nothing has to be decided. This is the one place where the engine's usual
+> treatment of overlap — D39's refusal, `_mark_overlaps` — would be wrong, and the
+> case is not hypothetical: on a festival weekend `candle_lighting` occurs on the
+> Friday *and* on the Saturday while the first span is still running, so a rule
+> that forbade the second start would drop a legitimate edge.
+
 Nothing here reads a clock (D64): both entry points take the instant or the window
 they are asked about.
 """
@@ -46,27 +63,69 @@ they are asked about.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import date, datetime, time, timedelta
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 
 from ..const import (
     COMPOSE_INTERSECT,
     COMPOSE_MINUS,
     COMPOSE_UNION,
     CONF_DOMAIN,
+    CONF_END_ANCHOR,
     CONF_KEY,
     CONF_KIND,
     CONF_MEMBERS,
     CONF_OPERATOR,
     CONF_SOURCE,
+    CONF_START_ANCHOR,
+    SOURCE_ANCHOR_SPAN,
     SOURCE_COMPOSITION,
     SOURCE_OFFERING,
 )
-from ..resolver import ResolverRegistry, Unresolved, UnresolvedReason, Window
+from ..resolver import (
+    ResolverRegistry,
+    Span,
+    Unresolved,
+    UnresolvedReason,
+    Window,
+    async_resolve_anchor_on_date,
+)
+from .occurrence import absolute
 from .recurrence import start_dates
 
 _LOGGER = logging.getLogger(__name__)
+
+# How far D124's span enumeration reaches, in civil days, in each direction.
+#
+# Forwards it bounds the search for the end edge, and backwards it is how far
+# before the window a span may have begun and still be running inside it —
+# `Window.days`' padding, used for the reason that method documents.
+#
+# Eight because the longest stretch a pair of anchors plausibly describes is a
+# festival week: Sukkot runs eight days in the diaspora, and the second edge of a
+# span the user is actually reasoning about arrives inside that. Beyond it the
+# thing being described is a season rather than a span, and a season is a resolver
+# offering (§6.1's layer 3) rather than two anchors. The bound is on the *search*,
+# not on correctness: a longer span fails to pair and says so (`NO_PAIRING`)
+# rather than being silently truncated or silently dropped.
+_SPAN_REACH_DAYS: Final = 8
+
+# What the span enumeration reports as it goes: the slot it resolved and the
+# instant it got. `plan.py` passes a recorder so D44's `known_through` sees a day
+# set's own anchors, and every other caller passes nothing.
+#
+# The slot is the *same string* `day_set_anchors` gives that edge, which is the
+# only part of this worth insisting on: a declaration and the instants it covers
+# have to arrive under one key or `known_through` combines one anchor's horizon
+# with another anchor's data. The shape is `day_set:<member index>:start|end`, and
+# the index is 0 for a set that is not a composition.
+SpanObserver = Callable[[str, datetime], None]
+
+
+def _slot(index: int, edge: str) -> str:
+    """The horizon key for one edge of one member's span. See `SpanObserver`."""
+    return f"day_set:{index}:{edge}"
 
 
 class DaySetLookup(Protocol):
@@ -90,27 +149,36 @@ async def async_candidate_dates(
     lookup: DaySetLookup | None,
     day_set_id: str,
     window: Window,
+    observe: SpanObserver | None = None,
 ) -> list[date] | Unresolved:
     """D11's coarse stage: every civil day this set might be in force on.
 
     Generous by construction, and deliberately so — the pass that narrows it is
     `async_covers`, and one spare date costs an arithmetic call while a missing
     one costs an occurrence the user asked for.
+
+    `observe` is how a D124 span's own anchors reach D44's horizon reporting: the
+    enumeration says which instants it got, and the caller decides whether it
+    cares. Optional because only `plan.py` does — a day-set condition and D21's
+    binary_sensor are answering about one instant and have no window to be
+    partially sure of.
     """
     if isinstance(item := _lookup(lookup, day_set_id), Unresolved):
         return item
 
     source = item[CONF_SOURCE]
     if source[CONF_KIND] != SOURCE_COMPOSITION:
-        return await _async_member_dates(registry, source, window)
+        return await _async_member_dates(registry, source, window, observe, 0)
 
     members = _members(lookup, source)
     if isinstance(members, Unresolved):
         return members
 
     per_member: list[list[date]] = []
-    for member in members:
-        dates = await _async_member_dates(registry, member[CONF_SOURCE], window)
+    for index, member in enumerate(members):
+        dates = await _async_member_dates(
+            registry, member[CONF_SOURCE], window, observe, index
+        )
         if isinstance(dates, Unresolved):
             # Propagated rather than treated as an empty set. An unresolvable
             # member makes the *composition* unresolvable, and substituting "no
@@ -166,6 +234,40 @@ def day_set_references(source: dict[str, Any]) -> tuple[str, ...]:
     return tuple(source.get(CONF_MEMBERS, ()))
 
 
+def day_set_anchors(
+    lookup: DaySetLookup | None, day_set_id: str
+) -> tuple[tuple[str, dict[str, Any]], ...]:
+    """Every anchor this set is built from, as `(slot, anchor)` pairs.
+
+    For D44, which is why it is a plain function and not part of evaluation: a
+    plan has to be able to say how far ahead it is *sure*, and a set built on
+    `sensor.candle_lighting` sees exactly as far as that sensor declares (D13).
+    Before D124 no day set had an anchor at all, so nothing asked.
+
+    One level deep, like `day_set_references`, because D19 says there is only one
+    level. A reference that will not resolve yields nothing rather than raising:
+    an unresolvable set limits nothing here, because it *is* unresolved and the
+    occurrences carry that as a problem of their own.
+    """
+    if isinstance(item := _lookup(lookup, day_set_id), Unresolved):
+        return ()
+
+    sources = [item[CONF_SOURCE]]
+    if sources[0][CONF_KIND] == SOURCE_COMPOSITION:
+        members = _members(lookup, sources[0])
+        if isinstance(members, Unresolved):
+            return ()
+        sources = [member[CONF_SOURCE] for member in members]
+
+    found: list[tuple[str, dict[str, Any]]] = []
+    for index, source in enumerate(sources):
+        if source[CONF_KIND] != SOURCE_ANCHOR_SPAN:
+            continue
+        found.append((_slot(index, "start"), source[CONF_START_ANCHOR]))
+        found.append((_slot(index, "end"), source[CONF_END_ANCHOR]))
+    return tuple(found)
+
+
 def _lookup(
     lookup: DaySetLookup | None, day_set_id: str
 ) -> dict[str, Any] | Unresolved:
@@ -212,10 +314,36 @@ def _members(
 
 
 async def _async_member_dates(
-    registry: ResolverRegistry, source: dict[str, Any], window: Window
+    registry: ResolverRegistry,
+    source: dict[str, Any],
+    window: Window,
+    observe: SpanObserver | None = None,
+    index: int = 0,
 ) -> list[date] | Unresolved:
-    """Stage one for a single, non-composed source."""
+    """Stage one for a single, non-composed source.
+
+    `index` is this source's position in its composition, and 0 for a source that
+    is not in one. It exists only to name the horizon slot the observer reports
+    under, which has to match what `day_set_anchors` declared.
+    """
     kind = source[CONF_KIND]
+
+    if kind == SOURCE_ANCHOR_SPAN:
+        spans = await _async_anchor_spans(registry, source, window, observe, index)
+        if isinstance(spans, Unresolved):
+            return spans
+        # Projected onto the window's own days rather than onto each span's. A
+        # span that began last Thursday is in the answer — `Span.overlaps` keeps
+        # it, because a set already in force at the window's start is part of
+        # what the window is in force for — but *Thursday* is not a candidate
+        # start date for a window that begins on Friday, and returning it would
+        # hand the rule enumerator a date outside what it asked about.
+        touched: set[date] = set()
+        for span in spans:
+            low, high = span.bounds(registry.zone)
+            for day in Window(low, high).days(registry.zone):
+                touched.add(day)
+        return sorted(touched & set(window.days(registry.zone)))
 
     if kind == SOURCE_OFFERING:
         # Straight through to the resolver, which checks `Role.DAY_SET` and
@@ -242,6 +370,20 @@ async def _async_member_covers(
     """Stage two for a single, non-composed source."""
     kind = source[CONF_KIND]
 
+    if kind == SOURCE_ANCHOR_SPAN:
+        # The instant's own civil day, widened by `_async_anchor_spans`' own
+        # reach, which is what finds a span that began days earlier and is still
+        # running. Exactly the shape `BaseResolver.covers` has, and for the same
+        # reason: a span with an interior is not found by looking only at the day
+        # its end lands on.
+        local = instant.astimezone(registry.zone).date()
+        spans = await _async_anchor_spans(
+            registry, source, day_window(local, local, registry.zone)
+        )
+        if isinstance(spans, Unresolved):
+            return spans
+        return any(span.covers(instant, registry.zone) for span in spans)
+
     if kind == SOURCE_OFFERING:
         return await registry.async_covers(
             source[CONF_DOMAIN], source[CONF_KEY], instant
@@ -257,6 +399,92 @@ async def _async_member_covers(
     if isinstance(dates, Unresolved):
         return dates
     return bool(dates)
+
+
+async def _async_anchor_spans(
+    registry: ResolverRegistry,
+    source: dict[str, Any],
+    window: Window,
+    observe: SpanObserver | None = None,
+    index: int = 0,
+) -> list[Span] | Unresolved:
+    """D124's spans, for every one that touches `window`.
+
+    One span per occurrence of the start edge, paired with the first occurrence of
+    the end edge at or after it — the same pairing rule as D38, reached by the same
+    forward walk over civil days, because "across midnight" is the case both exist
+    for and a second implementation of it would be a second place to get it wrong.
+
+    **Both edges use the anchor's offset instant, and D122 does not apply here.**
+    D122 is about which instant a *rule's* anchor is tested against when a day set
+    filters it. Inside the set the offset is the edge: "from forty-five minutes
+    before candle lighting" means the span starts at 17:33, which is the whole
+    point of letting the user write the edges.
+    """
+    start_anchor = source[CONF_START_ANCHOR]
+    end_anchor = source[CONF_END_ANCHOR]
+    zone = registry.zone
+
+    spans: list[Span] = []
+    for day in window.days(zone, pad_before=_SPAN_REACH_DAYS):
+        anchored = await async_resolve_anchor_on_date(registry, start_anchor, day)
+        if isinstance(anchored, Unresolved):
+            # Propagated, like a composition member that will not resolve. An
+            # unresolvable edge makes the set unresolvable, and substituting "no
+            # span" would turn a broken anchor into a set that is silently never
+            # in force — the failure D12 exists to make visible.
+            return anchored
+        if anchored is None:
+            continue
+        start = anchored.at
+        if observe is not None:
+            observe(_slot(index, "start"), start)
+
+        end = await _async_span_end(
+            registry, end_anchor, start, day, zone, observe, index
+        )
+        if isinstance(end, Unresolved):
+            return end
+        span = Span(start, end)
+        if span.overlaps(window, zone):
+            spans.append(span)
+
+    return spans
+
+
+async def _async_span_end(
+    registry: ResolverRegistry,
+    anchor: dict[str, Any],
+    start: datetime,
+    day: date,
+    zone: Any,
+    observe: SpanObserver | None,
+    index: int,
+) -> datetime | Unresolved:
+    """The first occurrence of the end edge at or after `start`, or why not."""
+    last_day = day + timedelta(days=_SPAN_REACH_DAYS)
+    while day <= last_day:
+        anchored = await async_resolve_anchor_on_date(registry, anchor, day)
+        if isinstance(anchored, Unresolved):
+            # Stop rather than skip, for D38's reason: a day whose answer is
+            # unknown might hold an *earlier* end than any later day, so taking a
+            # later one would silently lengthen the span.
+            return anchored
+        if anchored is not None:
+            if observe is not None:
+                observe(_slot(index, "end"), anchored.at)
+            # At or after, like D38, so a zero-length span is permitted. It
+            # covers nothing — an instant has no interior (`Span.covers`) — which
+            # is the honest answer and is why a set cannot be built from one zman.
+            if absolute(anchored.at) >= absolute(start):
+                return anchored.at
+        day += timedelta(days=1)
+
+    return Unresolved(
+        UnresolvedReason.NO_PAIRING,
+        f"the span beginning {start.isoformat()} has no end edge within "
+        f"{_SPAN_REACH_DAYS} days (D124)",
+    )
 
 
 def _compose_dates(
@@ -321,8 +549,10 @@ def day_window(first: date, last: date, zone: Any) -> Window:
 
 __all__ = [
     "DaySetLookup",
+    "SpanObserver",
     "async_candidate_dates",
     "async_covers",
+    "day_set_anchors",
     "day_set_references",
     "day_window",
 ]

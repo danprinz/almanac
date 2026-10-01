@@ -56,6 +56,7 @@ from .const import (
     CONF_CONDITIONS,
     CONF_DAY_SET_ID,
     CONF_END,
+    CONF_END_ANCHOR,
     CONF_ENTER_ACTIONS,
     CONF_ENTITIES,
     CONF_ENTITY_ID,
@@ -79,6 +80,7 @@ from .const import (
     ON_EXIT_APPLY,
     OPERAND_ENTITY,
     RECUR_DAY_SET,
+    SOURCE_ANCHOR_SPAN,
     SOURCE_COMPOSITION,
     THEN_ACTION,
 )
@@ -100,6 +102,12 @@ class Usage(StrEnum):
     # Only ever on a day-set edge: D19's one level of set algebra means a day set
     # can reference another, and the referrer is a day set rather than a schedule.
     COMPOSITION = "composition"
+    # Also only ever on a day-set edge, and new with D124: a day set whose source
+    # is a span can read an entity for its edges, so for the first time an *entity*
+    # has a referrer that is not a schedule. Distinguished from `ANCHOR` rather
+    # than folded into it, because `schedules_using_entity` has to be able to
+    # leave it out: it returns schedules, and this referrer is a day set.
+    DAY_SET_ANCHOR = "day_set_anchor"
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,10 +119,10 @@ class Reference:
     `None` so that the tuple is sortable without a key function, which matters
     because the index's public answers are sorted for reproducibility.
 
-    `schedule_id` carries a *day set's* id on a composition edge. That reuse is
-    deliberate: one referrer field means the frontend renders one list, and
-    `usage is Usage.COMPOSITION` is how it knows which collection to look the id
-    up in.
+    `schedule_id` carries a *day set's* id on a composition edge, and on a D124
+    anchor edge. That reuse is deliberate: one referrer field means the frontend
+    renders one list, and the usage is how it knows which collection to look the
+    id up in.
     """
 
     schedule_id: str
@@ -142,8 +150,25 @@ class ReverseIndex:
     day_sets_used: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
 
     def schedules_using_entity(self, entity_id: str) -> tuple[str, ...]:
-        """Which schedules mention this entity, once each, in id order."""
-        return _referrers(self.entity_users.get(entity_id, ()))
+        """Which schedules mention this entity, once each, in id order.
+
+        Day-set referrers are excluded, for the reason the day-set half of this
+        gives at length: a D124 span is not a schedule, and a caller asking this
+        is about to list schedules. `day_sets_using_entity` is the other half.
+        """
+        return _referrers(
+            reference
+            for reference in self.entity_users.get(entity_id, ())
+            if reference.usage is not Usage.DAY_SET_ANCHOR
+        )
+
+    def day_sets_using_entity(self, entity_id: str) -> tuple[str, ...]:
+        """Which day sets read this entity for a span edge (D124)."""
+        return _referrers(
+            reference
+            for reference in self.entity_users.get(entity_id, ())
+            if reference.usage is Usage.DAY_SET_ANCHOR
+        )
 
     def schedules_using_day_set(self, day_set_id: str) -> tuple[str, ...]:
         """Which schedules mention this day set, once each, in id order.
@@ -190,7 +215,14 @@ def build_index(
     the mapping this takes, so a caller passes it straight in.
 
     `day_sets` is optional so the entity half of the index is usable before day
-    sets are loaded; without it, composition edges simply do not exist.
+    sets are loaded; without it, composition and D124 span edges simply do not
+    exist.
+
+    `entities_used` is keyed by *schedule* id for a schedule's entities and by
+    *day set* id for a D124 span's, which is the same reuse `Reference.schedule_id`
+    makes and is safe for the same reason: the two collections' ids come from
+    `DictStorageCollection` and are globally unique, so one mapping cannot
+    conflate them.
     """
     entity_users: defaultdict[str, list[Reference]] = defaultdict(list)
     day_set_users: defaultdict[str, list[Reference]] = defaultdict(list)
@@ -209,6 +241,18 @@ def build_index(
 
     for day_set_id, day_set in (day_sets or {}).items():
         source = day_set.get(CONF_SOURCE, {})
+        if source.get(CONF_KIND) == SOURCE_ANCHOR_SPAN:
+            # D124's two edges. Only an `entity_time` anchor yields anything, for
+            # the reason `_anchor_references` gives: a resolver anchor's
+            # dependency is on the offering and not on whatever the resolver reads
+            # to answer.
+            for key in (CONF_START_ANCHOR, CONF_END_ANCHOR):
+                for _, entity_id in _anchor_references(source.get(key, {})):
+                    entity_users[entity_id].append(
+                        Reference(day_set_id, "", Usage.DAY_SET_ANCHOR)
+                    )
+                    entities_used[day_set_id].add(entity_id)
+            continue
         if source.get(CONF_KIND) != SOURCE_COMPOSITION:
             continue
         for member in source.get(CONF_MEMBERS, ()):

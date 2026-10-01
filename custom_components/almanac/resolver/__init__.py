@@ -20,9 +20,9 @@ from __future__ import annotations
 
 from .anchor import (
     AnchorForecast,
+    ResolvedAnchor,
     anchor_horizon,
     async_forecast_anchor,
-    ResolvedAnchor,
     async_resolve_anchor_on_date,
 )
 from .clock import ClockResolver
@@ -70,11 +70,11 @@ __all__ = [
     "SunResolver",
     "Unresolved",
     "UnresolvedReason",
+    "ResolvedAnchor",
     "Window",
     "anchor_horizon",
     "async_create_registry",
     "async_forecast_anchor",
-    "ResolvedAnchor",
     "async_resolve_anchor_on_date",
     "known_through",
 ]

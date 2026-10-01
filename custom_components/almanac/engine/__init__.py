@@ -38,6 +38,7 @@ from .day_set import (
     DaySetLookup,
     async_candidate_dates,
     async_covers,
+    day_set_anchors,
     day_set_references,
     day_window,
 )
@@ -78,6 +79,7 @@ __all__ = [
     "async_evaluate",
     "async_plan_recovery",
     "async_plan_tick",
+    "day_set_anchors",
     "day_set_references",
     "day_window",
     "interval_problems",
