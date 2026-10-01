@@ -26,6 +26,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import CONFIG_ENTRY_VERSION, DOMAIN, PLATFORMS
 from .day_sets import async_setup_day_sets
+from .frontend_setup import async_register_frontend, async_unregister_frontend
 from .resolver import async_create_registry
 from .storage import AlmanacData, RuntimeStore, async_setup_collection
 from .tick import SERVICE_RUN_NOW, AlmanacTick, async_register_services
@@ -80,6 +81,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: AlmanacConfigEntry) -> b
     # and answer "almanac is not loaded" when it is not, and re-registering on a
     # reload simply replaces the entry in that table.
     async_register_websocket(hass)
+
+    # The two surfaces last, and after the websocket commands rather than before:
+    # both are useless without them, and a panel that paints before its API can
+    # answer shows the user an error that is purely an ordering artefact. D131 is
+    # why a missing bundle only logs -- everything above this line works without a
+    # frontend, and an integration that refuses to load because its UI is absent
+    # is harder to diagnose than one that loads and says so.
+    await async_register_frontend(hass)
     return True
 
 
@@ -98,6 +107,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: AlmanacConfigEntry) -> 
     # service. Registering in setup and removing here keeps the two symmetrical
     # rather than leaving a service that raises on every call.
     hass.services.async_remove(DOMAIN, SERVICE_RUN_NOW)
+    # D130 -- the panel and the card URL are undone here because neither
+    # registration is idempotent: re-registering the panel raises, and
+    # `add_extra_js_url` is a set that would accumulate a second entry the moment
+    # a rebuild changes the cache-busting query. The static path is deliberately
+    # not undone; aiohttp has no API for it, which is why it is registered once
+    # per process rather than once per setup.
+    async_unregister_frontend(hass)
     return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 

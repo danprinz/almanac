@@ -9,6 +9,7 @@ divergence between our scaffolding and core's.
 
 from __future__ import annotations
 
+import pathlib
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -19,7 +20,10 @@ from homeassistant.setup import async_setup_component
 
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.almanac import frontend_setup
 from custom_components.almanac.const import (
+    BUNDLE_CARD,
+    BUNDLE_PANEL,
     CONFIG_ENTRY_VERSION,
     DOMAIN,
 )
@@ -31,6 +35,33 @@ def auto_enable_custom_integrations(
     enable_custom_integrations: None,
 ) -> None:
     """Let the loader see `custom_components/almanac`."""
+
+
+@pytest.fixture(autouse=True)
+def built_frontend(
+    tmp_path: pathlib.Path, monkeypatch: pytest.MonkeyPatch
+) -> pathlib.Path:
+    """Stand in for `frontend/dist`, which D71 does not commit.
+
+    Autouse, and the reason is determinism rather than convenience. `dist/` is
+    gitignored, so whether it exists depends on whether somebody has run
+    `npm run build` on the machine -- which would make every test that sets
+    almanac up take one of two different paths through
+    `frontend_setup.async_register_frontend` depending on a file nobody declared.
+    Two one-line stubs make the registration path the one that runs everywhere,
+    and `tests/test_frontend_assets.py` is where the other path is exercised on
+    purpose.
+
+    The contents are deliberately not the real bundles. What the Python side has
+    to get right is which URLs it serves and when it registers them; what the
+    bundles contain is Rollup's problem and `npm run typecheck`'s.
+    """
+    dist = tmp_path / "dist"
+    dist.mkdir()
+    for name in (BUNDLE_PANEL, BUNDLE_CARD):
+        (dist / name).write_text("export default null;\n", encoding="utf-8")
+    monkeypatch.setattr(frontend_setup, "_dist_dir", lambda: dist)
+    return dist
 
 
 @pytest.fixture

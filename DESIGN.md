@@ -1678,10 +1678,13 @@ to — a template helper entity is evaluated, never enumerated, so it never touc
 8. Timeline and dry run — D12, D44, D63
 8a. Anchor-span day sets — D122, D123, D124, and §6.2's D125–D128
 9. UI — D61, D62, and §17's toolchain
+9a. The delivery path — the toolchain, the Python registration, and §17.1's D129–D131
 10. **Import from `scheduler-component`, last** — D60
 
 The packaging decisions D67–D71 are settled ahead of step 1, not at step 9: the repository layout
-and the panel/card URL constants they fix are part of the integration's own setup code.
+and the panel/card URL constants they fix are part of the integration's own setup code. **Step 9a
+is where they were actually built**, and §17.1 records the three things building them found —
+most of which follow from D70, the constraint §17 already said could not be retrofitted.
 
 Step 7 is placed deliberately: a contract is not proven by the implementation it was designed
 around. Writing `hdate` before any UI depends on the resolver list is what surfaces a wrong
@@ -1954,6 +1957,94 @@ both are newer, and whichever is newest sets the real floor.
 **Manifest dependencies:** `["http", "frontend", "panel_custom", "websocket_api"]` — hard
 `dependencies`, not `after_dependencies`, because a setup that cannot register its panel has not
 succeeded. Both single-repo precedents do the same.
+
+---
+
+### 17.1 What step 9a found
+
+§17 settles the toolchain and the two delivery mechanisms. Writing them found three things it
+did not say, and all three are consequences of D70 rather than of D69's table.
+
+**D129 — one static path, for the whole `dist/` directory, not one per bundle.** D69 reads as
+two registrations because there are two entry points. D70 makes that impossible: the card entry
+holds nothing but a `customElements.define` and a dynamic `import()`, so Rollup emits the card's
+real body as a *third* file whose name it chooses (`chunks/card-body-<hash>.js`) and which the
+browser resolves relative to the card's own URL. A `StaticPathConfig` per file cannot name a file
+whose name the bundler invents at build time. So `FRONTEND_URL_BASE` serves the directory, and
+the two bundle constants are paths under it.
+
+*What that costs:* `cache_headers=True` on a directory means the chunk is served with a long
+cache lifetime and no `?v=&m=` query to bust, because the query is built by the Python side for
+the two URLs it knows. The answer is in the Rollup config, not the Python: `chunkFileNames`
+carries a content hash, so a changed chunk is a changed URL. Unhashed entry names plus hashed
+chunk names is the only combination where both halves are cache-correct — the entries are named
+because Python has to construct their URLs, the chunks are hashed because it cannot.
+
+**Two Rollup configs, not one with two inputs.** A single build hoists code shared between the
+card and the panel into a common chunk, and the card entry would then `import` it — statically,
+on every frontend page, which is the one thing D70 exists to prevent. Two configs duplicate the
+shared modules across the two output trees. That is the correct trade: the duplicated code lives
+in the panel bundle and in the card's *lazy* body, neither of which is on the always-loaded path.
+`rollup.config.mjs` exports an array and says so in its header.
+
+**D130 — the panel and the card URL are undone on unload; the static path is not, and is
+therefore registered once per process.** A config entry reload re-runs `async_setup_entry`, and
+none of the three registrations is idempotent:
+
+- `frontend.async_register_built_in_panel` raises `ValueError` on a second registration of the
+  same url path unless `update=True` — and `panel_custom.async_register_panel`, which is what
+  D69 uses, does not expose `update`. So a reload would raise unless the panel is removed first.
+- `frontend.add_extra_js_url` adds to a **set**. A second call with the same string is a no-op,
+  but the string contains `?m={mtime}` — so after a rebuild the reload adds a *second* URL and
+  the browser loads two copies of the card, the stale one of which may win the
+  `customElements.define` race. `remove_extra_js_url` raises `KeyError` on a string that is not
+  there, which is why the exact string handed to `add_extra_js_url` is kept in `hass.data`
+  rather than recomputed at unload.
+- `hass.http.async_register_static_paths` has **no unregister**: aiohttp's router is
+  append-only. A second registration of one url path is a duplicate route that nothing can take
+  back.
+
+Hence the asymmetry in `frontend_setup.py`: `async_unregister_frontend` removes the panel and the
+card URL, and the static path is guarded by a `hass.data` flag and never removed. It points at a
+path derived from `__file__`, which does not change while the process lives, so registering it
+once is not a stale-pointer risk.
+
+**The dist directory is resolved from `__file__`, not from `hass.config.path(...)`.** The two
+agree for every real installation, but only one of them is a fact — the bundles ship *inside* the
+integration directory (D67), so the integration's own module path is what knows where they are.
+Building the path out of the config directory is a second claim about the same thing, and it is
+the claim that breaks first: under the test harness `config_dir` is a temporary directory with no
+`custom_components` in it at all, so every setup test logged a missing-frontend error.
+
+**D131 — a missing bundle logs an error and skips registration; it does not fail setup.** D71
+ships `dist/` only inside the release zip, so a clone has nothing there until `npm run build`.
+Failing setup would be defensible if the frontend were the integration, but it is not: the
+engine, the services, the entities and both websocket commands work without it. An integration
+that refuses to load because a UI is absent is strictly harder to diagnose than one that loads
+and says, in the log, that the UI is absent and how to build it.
+
+*Flagged for the owner:* this means a broken release workflow degrades quietly rather than
+loudly, which is the opposite of the trade §17 made when it chose not to commit `dist/`. The two
+are consistent — §17 is about a build that produced the wrong bytes, D131 about an install that
+has no bytes at all — but a user who installs a bad release gets a working integration with no
+panel and one line in the log, and that is worth knowing before the first release.
+
+**The minimum-version re-check §17 asked for is closed, with no change.** §17 wrote `2024.7.0`
+as the floor set by `async_register_static_paths`; D81 later set the supported version to the
+current release and derives it from the harness pin, so `hacs.json` and `manifest.json` both say
+`2026.9.4` and every API step 9a uses is older than that. The three D69/D70 calls add no new
+floor. `async_panel_exists` and `remove_extra_js_url` were checked against the installed
+`homeassistant==2026.9.4`, not against memory.
+
+**One dependency was added to the test harness, for a reason worth recording.**
+`manifest.json` declares `frontend` and `panel_custom` as hard `dependencies` (§17, and D130 is
+why they cannot be `after_dependencies` — `add_extra_js_url` would otherwise be able to run
+before `frontend`'s setup creates the store it writes to). Core's `frontend` component imports
+`hass_frontend` during its own setup, and `pytest-homeassistant-custom-component` does not pull
+that in, so until `home-assistant-frontend` was pinned in `requirements_test.txt` every test that
+set almanac up failed at *dependency resolution* — 113 errors whose message named core's
+components and not a line almanac wrote. The pin matches core's `frontend/manifest.json`, by the
+same one-site-packages rule as `hdate`.
 
 ---
 

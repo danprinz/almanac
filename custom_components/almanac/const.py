@@ -65,6 +65,38 @@ WS_PREFIX_DAY_SET: Final = f"{DOMAIN}/day_set"
 WS_TIMELINE: Final = f"{DOMAIN}/timeline"
 WS_DRY_RUN: Final = f"{DOMAIN}/dry_run"
 
+# --- the frontend's delivery path (D67-D71, D129-D131) ---------------------
+#
+# These are the constants D69 warned about: the panel's and the card's URLs are
+# strings on this side of the wire and in Rollup's output configuration on the
+# other, and nothing checks that the two agree except
+# `tests/test_frontend_assets.py`, which reads `rollup.config.mjs` as text and
+# asserts that the names below are the ones it emits. It cannot read the built
+# directory, because D71 does not commit it -- which is also why the element
+# names are checked against the TypeScript rather than against the bundle.
+
+# Where the built bundles live inside the integration directory, per D67.
+FRONTEND_DIST: Final = "frontend/dist"
+
+# D129 -- one static path for the whole directory rather than one per bundle.
+# D70's dynamic import makes Rollup emit a third file whose name Rollup chooses,
+# and a per-file registration cannot name it.
+FRONTEND_URL_BASE: Final = f"/{DOMAIN}_frontend"
+
+BUNDLE_PANEL: Final = f"{DOMAIN}-panel.js"
+BUNDLE_CARD: Final = f"{DOMAIN}-card.js"
+
+# The sidebar entry. The url path is the domain, so the panel is at `/almanac`
+# and a deep link into it keeps working if the title is ever translated.
+PANEL_URL_PATH: Final = DOMAIN
+PANEL_COMPONENT: Final = f"{DOMAIN}-panel"
+PANEL_TITLE: Final = "almanac"
+PANEL_ICON: Final = "mdi:calendar-clock"
+
+# The card's custom element, as `window.customCards` registers it. Named here
+# because D62's more-info entry point will have to create one by tag name.
+CARD_COMPONENT: Final = f"{DOMAIN}-card"
+
 # --- schedule fields -------------------------------------------------------
 
 CONF_COMPLETION: Final = "completion"

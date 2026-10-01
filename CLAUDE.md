@@ -9,19 +9,20 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 
 ## Status — 2026-10-01
 
-**Build steps 1–8a of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
+**Build steps 1–9a of `DESIGN.md` §15 are written, tested and pushed.** Schema and storage, the
 resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
 actions and completion and the tick that drives them, observability, the `hdate` resolver, and —
-at step 8 — the timeline query and the dry run, with the two websocket commands step 9's panel is
-built on, and at step 8a the anchor-span day set the flagship scenario turned out to need. 544
-tests pass, the last of them `tests/test_flagship.py` and
-`tests/test_anchor_span_day_sets.py`, which enumerate the brief's flagship scenario end to end
-twice over — once from `hdate`'s prebuilt Shabbat and once from a span the user wrote. Remote is
-`git@github.com:danprinz/almanac.git`.
+at step 8 — the timeline query and the dry run, with the two websocket commands the panel is
+built on, at step 8a the anchor-span day set the flagship scenario turned out to need, and at
+step 9a the frontend's delivery path: the Rollup toolchain, the Python registration, D70's
+always-loaded stub, and thin-but-honest first drafts of the panel and the card. 580 tests pass,
+among them `tests/test_flagship.py` and `tests/test_anchor_span_day_sets.py`, which enumerate
+the brief's flagship scenario end to end twice over — once from `hdate`'s prebuilt Shabbat and
+once from a span the user wrote. Remote is `git@github.com:danprinz/almanac.git`.
 
-Decisions now run D1–D128. Each build step closes the gaps it found in its own subsection
-(`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2) rather than editing the
-decision it refines.
+Decisions now run D1–D131. Each build step closes the gaps it found in its own subsection
+(`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2, §17.1) rather than editing
+the decision it refines.
 
 **Step 8 fixed the engine, which is the part worth knowing.** `Plan` was reporting one fact where
 D44 says there are two: `_Horizons` was built over the window *after* the ninety-day clamp, so
@@ -80,23 +81,48 @@ D128 adds `Usage.DAY_SET_ANCHOR`, because a span edge is the first entity refere
 referrer is not a schedule. And one non-gap: **D122 does not apply inside a set** — a set's edge
 *is* its offset, which is the opposite question from the one D122 answers.
 
-**Next step:** step 9 — the UI (D61, D62, D72 onward), built on the two
-websocket commands step 8 left: `almanac/timeline` and `almanac/dry_run`. Their wire form is
-`as_dict()` on `Timeline`, `Plan`, `Occurrence`, `Transition` and `Reconciliation`, and D70 has
-to be read before any card code is written, because the always-loaded-stub constraint cannot be
-retrofitted. The other 17 UX findings in `ux/FINDINGS.md` are also all still unapplied. Then 10
+**What step 9a built, and what it found, is §17.1.** The toolchain is at the repo root
+(`package.json`, `tsconfig.json`, `rollup.config.mjs`); the TypeScript is in
+`custom_components/almanac/frontend/src/`; `custom_components/almanac/frontend_setup.py` is the
+Python side, named that way because `frontend/` beside it is the bundle directory. Three
+decisions came out of writing it, and all three are consequences of D70 rather than of D69's
+table: **D129** one static path for the whole `dist/` directory, because D70's dynamic import
+makes Rollup emit a chunk whose name no Python constant can know; **D130** the panel and the card
+URL are undone on unload, because none of the three registrations is idempotent and a config
+entry reload is ordinary; **D131** a missing bundle logs and skips rather than failing setup.
+
+**Two tests exist because nothing else would notice the thing they check.**
+`tests/test_wire_contract.py` sweeps every `as_dict()` by AST and compares the key sets against
+`frontend/src/wire.ts`'s interfaces — the websocket boundary is the one place in the project
+where a rename is silent in both directions. `tests/test_frontend_assets.py` does the same for
+the delivery path: the bundle filenames against `rollup.config.mjs`, the element names against
+the TypeScript, and D70's rule that `card.ts` has no run-time import. Both read source rather
+than running it, for the same reason `tests/test_design_constraints.py` does for D64.
+
+**Next step:** step 9b — the anchor-relative track (D72–D74, D76, D77), which replaces each
+lane's list of chips in `panel.ts`. Then 9c the editor (D72, D78, D80) plus the card's
+`getConfigElement` and D79's generated summary, which needs the stored rule bodies and therefore
+the schedule CRUD commands; then 9d D62's more-info entry point. The other 17 UX findings in
+`ux/FINDINGS.md` are all still unapplied, and `ux/prototype/15-new-shabbat-2.html` still claims
+the pre-flight check is a guarantee, which is what D80 says to fix. Then 10
 (importer, last — D60). The `almanac` namespace check is **done** — clear in
 core, in the HACS default list, and in a GitHub manifest-domain search (`DESIGN.md` "Remaining
 checks").
 
-**Seven judgement calls are flagged for the owner** and are marked as such where they are
+**Still missing for a release:** the D71 workflow that builds and zips from *inside*
+`custom_components/almanac/`. Nothing exists yet, and D131 means a broken one degrades quietly.
+
+**Eight judgement calls are flagged for the owner** and are marked as such where they are
 recorded: D91 (disarming mid-interval exits immediately), D97 (an unreadable condition changes
 nothing), D104 (the re-enumeration period when D44's horizon comes back empty), D109 (`run_now`
 fires no occurrence event) and D114 (`diaspora` and the two candle-lighting offsets have no user
 surface — this one moves Simchat Torah by a day if the inference is wrong), plus step 8's two:
 D119 (§5.5's third coverage state, *estimated*, has no producer and is not synthesised — the
 alternative is a fourth `HorizonKind`, which is a contract change) and D120 (a dry run is one
-evaluation at one instant, not a replay of the interval leading to it).
+evaluation at one instant, not a replay of the interval leading to it), plus step 9a's one:
+D131 (a missing frontend bundle logs one line and the integration loads without a UI, which is
+the opposite trade from §17's reason for not committing `dist/` — the two are consistent, but a
+bad release is quiet).
 
 D116 is the one decision step 8 made that changes existing behaviour rather than adding to it:
 `run_now` now fires `almanac_execution`, so a manual run appears on the timeline's past half.
@@ -108,15 +134,19 @@ comparison goes through `absolute()` in `resolver/contract.py`, `key=absolute` i
 below, which `tests/test_design_constraints.py` enforces by an AST sweep: the allow-list names the
 five functions in `tick.py` that may sample the clock, and nothing else in the package may.
 
-**Frontend toolchain: decided** — §17, D67–D71. One repository, HACS category `integration`,
-TypeScript + Lit built by Rollup into `custom_components/almanac/frontend/dist/`, panel via
-`panel_custom` and card via `add_extra_js_url`, `dist/` gitignored and shipped only as a
-`zip_release` asset. The single-installation requirement is met with **no** manual Resource step.
-`hacs.json` is written. A.12 has the verification; read D70 before writing any card code, because
-the always-loaded-stub constraint cannot be retrofitted.
+**Frontend toolchain: built** — §17 and §17.1, D67–D71 and D129–D131. One repository, HACS
+category `integration`, TypeScript + Lit built by Rollup into
+`custom_components/almanac/frontend/dist/`, panel via `panel_custom` and card via
+`add_extra_js_url`, `dist/` gitignored and shipped only as a `zip_release` asset. The
+single-installation requirement is met with **no** manual Resource step. `npm install` then
+`npm run build`; `npx tsc --noEmit` is the typecheck. **Read D70 before touching `card.ts`** —
+that file is fetched on every frontend page, so its only imports are `import type` and one
+`await import("./card-body")`, and `tests/test_frontend_assets.py` fails if that stops being
+true. The built proof: the card entry is 838 bytes against a 24 KB lazy body.
 
-**Next after that:** the UX thread. §16's three decisions (D61–D63) plus §17's constraints are
-what gets handed over — constraints, not a layout.
+**Two Rollup configs, not one with two entries** — a single build would hoist shared code into a
+chunk the card entry imports statically, which is what D70 forbids. The duplicated shared code is
+the price, and it lands only on the two non-always-loaded paths.
 
 **Standing constraint, decided:** D64 — nothing below the top-level scheduler tick reads a
 clock. `now` is threaded as a parameter. This is what makes the dry run and the timeline the

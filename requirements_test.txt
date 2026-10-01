@@ -15,3 +15,14 @@ pytest-homeassistant-custom-component==0.13.367
 # whichever loaded first. D81's argument about deriving versions from the harness
 # applies to anything core also ships.
 hdate[astral]==1.2.1
+
+# Step 9a's dependency, and here for the same reason `hdate` is: `manifest.json`
+# now declares `frontend` and `panel_custom` as hard dependencies (D69 needs both
+# at load time), and core's `frontend` component imports `hass_frontend` during
+# its own setup. Without this line every test that sets almanac up fails at
+# dependency resolution rather than at anything almanac wrote.
+#
+# The pin matches core's `frontend/manifest.json` exactly, by the same rule as
+# `hdate` above: one site-packages per instance, so a version that differed from
+# core's would be whichever resolved first.
+home-assistant-frontend==20260826.7
