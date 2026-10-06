@@ -219,7 +219,7 @@ attribute *before* it dispatches on domain, so the stock toggle is gone from the
 why almanac's dialog body leads with its own Arm/Disarm button, and the alternative — not
 publishing the attribute, and a schedule's dialog saying nothing about the schedule — is a real
 option the owner may prefer), plus the release workflow's one: **D164** (a tag stamps
-`manifest.json`'s version inside the zip and nowhere else, so a clone always says `0.1.0` however
+`manifest.json`'s version inside the zip and nowhere else, so a clone always says `0.0.1` however
 many releases exist and the version a developer sees locally is never the version a user has. The
 alternative is a bump committed before tagging — more honest and one more manual step; a workflow
 that committed it would need write access to the branch it was triggered from).

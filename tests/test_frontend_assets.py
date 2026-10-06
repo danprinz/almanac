@@ -26,6 +26,7 @@ the first commit, not from the first bug.
 
 from __future__ import annotations
 
+import json
 import logging
 import pathlib
 import re
@@ -59,6 +60,16 @@ from custom_components.almanac.const import (
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 SRC = REPO / "custom_components" / DOMAIN / "frontend" / "src"
+
+# Read rather than spelled out, which is the opposite of this file's usual
+# technique and is deliberate. Everything else here is asserted against a
+# literal so that a rename fails the test instead of agreeing with it; a version
+# is not a name. D164 moves it on every release, and a literal here would make
+# every release an edit to a file about URLs — the kind of edit that gets made
+# without reading what it is in.
+MANIFEST_VERSION = json.loads(
+    (REPO / "custom_components" / DOMAIN / "manifest.json").read_text(encoding="utf-8")
+)["version"]
 
 
 def card_urls(hass: HomeAssistant) -> list[str]:
@@ -130,7 +141,7 @@ async def test_both_urls_are_busted_by_version_and_mtime(
         url = card_urls(hass)[0]
 
     query = parse_qs(urlparse(url).query)
-    assert query["v"] == ["0.1.0"]
+    assert query["v"] == [MANIFEST_VERSION]
     assert query["m"] == [str(int((built_frontend / bundle).stat().st_mtime))]
 
 

@@ -1,6 +1,6 @@
 {
   "name": "almanac-frontend",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Panel and card for the almanac Home Assistant integration (DESIGN.md §17)",
   "license": "MIT",

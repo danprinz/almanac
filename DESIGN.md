@@ -2815,7 +2815,7 @@ that extraction chose and the `?v=` half would not have changed.
 *Why not commit the bump:* a workflow that commits is a workflow with write access to the branch
 it was triggered from, and the only thing it would buy is that a clone's `manifest.json` agrees
 with the latest tag. **This is a judgement call and the owner may prefer the other side:** the
-cost as built is that a clone always says `0.1.0` however many releases exist, so the version a
+cost as built is that a clone always says `0.0.1` however many releases exist, so the version a
 developer sees locally is never the version a user has. The alternative is a release process
 where the bump is a commit the owner makes before tagging — which is more honest and one more
 manual step.

@@ -13,5 +13,5 @@
   "loggers": ["hdate"],
   "requirements": ["hdate[astral]==1.2.1"],
   "single_config_entry": true,
-  "version": "0.1.0"
+  "version": "0.0.1"
 }
