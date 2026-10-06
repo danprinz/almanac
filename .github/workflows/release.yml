@@ -1,0 +1,95 @@
+# D71's release workflow — the only install path, and therefore the only place
+# the build is guaranteed to have run.
+#
+# Three things shape this file, and none of them is "run the tests in CI":
+#
+#   - `hacs.json` sets `hide_default_branch`, so HACS offers releases and nothing
+#     else. `should_try_releases` in HACS's `repositories/base.py` returns true
+#     for a `zip_release` repository only when the requested ref is not the
+#     default branch — which is to say, no release means nothing installable
+#     exists at all. A.12.
+#   - D131 makes a missing frontend quiet at run time. The zip is built by
+#     `scripts/package.sh`, which refuses to write an archive with no bundle in it
+#     (D163), so the loud failure happens here rather than in a user's sidebar.
+#   - The checks run *before* the asset is uploaded, because a published release
+#     with a broken asset is worse than a published release with no asset: HACS
+#     shows the version either way, and only one of the two fails at download.
+#
+# `workflow_dispatch` exists for D165: the same zip, built from any ref, attached
+# to the run as an artifact instead of to a release. D71 took on "no fallback
+# install path if the release workflow breaks" as a known risk; a dispatchable
+# build is what makes that a one-click recovery rather than a local toolchain.
+
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the ref being released
+        uses: actions/checkout@v4
+
+      - name: Node, matching the version the toolchain was written against
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install the frontend toolchain
+        run: npm ci
+
+      # Two tsconfigs, and they must stay two — §17.1. `npm run typecheck` reads
+      # the one Rollup reads; `typecheck:test` reads the one `node --test` needs.
+      - name: Typecheck the bundle sources
+        run: npm run typecheck
+
+      - name: Typecheck the frontend tests
+        run: npm run typecheck:test
+
+      - name: Frontend unit tests
+        run: npm test
+
+      # D82 pins the harness, and the harness pins Home Assistant and the
+      # Python floor. `requirements_test.txt` is the single place that says so.
+      - name: Python, at the floor the harness requires
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install the test harness
+        run: pip install -r requirements_test.txt
+
+      - name: Python tests
+        run: python -m pytest tests/ -q
+
+      - name: Build the bundles
+        run: npm run build
+
+      # The tag for a published release; empty for a manual run, which leaves
+      # `manifest.json`'s committed version in place.
+      - name: Package
+        run: bash scripts/package.sh "${{ github.event.release.tag_name }}"
+
+      - name: Attach the zip to the run
+        uses: actions/upload-artifact@v4
+        with:
+          name: almanac-zip
+          path: build/almanac.zip
+          if-no-files-found: error
+
+      - name: Attach the zip to the release
+        if: github.event_name == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release upload "${{ github.event.release.tag_name }}"
+          build/almanac.zip --clobber

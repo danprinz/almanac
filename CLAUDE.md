@@ -7,7 +7,7 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 `scheduler-card`): a schedule engine and UI whose rule model is **enumerable**, so that
 "what will happen between now and Friday night" is a view you can actually render.
 
-## Status — 2026-10-01
+## Status — 2026-10-06
 
 **Build steps 1–9 of `DESIGN.md` §15 are written, tested and pushed — step 9 is finished.** Schema and storage, the
 resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
@@ -24,15 +24,15 @@ at step 9e the four builders that make it a whole editor: actions, conditions, d
 the schedule's own completion — and at step 9f the links between the three surfaces: almanac's own
 region inside core's more-info dialog, the footprint's names turned into things that open, and
 `/almanac?edit=<id>` from a card row.
-625 Python tests pass, plus 78 TypeScript ones (`npm test`); among them
+637 Python tests pass, plus 78 TypeScript ones (`npm test`); among them
 `tests/test_flagship.py` and
 `tests/test_anchor_span_day_sets.py`, which enumerate the brief's flagship scenario end to end
 twice over — once from `hdate`'s prebuilt Shabbat and once from a span the user wrote. Remote
 is `git@github.com:danprinz/almanac.git`.
 
-Decisions now run D1–D161. Each build step closes the gaps it found in its own subsection
+Decisions now run D1–D165. Each build step closes the gaps it found in its own subsection
 (`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2, §16.2, §16.3, §16.4, §16.5,
-§16.6, §17.1) rather than editing the decision it refines. **D149 is the one exception and it is marked
+§16.6, §17.1, §17.2) rather than editing the decision it refines. **D149 is the one exception and it is marked
 as such:** step 9e lifted it, so its entry says so in place rather than being deleted — the
 argument under it is why the payload question had to be answered first, and it is what forbids
 the schema-driven service form that looks attractive every time somebody reads `hass.services`.
@@ -57,6 +57,8 @@ keep matching it — two integrations in one instance share one `site-packages`.
 | `LICENSE` | MIT |
 | `hacs.json` | distribution — `zip_release`, `hide_default_branch` (D71) |
 | `UX_BRIEF.md` | the task handed to the UX thread; outputs land in `ux/` |
+| `scripts/package.sh` | D71's zip — run by CI and by `npm run package` (§17.2) |
+| `.github/workflows/release.yml` | checks, build, zip, upload; also runnable by hand |
 
 **Decision numbers are identifiers, not an ordering.** D1–D63 were assigned in reading order at
 the first commit; anything added since takes the next free number and lives in the section it
@@ -184,10 +186,19 @@ claims the pre-flight check is a guarantee, which is what D80 says to fix. The `
 check is **done** — clear in core, in the HACS default list, and in a GitHub manifest-domain
 search (`DESIGN.md` "Remaining checks").
 
-**Still missing for a release:** the D71 workflow that builds and zips from *inside*
-`custom_components/almanac/`. Nothing exists yet, and D131 means a broken one degrades quietly.
+**almanac is installable, and §17.2 is what to read before touching how.** D71's remaining
+half — the workflow that builds and zips from *inside* `custom_components/almanac/` — is built:
+`scripts/package.sh` plus `.github/workflows/release.yml`, with `tests/test_packaging.py` running
+the script against a fabricated tree and reading the archive back. **The one fact everything there
+rests on:** HACS's `zip_release` extractor calls `extractall()` with no member rewriting, so
+`manifest.json` must sit at the *zip root* — a zip one segment too deep installs without
+complaint, and Home Assistant then finds a directory it does not load, with nothing in any log
+naming the cause. A.12, re-verified 2026-10-06. **No release is tagged yet**, and
+`hide_default_branch` plus `zip_release` means that until one is, HACS has nothing installable to
+offer at all — the hand route in `README.md` (`npm run package`, then unpack `build/almanac.zip`
+into `<config>/custom_components/almanac/`) is what works today.
 
-**Ten judgement calls are flagged for the owner** and are marked as such where they are
+**Eleven judgement calls are flagged for the owner** and are marked as such where they are
 recorded: D91 (disarming mid-interval exits immediately), D97 (an unreadable condition changes
 nothing), D104 (the re-enumeration period when D44's horizon comes back empty), D109 (`run_now`
 fires no occurrence event) and D114 (`diaspora` and the two candle-lighting offsets have no user
@@ -207,7 +218,12 @@ switch **replaces** the switch's native control rather than adding to it — cor
 attribute *before* it dispatches on domain, so the stock toggle is gone from the dialog. That is
 why almanac's dialog body leads with its own Arm/Disarm button, and the alternative — not
 publishing the attribute, and a schedule's dialog saying nothing about the schedule — is a real
-option the owner may prefer). **Step 9d's D149 has left this list:** 9e lifted it.
+option the owner may prefer), plus the release workflow's one: **D164** (a tag stamps
+`manifest.json`'s version inside the zip and nowhere else, so a clone always says `0.1.0` however
+many releases exist and the version a developer sees locally is never the version a user has. The
+alternative is a bump committed before tagging — more honest and one more manual step; a workflow
+that committed it would need write access to the branch it was triggered from).
+**Step 9d's D149 has left this list:** 9e lifted it.
 
 D116 is the one decision step 8 made that changes existing behaviour rather than adding to it:
 `run_now` now fires `almanac_execution`, so a manual run appears on the timeline's past half.

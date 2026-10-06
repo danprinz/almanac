@@ -41,6 +41,49 @@ This is intended as a public Home Assistant custom integration, distributed thro
 **single installation** — integration and frontend in one package, not two repositories that
 have to be kept in step.
 
+## Installing
+
+One install, and no Lovelace resource to add by hand: the integration and its frontend ship in
+the same package. Home Assistant **2026.9.4 or newer**. The `hdate` dependency is declared in
+the manifest, so Home Assistant installs it on first load.
+
+### Through HACS
+
+1. HACS → the three-dot menu → **Custom repositories**
+2. Repository `danprinz/almanac`, category **Integration**
+3. Install, then restart Home Assistant
+4. Settings → Devices & services → **Add integration** → almanac
+
+`hacs.json` sets `zip_release` and `hide_default_branch`, so HACS installs the `almanac.zip`
+asset attached to a release and never the default branch. That asset is built and uploaded by
+[`.github/workflows/release.yml`](.github/workflows/release.yml), and it is the only install
+path that cannot be missing its frontend.
+
+### By hand
+
+The built frontend is not committed — see D71 — and a missing bundle loads the engine with no
+UI and one line in the log (D131). A plain copy of a clone into `custom_components/` therefore
+gives a working scheduler behind a blank interface, quietly. Build it first:
+
+```
+npm install
+npm run package
+```
+
+That writes `build/almanac.zip`, refusing to write anything if the bundles are not there
+(D163). Unpack its **contents** into `<config>/custom_components/almanac/` — `manifest.json`
+lands directly in that directory, not inside a further folder — restart Home Assistant, and add
+the integration as in step 4 above.
+
+A build from any branch, without a local toolchain, is the Actions tab → **Release** → *Run
+workflow*: the same zip, attached to the run as an artifact (D165).
+
+### What you should see
+
+- **almanac** in the sidebar — the timeline, with **New schedule** opening the editor
+- **almanac** in the card picker, with no resource step
+- one `switch` entity per schedule, whose more-info dialog is almanac's own
+
 ## Documents
 
 | File | Contains |

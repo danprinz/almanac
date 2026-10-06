@@ -1693,6 +1693,13 @@ and the panel/card URL constants they fix are part of the integration's own setu
 is where they were actually built**, and §17.1 records the three things building them found —
 most of which follow from D70, the constraint §17 already said could not be retrofitted.
 
+**D71's other half — the release workflow — was built after 9f, and it is not a numbered step.**
+It is not a numbered step because nothing depends on it: every step from 1 to 9f is testable
+without an install path, and the importer does not need one either. It was built when it was
+because an install path is what the owner needs in order to *use* the thing, which is a different
+question from what the thing needs in order to be built. §17.2 records it and the four decisions
+writing it produced.
+
 Step 7 is placed deliberately: a contract is not proven by the implementation it was designed
 around. Writing `hdate` before any UI depends on the resolver list is what surfaces a wrong
 abstraction while it is still cheap to change — and it is the implementation that exercises
@@ -2748,6 +2755,111 @@ same one-site-packages rule as `hdate`.
 
 ---
 
+### 17.2 The release workflow, and what writing it found
+
+D71 settled the shipping shape — `dist/` uncommitted, `zip_release`, `hide_default_branch`, and
+a workflow that *"runs the build and zips from inside `custom_components/almanac/`"* — and then
+nothing built it for nine steps. What built it is `scripts/package.sh` and
+`.github/workflows/release.yml`, and the four decisions below are what D71's sentence left open.
+
+The re-check first, because everything here rests on it. A.12's reading of HACS's two extractors
+was re-verified against `hacs/integration` `main` on 2026-10-06: `async_download_zip_file` is
+still `extractall(self.content.path.local)` with no member rewriting at `base.py:594-598`, the
+member-stripping `"/".join(path.filename.split("/")[1:])` is still in the *other* extractor
+(`download_repository_zip`, the non-`zip_release` path), and `integration.py::localpath` is still
+`f"{config_path}/custom_components/{domain}"`. So the archive's members must be what belongs
+*directly* under `custom_components/almanac/`: `manifest.json` at the zip root.
+
+That is the first thing worth saying plainly, because it is the failure this whole subsection is
+arranged around. A zip with one extra leading segment is a valid zip that HACS extracts without
+complaint, producing `custom_components/almanac/almanac/manifest.json` — a directory Home
+Assistant does not load, with nothing in any log naming the cause. There is no run-time check to
+add. `tests/test_packaging.py` runs the script against a fabricated tree and reads the archive
+back, which is the only place the claim can be tested without a Home Assistant and a HACS.
+
+**D162 — packaging is one script, `scripts/package.sh`, and both the workflow and a developer
+run it.** The workflow's step is `bash scripts/package.sh "$TAG"`; `npm run package` is
+`npm run build` and then the same script with no argument.
+
+*Why not inline the zip in the workflow:* the exclusions and the staging are the part that is
+easy to get subtly wrong, and a workflow is the one place in the repository that cannot be run
+before it is pushed. Inlining would mean the only way to exercise the packaging is to publish a
+release, which is exactly backwards for a step whose failure mode is silent. With the logic in a
+script, the packaging has unit tests and a developer gets byte-identical output to CI's.
+
+**D163 — the script refuses to write an archive with no built bundle in it.** It checks for
+`frontend/dist/almanac-panel.js` and `frontend/dist/almanac-card.js` and exits non-zero naming
+whichever is missing.
+
+*Why a refusal rather than a warning:* this is the last moment where a missing frontend is still
+loud. D131 deliberately makes it quiet at run time — one log line, and the engine, the services,
+the entities and both websocket commands all work — and that is right for a clone, where the
+alternative is an integration that refuses to load because a UI is missing. It is wrong for a
+release: a release that shipped no frontend installs cleanly, reports success in HACS, and is
+then simply not in the sidebar. D131 and D163 are the same judgement applied at two different
+moments, not a contradiction.
+
+*The card is the one the check exists for.* The panel is 111 KB and its absence is obvious. The
+card entry is 1.4 KB — D70's whole point — and 1.4 KB is small enough to be mistaken for a build
+artefact of no consequence by any exclusion rule written in a hurry.
+
+**D164 — a tag stamps `manifest.json`'s version inside the zip, and nowhere else.** The workflow
+passes `github.event.release.tag_name`; the script strips a leading `v` and rewrites the version
+in its staging copy. Git's `manifest.json` is never bumped by CI.
+
+*Why stamp at all:* Home Assistant reads this value, and `frontend_setup.py` builds D69's
+cache-busting query out of it and the bundle's mtime. An install whose manifest said the previous
+version could serve the previous bundle from a browser cache, because the `?m=` half is an mtime
+that extraction chose and the `?v=` half would not have changed.
+
+*Why not commit the bump:* a workflow that commits is a workflow with write access to the branch
+it was triggered from, and the only thing it would buy is that a clone's `manifest.json` agrees
+with the latest tag. **This is a judgement call and the owner may prefer the other side:** the
+cost as built is that a clone always says `0.1.0` however many releases exist, so the version a
+developer sees locally is never the version a user has. The alternative is a release process
+where the bump is a commit the owner makes before tagging — which is more honest and one more
+manual step.
+
+**D165 — the workflow is also `workflow_dispatch`-able, and a manual run attaches the zip to
+the run.** `upload-artifact` with `if-no-files-found: error` runs on both triggers; the
+`gh release upload` step is guarded by `if: github.event_name == 'release'`.
+
+*What this is for:* D71 took on *"no fallback install path if the release workflow breaks"* as a
+named risk, on the grounds that the failure is loud. It is — but "loud" only told the owner that
+there is no new release, and left the recovery as "install a local toolchain and build it by
+hand". A dispatchable run makes the recovery a button, from any branch, with no local Node at
+all. The risk is reduced, not removed: a workflow broken in the build step still produces nothing.
+
+#### What the step refined rather than decided
+
+- **D71's quoted `hacs.json` block is stale and is left alone.** It shows
+  `"homeassistant": "2024.7.0"`, which was the `async_register_static_paths` floor; D81 later
+  made the supported version the current release and derived it from the harness pin, so the real
+  file says `2026.9.4` and `tests/test_config_flow.py` asserts it matches `manifest.json`. The
+  block is not edited, by the same convention that does not renumber decisions — what D71
+  believed is information.
+- **The zip excludes `frontend/src` and `frontend/test`.** Not a decision so much as the only
+  reading of D71 that makes sense: the build output is what runs, and shipping the TypeScript
+  would put a second, divergeable copy of every element inside every installation. The chunk
+  under `frontend/dist/chunks/` ships, and has a test of its own — D129 serves the directory
+  precisely because D70 makes Rollup invent that filename, so an exclusion written against the
+  two bundle constants would ship a card that defines its element and 404s its body.
+- **The zip lands in `build/` at the repository root, which `.gitignore` already covered.** The
+  Python section's bare `build/` rule was written for `setuptools`. It happens to be exactly
+  right here, and is now right for a second reason.
+- **There is still no CI on push or pull request, deliberately.** The checks — both typechecks,
+  `npm test` and the Python suite — run inside the release workflow, before the asset is
+  uploaded, because a published release with a broken asset is worse than one with no asset:
+  HACS shows the version either way and only one of the two fails at download. A
+  push-triggered run is a separate decision with a separate cost (every push installs Home
+  Assistant and its frontend) and nothing in the project needs it yet. *The trade as built:* a
+  flaky test blocks a release, and a release takes a few minutes rather than seconds.
+- **`scripts/` is a new directory at the repository root, and HACS does not care.** A.12: the
+  integration category takes every file under `custom_components/<domain>/` and nothing else, so
+  a root-level directory is invisible to an install either way.
+
+---
+
 ## 18. Python baseline and test harness
 
 **D81 — the supported Home Assistant version is the current release. There is no compatibility
@@ -2932,6 +3044,15 @@ foundation of D67, so it was re-verified directly rather than taken from a resea
 - **`async_register_static_paths` floor** — `WebRTC/custom_components/webrtc/utils.py:113-121`
   gates on `(MAJOR_VERSION, MINOR_VERSION) >= (2024, 7)`, falling back to the singular
   `register_static_path` below that. The singular form is gone from current `dev`.
+
+**Re-verified 2026-10-06**, against `hacs/integration` `main`, while building the release
+workflow (§17.2). The three facts the packaging rests on are unchanged: `extractall` with no
+member rewriting at `base.py:594-598`, the member-stripping `"/".join(...)` still in
+`download_repository_zip` and not in the `zip_release` path, and `integration.py::localpath`
+still `f"{config_path}/custom_components/{domain}"`. `should_try_releases` still requires the ref
+not to be the default branch, which is what makes `hide_default_branch` and `zip_release` a pair
+rather than two independent settings: with both set, a repository with no release has nothing
+installable at all.
 
 One caveat, per Appendix B: the *structure* above — which branch is guarded by what, which
 parameter names exist, which paths have no filter — is what these citations establish. Where a

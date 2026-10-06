@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",
     "test": "node --test \"custom_components/almanac/frontend/test/*.test.ts\"",
-    "clean": "rm -rf custom_components/almanac/frontend/dist"
+    "clean": "rm -rf custom_components/almanac/frontend/dist",
+    "package": "npm run build && bash scripts/package.sh"
   },
   "dependencies": {
     "lit": "3.3.1"
