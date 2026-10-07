@@ -25,9 +25,10 @@ import {
   lookupService,
   mergePayload,
   partitionPayload,
+  samePartitionInput,
   withFieldValue,
 } from "./payload";
-import type { FieldDef } from "./payload";
+import type { FieldDef, Partition } from "./payload";
 import { almanacForm, almanacText, almanacTokens } from "./styles";
 
 type Mapping = Record<string, unknown>;
@@ -92,6 +93,28 @@ export class AlmanacPayload extends LitElement {
     return (this._schema() ?? []).map((field) => field.key);
   }
 
+  private _cache?: { data: Mapping; keys: string[]; part: Partition };
+
+  /**
+   * The partition, rebuilt only when its inputs change. `partitionPayload` returns
+   * fresh objects, and `almanac-mapping` throws away half-typed JSON (and the D153
+   * error) whenever its `value` changes identity, so a re-render caused by a `hass`
+   * tick must hand it the same `other` object.
+   */
+  private _partition(): Partition {
+    const keys = this._keys();
+    const cache = this._cache;
+    if (cache && samePartitionInput(cache.data, cache.keys, this.value, keys)) {
+      return cache.part;
+    }
+    const part = partitionPayload(this.value, keys);
+    this._cache = { data: this.value, keys, part };
+    return part;
+  }
+
+  /** Once the box has had content the `<details>` stays open, even if it is emptied. */
+  private _opened = false;
+
   /**
    * The inner box reports only the "other" keys. Re-report the whole mapping
    * under the host's name, and stop the inner event so the host never sees a
@@ -99,7 +122,7 @@ export class AlmanacPayload extends LitElement {
    */
   private _onOther = (event: CustomEvent<MappingChangedDetail>): void => {
     event.stopPropagation();
-    const { known } = partitionPayload(this.value, this._keys());
+    const { known } = this._partition();
     this._emit(mergePayload(known, event.detail.value));
   };
 
@@ -115,7 +138,10 @@ export class AlmanacPayload extends LitElement {
   protected override render() {
     const schema = this._schema();
     const fields = schema ?? [];
-    const { known, other } = partitionPayload(this.value, this._keys());
+    const { known, other } = this._partition();
+    if (Object.keys(other).length > 0) {
+      this._opened = true;
+    }
     const unloaded =
       this.haReady && this.hass !== undefined && this.serviceName !== "" && schema === undefined;
     const box = html`<almanac-mapping
@@ -150,7 +176,7 @@ export class AlmanacPayload extends LitElement {
         : nothing}
       ${fields.length === 0
         ? box
-        : html`<details ?open=${Object.keys(other).length > 0}>
+        : html`<details ?open=${this._opened}>
             <summary>Other data (JSON)</summary>
             ${box}
           </details>`}

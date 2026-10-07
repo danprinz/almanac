@@ -15,6 +15,7 @@ import {
   lookupService,
   mergePayload,
   partitionPayload,
+  samePartitionInput,
   withFieldValue,
 } from "../src/payload.ts";
 
@@ -128,4 +129,13 @@ test("a selector reporting a different value, or a cleared one, is a change", ()
   assert.equal(fieldIsChange(known, "brightness", undefined), true);
   assert.equal(fieldIsChange(known, "color", "red"), true);
   assert.equal(fieldIsChange({ flash: false }, "flash", true), true);
+});
+
+test("a partition is reused while the mapping reference and key list are unchanged", () => {
+  const data = { a: 1 };
+  assert.equal(samePartitionInput(data, ["a", "b"], data, ["a", "b"]), true);
+  assert.equal(samePartitionInput(data, ["a", "b"], { a: 1 }, ["a", "b"]), false);
+  assert.equal(samePartitionInput(data, ["a"], data, ["a", "b"]), false);
+  assert.equal(samePartitionInput(data, ["a", "b"], data, ["b", "a"]), false);
+  assert.equal(samePartitionInput(undefined, undefined, data, []), false);
 });

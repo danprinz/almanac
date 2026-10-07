@@ -150,3 +150,22 @@ export const fieldIsChange = (
   value: unknown,
 ): boolean =>
   JSON.stringify(withFieldValue(known, key, value)) !== JSON.stringify(known);
+
+/**
+ * Whether a cached partition is still the partition of this input.
+ *
+ * `partitionPayload` returns fresh objects, and `almanac-mapping` discards what
+ * the user is typing whenever its `value` changes identity, so the component
+ * re-partitions only when the stored mapping's reference or the schema's key
+ * list differs from the one the cache was built from.
+ */
+export const samePartitionInput = (
+  prevData: Record<string, unknown> | undefined,
+  prevKeys: readonly string[] | undefined,
+  data: Record<string, unknown>,
+  keys: readonly string[],
+): boolean =>
+  prevData === data &&
+  prevKeys !== undefined &&
+  prevKeys.length === keys.length &&
+  prevKeys.every((key, i) => key === keys[i]);
