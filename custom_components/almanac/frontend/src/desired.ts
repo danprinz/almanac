@@ -23,6 +23,7 @@ import { LitElement, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
 import "./actions";
+import { ICON_ADD, ICON_REMOVE, haButton } from "./buttons";
 import { ACTIONS_CHANGED } from "./actions";
 import type { ActionsChangedDetail } from "./actions";
 import { newDesiredEntity, newDesiredState } from "./draft";
@@ -129,20 +130,22 @@ export class AlmanacDesired extends LitElement {
             <div class="row">
               <h4>${entity.entity_id === "" ? index + 1 : entity.entity_id}</h4>
               <span class="spacer"></span>
-              <button
-                class="tappable danger"
-                title=${entities.length <= 1
-                  ? "A held state needs at least one entity."
-                  : "Stop holding this one"}
-                ?disabled=${this.disabled || entities.length <= 1}
-                @click=${() =>
-                  this._emit({
-                    ...state,
-                    entities: entities.filter((_, at) => at !== index),
-                  })}
-              >
-                Remove
-              </button>
+              ${haButton(
+                {
+                  kind: "danger",
+                  icon: ICON_REMOVE,
+                  label: entities.length <= 1
+                    ? "A held state needs at least one entity"
+                    : "Stop holding this one",
+                  disabled: this.disabled || entities.length <= 1,
+                  onClick: () =>
+                    this._emit({
+                      ...state,
+                      entities: entities.filter((_, at) => at !== index),
+                    }),
+                },
+                "Remove",
+              )}
             </div>
             <almanac-entity-field
               label="Entity"
@@ -186,17 +189,18 @@ export class AlmanacDesired extends LitElement {
         `,
       )}
       <div class="row">
-        <button
-          class="tappable"
-          ?disabled=${this.disabled}
-          @click=${() =>
-            this._emit({
-              ...state,
-              entities: [...entities, newDesiredEntity()],
-            })}
-        >
-          Hold another entity
-        </button>
+        ${haButton(
+          {
+            icon: ICON_ADD,
+            disabled: this.disabled,
+            onClick: () =>
+              this._emit({
+                ...state,
+                entities: [...entities, newDesiredEntity()],
+              }),
+          },
+          "Hold another entity",
+        )}
       </div>
       <almanac-actions
         name="override"
@@ -209,7 +213,7 @@ export class AlmanacDesired extends LitElement {
         .haReady=${this.haReady}
       ></almanac-actions>
       <p class="muted">
-        An override replaces the per-entity work above (D28). It is for the
+        An override replaces the per-entity work above. It is for the
         device whose integration needs one call to say several things at once —
         almanac still knows what state it wants, it just stops being the one to
         set it entity by entity.

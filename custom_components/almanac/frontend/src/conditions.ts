@@ -27,6 +27,8 @@
 import { LitElement, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
+import { ICON_ADD, ICON_REMOVE, haButton } from "./buttons";
+
 import {
   asScalarType,
   newComparison,
@@ -133,30 +135,33 @@ export class AlmanacConditions extends LitElement {
               </div>`,
         )}
         <div class="row">
-          <button
-            class="tappable"
-            ?disabled=${this.disabled}
-            @click=${() => this._add(newComparison())}
-          >
-            Add a check
-          </button>
+          ${haButton(
+            {
+              icon: ICON_ADD,
+              disabled: this.disabled,
+              onClick: () => this._add(newComparison()),
+            },
+            "Add a condition",
+          )}
           ${this.daySets.length === 0
             ? nothing
-            : html`<button
-                class="tappable"
-                ?disabled=${this.disabled}
-                @click=${() =>
-                  this._add(newDaySetCondition(this.daySets[0]!.id))}
-              >
-                Add a day set
-              </button>`}
-          <button
-            class="tappable"
-            ?disabled=${this.disabled}
-            @click=${() => this._add(newGroup())}
-          >
-            Add an either / or
-          </button>
+            : haButton(
+                {
+                  icon: ICON_ADD,
+                  disabled: this.disabled,
+                  onClick: () =>
+                    this._add(newDaySetCondition(this.daySets[0]!.id)),
+                },
+                "Add a day set",
+              )}
+          ${haButton(
+            {
+              icon: ICON_ADD,
+              disabled: this.disabled,
+              onClick: () => this._add(newGroup()),
+            },
+            "Add an either / or",
+          )}
         </div>
       </section>
     `;
@@ -199,20 +204,22 @@ export class AlmanacConditions extends LitElement {
               <div class="row">
                 <h4>${inner + 1}.</h4>
                 <span class="spacer"></span>
-                <button
-                  class="tappable danger"
-                  title=${members.length <= 2
-                    ? "A group needs at least two parts."
-                    : "Remove this part"}
-                  ?disabled=${this.disabled || members.length <= 2}
-                  @click=${() =>
-                    this._write(index, {
-                      ...group,
-                      conditions: members.filter((_, at) => at !== inner),
-                    })}
-                >
-                  Remove
-                </button>
+                ${haButton(
+                  {
+                    kind: "danger",
+                    icon: ICON_REMOVE,
+                    label: members.length <= 2
+                      ? "A group needs at least two parts"
+                      : "Remove this part",
+                    disabled: this.disabled || members.length <= 2,
+                    onClick: () =>
+                      this._write(index, {
+                        ...group,
+                        conditions: members.filter((_, at) => at !== inner),
+                      }),
+                  },
+                  "Remove",
+                )}
               </div>
               ${this._leaf(member, (next) =>
                 this._write(index, {
@@ -226,20 +233,21 @@ export class AlmanacConditions extends LitElement {
           `,
         )}
         <div class="row">
-          <button
-            class="tappable"
-            ?disabled=${this.disabled}
-            @click=${() =>
-              this._write(index, {
-                ...group,
-                conditions: [...members, newComparison()],
-              })}
-          >
-            Add a part
-          </button>
+          ${haButton(
+            {
+              icon: ICON_ADD,
+              disabled: this.disabled,
+              onClick: () =>
+                this._write(index, {
+                  ...group,
+                  conditions: [...members, newComparison()],
+                }),
+            },
+            "Add a part",
+          )}
         </div>
         <p class="muted">
-          A group holds leaves, not groups (§7.1). "All of A, or all of B" is not
+          A group holds single conditions, not other groups. "All of A, or all of B" is not
           something almanac stores; a template sensor of your own, compared here
           like any other entity, is the way to express it.
         </p>
@@ -252,13 +260,15 @@ export class AlmanacConditions extends LitElement {
       <div class="row">
         <h4>${index + 1}. ${kind ?? ""}</h4>
         <span class="spacer"></span>
-        <button
-          class="tappable danger"
-          ?disabled=${this.disabled}
-          @click=${() => this._remove(index)}
-        >
-          Remove
-        </button>
+        ${haButton(
+          {
+            kind: "danger",
+            icon: ICON_REMOVE,
+            disabled: this.disabled,
+            onClick: () => this._remove(index),
+          },
+          "Remove",
+        )}
       </div>
     `;
   }

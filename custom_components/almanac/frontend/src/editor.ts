@@ -44,6 +44,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
 import "./actions";
+import { ICON_ADD, ICON_REMOVE, haButton } from "./buttons";
 import { ACTIONS_CHANGED } from "./actions";
 import type { ActionsChangedDetail } from "./actions";
 import {
@@ -114,6 +115,7 @@ import {
   almanacText,
   almanacTokens,
 } from "./styles";
+import "./segmented";
 import "./time-picker";
 import "./track";
 import { STAGE_SELECTED } from "./track";
@@ -441,9 +443,7 @@ export class AlmanacEditor extends LitElement {
       <div class="shell">
         <header>
           <h2>${this._original ? "Edit schedule" : "New schedule"}</h2>
-          <button class="ghost tappable" @click=${() => this._close(false)}>
-            Close
-          </button>
+          ${haButton({ onClick: () => this._close(false) }, "Close")}
         </header>
         ${this._canWrite
           ? nothing
@@ -526,7 +526,7 @@ export class AlmanacEditor extends LitElement {
                 />
               </label>
               <p class="muted">
-                Offered once, on creation only (D144). It becomes the entity id,
+                Offered once, on creation only. It becomes the entity id,
                 so renaming the schedule later leaves it alone rather than
                 breaking every automation and card that names it.
               </p>
@@ -566,24 +566,16 @@ export class AlmanacEditor extends LitElement {
           : nothing}
         ${switchable
           ? html`
-              <div class="row">
-                <button
-                  class="chip tappable ${kind === RECUR_WEEKDAYS ? "selected" : ""}"
-                  aria-pressed=${kind === RECUR_WEEKDAYS}
-                  ?disabled=${!this._canWrite}
-                  @click=${() => this._setRecurrence(RECUR_WEEKDAYS)}
-                >
-                  Days of the week
-                </button>
-                <button
-                  class="chip tappable ${kind === RECUR_DAY_SET ? "selected" : ""}"
-                  aria-pressed=${kind === RECUR_DAY_SET}
-                  ?disabled=${!this._canWrite}
-                  @click=${() => this._setRecurrence(RECUR_DAY_SET)}
-                >
-                  Day set
-                </button>
-              </div>
+              <almanac-segmented
+                label="Which days"
+                .options=${[
+                  { id: RECUR_WEEKDAYS, label: "Days of the week" },
+                  { id: RECUR_DAY_SET, label: "Day set" },
+                ]}
+                .selected=${kind ?? ""}
+                ?disabled=${!this._canWrite}
+                .onSelect=${(id: string) => this._setRecurrence(id)}
+              ></almanac-segmented>
             `
           : nothing}
         ${kind === RECUR_WEEKDAYS ? this._weekdays(recurrence!) : nothing}
@@ -617,17 +609,18 @@ export class AlmanacEditor extends LitElement {
           // refuse the save, and "no days" is not a state worth representing
           // on the way to a state the schema rejects.
           const last = on && chosen.size === 1;
-          return html`
-            <button
-              class="chip tappable ${on ? "selected" : ""}"
-              aria-pressed=${on}
-              ?disabled=${!this._canWrite || last}
-              title=${last ? "A schedule needs at least one day." : ""}
-              @click=${() => this._toggleWeekday(day, chosen)}
-            >
-              ${WEEKDAY_LABELS[day]}
-            </button>
-          `;
+          const name = WEEKDAY_LABELS[day] ?? day;
+          return haButton(
+            {
+              pressed: on,
+              disabled: !this._canWrite || last,
+              label: last
+                ? `${name}: a schedule needs at least one day`
+                : name,
+              onClick: () => this._toggleWeekday(day, chosen),
+            },
+            name,
+          );
         })}
       </div>
     `;
@@ -718,25 +711,27 @@ export class AlmanacEditor extends LitElement {
           ${this._rules.map((rule, index) => this._ruleRow(rule, index))}
         </ul>
         <div class="row">
-          <button
-            class="ghost tappable"
-            ?disabled=${!this._canWrite}
-            @click=${() => this._addRule(clockAtRule())}
-          >
-            Add a moment
-          </button>
-          <button
-            class="ghost tappable"
-            ?disabled=${!this._canWrite}
-            @click=${() =>
-              this._addRule({
-                kind: "during",
-                start_anchor: { kind: "clock", at: DEFAULT_CLOCK_TIME },
-                end: { kind: "duration", duration: DEFAULT_DURATION },
-              })}
-          >
-            Add an interval
-          </button>
+          ${haButton(
+            {
+              icon: ICON_ADD,
+              disabled: !this._canWrite,
+              onClick: () => this._addRule(clockAtRule()),
+            },
+            "Add a moment",
+          )}
+          ${haButton(
+            {
+              icon: ICON_ADD,
+              disabled: !this._canWrite,
+              onClick: () =>
+                this._addRule({
+                  kind: "during",
+                  start_anchor: { kind: "clock", at: DEFAULT_CLOCK_TIME },
+                  end: { kind: "duration", duration: DEFAULT_DURATION },
+                }),
+            },
+            "Add an interval",
+          )}
         </div>
       </section>
     `;
@@ -758,14 +753,16 @@ export class AlmanacEditor extends LitElement {
             ? html`<span class="pill disarmed">off</span>`
             : nothing}
         </button>
-        <button
-          class="ghost tappable"
-          ?disabled=${!this._canWrite}
-          title="Remove this rule"
-          @click=${() => this._removeRule(index)}
-        >
-          Remove
-        </button>
+        ${haButton(
+          {
+            kind: "danger",
+            icon: ICON_REMOVE,
+            disabled: !this._canWrite,
+            label: "Remove this rule",
+            onClick: () => this._removeRule(index),
+          },
+          "Remove",
+        )}
       </li>
     `;
   }
@@ -832,7 +829,7 @@ export class AlmanacEditor extends LitElement {
           <span>Armed</span>
         </label>
         <p class="muted">
-          A disarmed rule stays on the shape above, drawn hollow (D77). It is
+          A disarmed rule stays on the shape above, drawn hollow. It is
           still what the schedule says; it just does not fire.
         </p>
         ${rule.kind === "at"
@@ -874,7 +871,7 @@ export class AlmanacEditor extends LitElement {
               <p class="muted">
                 Unlatched, the conditions govern the exit and the interval ends
                 when they stop holding. Latched, it runs to the end above
-                regardless (D4) — "once the lights are on for the evening, leave
+                regardless — "once the lights are on for the evening, leave
                 them on even if the motion sensor gives up".
               </p>
               ${this._actions("enter", "When it starts", rule.enter_actions ?? [])}
@@ -988,7 +985,7 @@ export class AlmanacEditor extends LitElement {
                 <span class="muted">minutes</span>
               </label>
               <p class="muted">
-                A deadline is required when it waits (D26). Without one the wait
+                A deadline is required when it waits. Without one the wait
                 is unbounded, which is what today's "re-evaluate when conditions
                 change" silently does.
               </p>
@@ -1179,8 +1176,8 @@ export class AlmanacEditor extends LitElement {
                 <span class="muted">minutes</span>
               </label>
               <p class="muted">
-                A duration is not an anchor (D73), so this end gets no rail of its
-                own — it is drawn as a second stage on the start's rail.
+                A duration has no time of its own, so this end is drawn as a
+                second stage on the start's line.
               </p>
             `
           : nothing}
@@ -1321,7 +1318,7 @@ export class AlmanacEditor extends LitElement {
                 />
               </label>
               <p class="muted">
-                The day named is included (D96): "finish on 31 December" means
+                The day named is included: "finish on 31 December" means
                 through the 31st, not up to it.
               </p>
             `
@@ -1356,7 +1353,7 @@ export class AlmanacEditor extends LitElement {
           : nothing}
         ${then.kind === "disable" || then.kind === "delete"
           ? html`<p class="muted">
-              It waits for any interval still being held (D47). A schedule that
+              It waits for any interval still being held. A schedule that
               switched itself off mid-interval would leave the world in a state
               it created and nothing left to undo it.
             </p>`
@@ -1566,24 +1563,25 @@ export class AlmanacEditor extends LitElement {
     const blocked = !this._canWrite || this._saving || found.length > 0 || !dirty;
     return html`
       <footer>
-        <button
-          class="primary tappable"
-          ?disabled=${blocked}
-          @click=${() => void this._save()}
-        >
-          ${this._saving ? "Saving…" : "Save"}
-        </button>
-        <button class="ghost tappable" @click=${() => this._close(false)}>
-          Cancel
-        </button>
+        ${haButton(
+          {
+            kind: "primary",
+            disabled: blocked,
+            onClick: () => void this._save(),
+          },
+          this._saving ? "Saving…" : "Save",
+        )}
+        ${haButton({ onClick: () => this._close(false) }, "Cancel")}
         ${this._original
-          ? html`<button
-              class="danger tappable"
-              ?disabled=${!this._canWrite || this._saving}
-              @click=${() => void this._delete()}
-            >
-              Delete
-            </button>`
+          ? haButton(
+              {
+                kind: "danger",
+                icon: ICON_REMOVE,
+                disabled: !this._canWrite || this._saving,
+                onClick: () => void this._delete(),
+              },
+              "Delete",
+            )
           : nothing}
         ${dirty || this._original === null
           ? nothing

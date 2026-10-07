@@ -643,3 +643,96 @@ def test_the_time_picker_shows_the_caption_the_editor_gives_it() -> None:
     assert "label=${label}" in body and "aria-label" not in body
     picker = (SRC / "time-picker.ts").read_text(encoding="utf-8")
     assert "public label" in picker and "${this.label}" in picker
+
+
+_VISIBLE_ALLOWED_BUTTONS = {"editor.ts": 2}  # the footprint pill and the rule-row pick
+
+
+def _template_text(source: str) -> list[str]:
+    """The static text of every `html` template literal, `${...}` removed.
+
+    A bracket-depth walk, not a lazy regex: a template nests other templates
+    inside `${...}` (a `.map(... html`...`)`), and a regex ends the outer one at
+    the first closing backtick. Comments are not inside a template literal, so
+    they are exempt without being mentioned.
+    """
+    out: list[str] = []
+
+    def literal(i: int) -> int:
+        """`i` is just past an opening backtick; returns the index past the close."""
+        parts: list[str] = []
+        while i < len(source):
+            ch = source[i]
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == "`":
+                out.append("".join(parts))
+                return i + 1
+            if source.startswith("${", i):
+                parts.append(" ")
+                i = expression(i + 2)
+                continue
+            parts.append(ch)
+            i += 1
+        return i
+
+    def expression(i: int) -> int:
+        """`i` is just past `${`; returns the index past the matching `}`."""
+        depth = 1
+        while i < len(source) and depth:
+            ch = source[i]
+            if ch == "`":
+                i = literal(i + 1)
+                continue
+            if ch in "\"'":
+                j = i + 1
+                while j < len(source) and source[j] != ch:
+                    j += 2 if source[j] == "\\" else 1
+                i = j + 1
+                continue
+            depth += ch == "{"
+            depth -= ch == "}"
+            i += 1
+        return i
+
+    i = 0
+    while True:
+        i = source.find("html`", i)
+        if i < 0:
+            return out
+        i = literal(i + 5)
+
+
+def test_the_template_walk_handles_nested_templates() -> None:
+    text = _template_text("html`a ${xs.map((x) => html`b D12 ${x}`)} c §`")
+    assert any("D12" in t for t in text)
+    assert any("§" in t for t in text)
+
+
+def test_no_internal_identifier_is_shown_to_a_user() -> None:
+    offenders = []
+    total = 0
+    for path in sorted(SRC.glob("*.ts")):
+        for text in _template_text(path.read_text(encoding="utf-8")):
+            total += 1
+            if re.search(r"\bD\d+\b|§", text):
+                hit = re.search(r"\bD\d+\b|§", text)
+                offenders.append(f"{path.name}: ...{text[max(0, hit.start() - 40) : hit.end() + 20]!r}")
+    assert total > 50
+    assert not offenders, offenders
+
+
+def test_the_editor_surfaces_use_ha_button() -> None:
+    for name in ("editor.ts", "actions.ts", "conditions.ts", "desired.ts", "mapping.ts", "panel.ts"):
+        source = (SRC / name).read_text(encoding="utf-8")
+        found = len(re.findall(r"<button\b", source))
+        assert found <= _VISIBLE_ALLOWED_BUTTONS.get(name, 0), f"{name}: {found} <button>"
+
+
+def test_ha_button_is_spelled_with_the_attributes_the_element_declares() -> None:
+    """Verified against src/components/ha-button.ts at frontend 20260826.7:
+    size is xs|s|m|l|xl (not `small`), appearance accent|filled|outlined|plain."""
+    for path in sorted(SRC.glob("*.ts")):
+        source = path.read_text(encoding="utf-8")
+        assert 'size="small"' not in source, path.name

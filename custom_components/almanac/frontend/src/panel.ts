@@ -23,6 +23,7 @@
 import { LitElement, html, nothing, css } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
+import { haButton } from "./buttons";
 import { dayOffset, fetchSchedules, fetchTimeline, isNotLoaded } from "./api";
 import {
   armedStages,
@@ -41,6 +42,7 @@ import type { HomeAssistant } from "./ha";
 import { armedRules, buildTrack } from "./rails";
 import type { StoredSchedule } from "./stored";
 import { almanacHitTarget, almanacText, almanacTokens } from "./styles";
+import "./segmented";
 import "./track";
 import type {
   WireOccurrence,
@@ -279,28 +281,24 @@ export class AlmanacPanel extends LitElement {
       <div class="shell">
         <header>
           <h1>almanac</h1>
-          <div class="ranges">
-            ${RANGES.map(
-              (range) => html`
-                <button
-                  class="range tappable ${range === this._range
-                    ? "selected"
-                    : ""}"
-                  @click=${() => this._pickRange(range)}
-                  aria-pressed=${range === this._range}
-                >
-                  ${range.label}
-                </button>
-              `,
-            )}
-          </div>
-          <button
-            class="range tappable"
-            ?disabled=${this._editing !== undefined}
-            @click=${() => this._edit(null)}
-          >
-            New schedule
-          </button>
+          <almanac-segmented
+            label="How far to look"
+            .options=${RANGES.map((range) => ({
+              id: range.label,
+              label: range.label,
+            }))}
+            .selected=${this._range.label}
+            .onSelect=${(id: string) =>
+              this._pickRange(RANGES.find((range) => range.label === id)!)}
+          ></almanac-segmented>
+          ${haButton(
+            {
+              kind: "primary",
+              disabled: this._editing !== undefined,
+              onClick: () => this._edit(null),
+            },
+            "New schedule",
+          )}
           <span class="now mono"
             >now ${clockTime(this.hass, this._at.toISOString())}</span
           >
@@ -409,12 +407,7 @@ export class AlmanacPanel extends LitElement {
               >`
             : html`<span class="muted">nothing ahead in this window</span>`}
           ${stored
-            ? html`<button
-                class="range tappable"
-                @click=${() => this._edit(stored)}
-              >
-                Edit
-              </button>`
+            ? haButton({ onClick: () => this._edit(stored) }, "Edit")
             : nothing}
         </div>
 
@@ -554,23 +547,6 @@ export class AlmanacPanel extends LitElement {
         font-size: 1.25rem;
         margin: 0;
         flex: 1 1 auto;
-      }
-
-      .ranges {
-        display: flex;
-        gap: var(--almanac-gap-xs);
-      }
-
-      .range {
-        padding: var(--almanac-gap-xs) var(--almanac-gap-sm);
-        border-radius: 12px;
-        border: 1px solid var(--almanac-rail);
-        min-height: 36px;
-      }
-
-      .range.selected {
-        border-color: var(--almanac-known);
-        color: var(--almanac-known);
       }
 
       .lanes {

@@ -114,7 +114,7 @@ export class AlmanacMapping extends LitElement {
       ${this._error === null && looksLikeATemplate(this.value)
         ? html`<p class="muted">
             This payload contains <span class="mono">{{ }}</span>, which almanac
-            sends as literal text (D58). It is not rendered as a template.
+            sends as literal text. It is not rendered as a template.
           </p>`
         : nothing}
       ${this.hint === "" ? nothing : html`<p class="muted">${this.hint}</p>`}

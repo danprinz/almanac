@@ -208,7 +208,7 @@ export class AlmanacTimePicker extends LitElement {
       <div class="row">
         ${clockChips(this.usedTimes).map(
           (chip) => html`<ha-button
-            size="small"
+            size="s"
             appearance=${chip === at ? "filled" : "outlined"}
             ?disabled=${this.disabled}
             @click=${() => this._setClock(chip)}
@@ -257,7 +257,7 @@ export class AlmanacTimePicker extends LitElement {
       <div class="row">
         ${common.map(
           (offering) => html`<ha-button
-            size="small"
+            size="s"
             appearance=${offering.key === anchor.key ? "filled" : "outlined"}
             ?disabled=${this.disabled}
             @click=${() => this._pickOffering(anchor, offering)}
@@ -266,7 +266,7 @@ export class AlmanacTimePicker extends LitElement {
         )}
         ${more.length > 0
           ? html`<ha-button
-              size="small"
+              size="s"
               appearance="plain"
               aria-expanded=${this._more ? "true" : "false"}
               ?disabled=${this.disabled}
@@ -294,7 +294,7 @@ export class AlmanacTimePicker extends LitElement {
                 ? html`<span class="muted">Nothing matches.</span>`
                 : found.map(
                     (offering) => html`<ha-button
-                      size="small"
+                      size="s"
                       appearance="plain"
                       ?disabled=${this.disabled}
                       @mousedown=${(event: Event) => event.preventDefault()}
@@ -393,7 +393,7 @@ export class AlmanacTimePicker extends LitElement {
           : html`
               <ha-button
                 class="step"
-                size="small"
+                size="s"
                 appearance="outlined"
                 aria-label="Closer to the event"
                 ?disabled=${this.disabled}
@@ -407,7 +407,7 @@ export class AlmanacTimePicker extends LitElement {
               <span class="mono amount">${minutes} min</span>
               <ha-button
                 class="step"
-                size="small"
+                size="s"
                 appearance="outlined"
                 aria-label="Further from the event"
                 ?disabled=${this.disabled}
@@ -584,7 +584,7 @@ export class AlmanacTimePicker extends LitElement {
         font-size: 2.5rem;
       }
       ha-button {
-        min-height: 44px;
+        --ha-button-height: 44px;
         min-width: 44px;
       }
       .offset {

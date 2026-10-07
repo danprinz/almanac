@@ -38,7 +38,7 @@ export class AlmanacSegmented extends LitElement {
     return html`<div role="group" aria-label=${this.label}>
       ${this.options.map(
         (option) => html`<ha-button
-          size="small"
+          size="s"
           appearance=${option.id === this.selected ? "filled" : "outlined"}
           aria-pressed=${option.id === this.selected ? "true" : "false"}
           ?disabled=${this.disabled}
@@ -56,6 +56,9 @@ export class AlmanacSegmented extends LitElement {
   static override styles = [
     almanacTokens,
     css`
+      ha-button {
+        --ha-button-height: 44px;
+      }
       div {
         display: flex;
         flex-wrap: wrap;

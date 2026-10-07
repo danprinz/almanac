@@ -24,6 +24,8 @@
 import { LitElement, html, nothing } from "lit";
 import { customElement, property } from "lit/decorators.js";
 
+import { ICON_ADD, ICON_REMOVE, haButton } from "./buttons";
+
 import {
   DEFAULT_SCRIPT_TIMEOUT,
   newScriptAction,
@@ -124,20 +126,22 @@ export class AlmanacActions extends LitElement {
           : nothing}
         ${this.actions.map((action, index) => this._action(action, index))}
         <div class="row">
-          <button
-            class="tappable"
-            ?disabled=${this.disabled}
-            @click=${() => this._add(newServiceAction())}
-          >
-            Add a service call
-          </button>
-          <button
-            class="tappable"
-            ?disabled=${this.disabled}
-            @click=${() => this._add(newScriptAction())}
-          >
-            Add a script
-          </button>
+          ${haButton(
+            {
+              icon: ICON_ADD,
+              disabled: this.disabled,
+              onClick: () => this._add(newServiceAction()),
+            },
+            "Add a service call",
+          )}
+          ${haButton(
+            {
+              icon: ICON_ADD,
+              disabled: this.disabled,
+              onClick: () => this._add(newScriptAction()),
+            },
+            "Add a script",
+          )}
         </div>
       </section>
     `;
@@ -153,31 +157,31 @@ export class AlmanacActions extends LitElement {
             ${action.kind === "service" ? "Call a service" : "Run a script"}
           </h4>
           <span class="spacer"></span>
-          <button
-            class="tappable"
-            title="Run this one earlier"
-            aria-label="Move up"
-            ?disabled=${this.disabled || index === 0}
-            @click=${() => this._move(index, -1)}
-          >
-            ↑
-          </button>
-          <button
-            class="tappable"
-            title="Run this one later"
-            aria-label="Move down"
-            ?disabled=${this.disabled || index === last}
-            @click=${() => this._move(index, 1)}
-          >
-            ↓
-          </button>
-          <button
-            class="tappable danger"
-            ?disabled=${this.disabled}
-            @click=${() => this._remove(index)}
-          >
-            Remove
-          </button>
+          ${haButton(
+            {
+              label: "Run this one earlier",
+              disabled: this.disabled || index === 0,
+              onClick: () => this._move(index, -1),
+            },
+            "↑",
+          )}
+          ${haButton(
+            {
+              label: "Run this one later",
+              disabled: this.disabled || index === last,
+              onClick: () => this._move(index, 1),
+            },
+            "↓",
+          )}
+          ${haButton(
+            {
+              kind: "danger",
+              icon: ICON_REMOVE,
+              disabled: this.disabled,
+              onClick: () => this._remove(index),
+            },
+            "Remove",
+          )}
         </div>
         ${action.kind === "service"
           ? this._service(action, index)
@@ -305,7 +309,7 @@ export class AlmanacActions extends LitElement {
               <span class="muted">seconds</span>
             </label>
             <p class="muted">
-              A timeout is required when almanac waits (D30): an unbounded wait
+              A timeout is required when almanac waits: an unbounded wait
               holds the engine inside this one rule for as long as the script
               takes. The timeout is what it gives up after, not what it kills.
             </p>
