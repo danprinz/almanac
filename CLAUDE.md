@@ -7,7 +7,7 @@ A replacement for the Home Assistant scheduler stack (`nielsfaber/scheduler-comp
 `scheduler-card`): a schedule engine and UI whose rule model is **enumerable**, so that
 "what will happen between now and Friday night" is a view you can actually render.
 
-## Status — 2026-10-06
+## Status — 2026-10-07
 
 **Build steps 1–9 of `DESIGN.md` §15 are written, tested and pushed — step 9 is finished.** Schema and storage, the
 resolver contract with `clock` / `entity_time` / `sun`, the rule engine, conditions and day sets,
@@ -24,13 +24,13 @@ at step 9e the four builders that make it a whole editor: actions, conditions, d
 the schedule's own completion — and at step 9f the links between the three surfaces: almanac's own
 region inside core's more-info dialog, the footprint's names turned into things that open, and
 `/almanac?edit=<id>` from a card row.
-637 Python tests pass, plus 78 TypeScript ones (`npm test`); among them
+657 Python tests pass, plus 144 TypeScript ones (`npm test`); among them
 `tests/test_flagship.py` and
 `tests/test_anchor_span_day_sets.py`, which enumerate the brief's flagship scenario end to end
 twice over — once from `hdate`'s prebuilt Shabbat and once from a span the user wrote. Remote
 is `git@github.com:danprinz/almanac.git`.
 
-Decisions now run D1–D165. Each build step closes the gaps it found in its own subsection
+Decisions now run D1–D171. Each build step closes the gaps it found in its own subsection
 (`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2, §16.2, §16.3, §16.4, §16.5,
 §16.6, §17.1, §17.2) rather than editing the decision it refines. **D149 is the one exception and it is marked
 as such:** step 9e lifted it, so its entry says so in place rather than being deleted — the
@@ -143,7 +143,21 @@ widened the second one: the no-run-time-import rule now covers `draft.ts` as wel
 `rails.ts`, because both are executed by `node --test` and a plain import in either fails
 nothing but the unit tests. Step 9e added `form.ts` under a stronger version of the same rule —
 it has no import at all, type-only included — and that is checked separately, because the
-non-empty assertion guarding against a dead regex would fail on it for the opposite reason.
+non-empty assertion guarding against a dead regex would fail on it for the opposite reason. The
+editor UX pass added `payload.ts`, `pickers.ts`, `timepick.ts`, `ha-elements.ts` and
+`advanced.ts` under that same stronger rule.
+
+**The editor UX pass (§16.7) changed how the editor looks and what it assumes, and D152's idea
+below no longer stands as written.** The editor loads Home Assistant's own pickers with a
+plain-input fallback and a one-line notice when they do not load (D167). A payload is now a form
+built from the target service's schema plus an always-present JSON box for every key the schema
+does not name, merged on save (D166 — it supersedes D152, which said a payload is JSON text;
+the lossless round trip D152 wanted is kept). The time picker is tiles, common chips and a
+stepper over signed seconds (D168). Plain language and `ha-button` everywhere in the editor
+(D169). An *Advanced* section that opens itself when anything in it is set, per section, and
+stays open once it has (D170). `almanac/anchor/preview` backs the "next:" lines, and it takes
+`at` from the caller instead of reading a clock, because D64 forbids the handler from sampling
+one (D171).
 
 **Step 9e's one idea is the thing to know about the editor, and it is a sentence long: a
 payload is JSON text (D152).** `data`, `fields` and `attributes` are edited in a `<textarea>` and

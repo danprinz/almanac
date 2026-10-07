@@ -2281,7 +2281,7 @@ condition tree", but "what does a payload look like on screen". D149's correctne
 never about actions in general. It was about `data`.
 
 **D152 — `data`, `fields` and `attributes` are edited as JSON text, never as key/value widgets.**
-One `<textarea>` per payload, monospaced, holding whatever the stored mapping serialises to.
+**Superseded by D166 (§16.7); the lossless round trip it was written to protect is kept.** One `<textarea>` per payload, monospaced, holding whatever the stored mapping serialises to.
 
 *Why this is the decision that lifts D149:* `_service_data` validates these as `vol.Schema(dict)`
 and stops, deliberately, because the valid key set belongs to the target service and almanac does
@@ -2342,7 +2342,9 @@ operator to every condition in a timeslot, which is why "weekday AND (hot OR som
 be expressed in it at all. One level of grouping is what that sentence needs, and §7.1 already
 refused the second level.
 
-**D156 — the service name is a text field and the entity datalists are uncapped.** No service
+**D156 — the service name is a text field and the entity datalists are uncapped.** *Refined by
+D166 (§16.7): the entity fields now use core's pickers, and the service field suggests loaded
+services without ever filtering out what the user typed.* No service
 picker; a `<datalist>` of every entity in the instance for the entity fields, and one of every
 `script.` entity for the script field.
 
@@ -2544,6 +2546,128 @@ with a fresh object risks a fetch loop. It is written against the same primitive
 and the dialog's content differs from the card's anyway.
 
 **D146 gained nothing at 9f.** Nothing in this step produces a value the schema could refuse.
+
+### 16.7 The editor UX pass
+
+The editor worked and was unpleasant to use: raw JSON for every payload, bare text boxes for
+entities, a time field that could not say "45 minutes before candle lighting", internal
+identifiers on screen. The spec is `docs/superpowers/specs/2026-10-07-editor-ux-design.md`; this
+section records the decisions and what building them found. New modules, all under
+`frontend/src/`: `ha-elements.ts`, `entity-field.ts`, `payload.ts`, `payload-field.ts`,
+`pickers.ts`, `service-field.ts`, `timepick.ts`, `time-picker.ts`, `segmented.ts`, `buttons.ts`,
+`advanced.ts`. The pure ones (`payload.ts`, `pickers.ts`, `timepick.ts`, `ha-elements.ts`,
+`advanced.ts`) fall under D132's no-run-time-import rule.
+
+**D166 — a payload is a form built from the service's schema plus a JSON box for the rest.**
+Supersedes D152 (a payload is JSON text) and refines D156 (no service picker). The form comes
+from `hass.services[domain][service].fields`; every stored key the schema does not name goes to an
+always-present JSON box; the saved mapping is the two merged, form key winning on a clash.
+
+*Why:* D152 was right that a widget is an editor for the keys it knows. Its remedy, no widget at
+all, made the common case (`light.turn_on` and brightness) as hard as the rare one. The always-present
+box restores D152's property, because `merge(partition(x))` is the identity for every split of every
+key, which a test asserts, so the lossless round trip D140's diff depends on is kept. A service
+that is not loaded has no schema, so everything is "other" and the data stays as JSON, which is D17
+(a schedule may name an unloaded integration's service) honoured.
+
+*What building it found:* **the "other" mapping must keep a stable object reference across `hass`
+updates.** `hass` changes on nearly every state change; a partition recomputed on each render handed
+the JSON box a new object each time, and the box then discarded half-typed text. The partition is
+cached and reused while the mapping reference and the schema's key list are unchanged
+(`samePartitionInput`). This is the one place the editor must not derive state fresh on render.
+
+**D167 — HA's lazy elements are loaded through a private API, with a budget and a fallback.**
+`ha-elements.ts` loads `ha-selector`, `ha-entity-picker` and `ha-service-picker` by the recipe
+the frontend itself uses. The result is a boolean, with a 4 s budget; a failed load (API gone,
+rejected, never settled, or finished without defining the elements) shows the plain inputs and
+one line, "Home Assistant's pickers didn't load — basic inputs shown." The `loading` state shows
+the plain inputs silently.
+
+*Why a private API is accepted:* a panel opened by URL is a cold load, and nothing has pulled the
+pickers in. The alternatives, shipping our own pickers or requiring a dashboard visit first, are
+worse than a dependency we have a fallback for. *Cost:* a frontend release can rename the recipe;
+the fallback is the whole mitigation, and it fails to something usable, not to a blank form.
+
+**D168 — the time picker: tiles, common chips, and a stepper over signed seconds.** Reverses the
+"one list" comment in `_anchorFields`. Tiles come from the resolver catalogue (a clock, one per
+resolver domain with an anchor, and an entity); a new domain gets a tile for free. The offset is
+still signed seconds (D7), and `at` is exactly zero, so stepping down to nothing becomes `at` and
+never crosses to the other side. "Common" chips are a frontend constant, `COMMON_KEYS`, because
+which events people reach for is a fact about people, not a property of a resolver, and a catalogue
+field would be a wire change for a layout choice. A domain with no curated list shows its first
+five in catalogue order; the selected offering is always visible.
+
+**D169 — plain language, and `ha-button`.** No decision number or section sign appears on screen.
+Every `<button>` in the editor, the builders, the mapping box and the panel header is an
+`ha-button`; the footprint pill and the rule-row pick button stay native, because both are
+row-sized inline controls. The card and dialog surfaces are out of scope. Enforced by
+`test_no_internal_identifier_is_shown_to_a_user` and `test_the_editor_surfaces_use_ha_button`.
+
+*What building it found:* **`ha-button`'s `size` takes only `xs`, `s`, `m`, `l` or `xl`**; an
+arbitrary value is ignored without a warning. A 44 px touch height therefore cannot be asked for
+by attribute and needs `--ha-button-height` set in CSS. It is set, but it has not been checked on a
+phone (manual list below).
+
+**D170 — Advanced.** Visible by default: name, days, the shape of the day, what to do, and the
+*Only when* conditions. Under *Advanced*: policy, on-exit behaviour, completion, the date window,
+and anything else a first schedule does not need. The defaults in `advanced.ts` are the schema's,
+and a test fails if a field named there is renamed in `schema.py` or `stored.ts`.
+
+*The auto-open rule, and what building it found:* a section opens itself if any of its fields
+differs from its default, so nothing hidden is silently set. **It opens per section** (the
+schedule's, and one per rule), because a single shared flag could hide a set field in another
+section. **It is sticky:** a section that opened because a field was set stays open after the field
+is reverted; closing it under the user's hands mid-edit was the bug the first version had. The
+user's own toggle wins over the default, never over a set field. Toggles are keyed by rule
+position, and a re-load starts from empty toggles.
+
+**D171 — `almanac/anchor/preview` takes `at`; the handler reads no clock.** The command takes an
+anchor and returns its next few instants, built on `async_resolve_anchor_on_date`, and answers
+`{at, instants, unresolved}` (`WireAnchorPreview` in `wire.ts`, covered by the wire-contract test).
+`at` is a required field, echoed back so a caller that has moved on can drop a slow answer.
+
+*Why:* D64 says nothing below the top-level tick reads a clock, and that is what makes the dry run
+and the timeline the same code as the live engine. A handler that sampled `now` would be the first
+exception, and `tests/test_design_constraints.py`'s sweep would have flagged it. The editor reads
+the clock once, when it opens (`connectedCallback`), the one frontend site that does, and passes
+it down. **This corrects the spec's §6.1**, which said `now` would be read at the handler.
+The picker debounces its preview requests (300 ms) and discards any answer that is not the most
+recent request's.
+
+**Deferred, known:** a re-attached picker never reschedules its preview; service suggestions have
+no arrow-key navigation or combobox ARIA; a late `ha-elements` load after the 4 s budget stays
+failed until the next mount; disabled reasons on the new buttons are `aria-label` only.
+
+**Manual check, on a real Home Assistant.** The suites cannot see any of this. Install with
+`npm run package`, unpack `build/almanac.zip` into `<config>/custom_components/almanac/`, restart,
+then:
+
+1. Open `/almanac` **directly** (a new tab, no dashboard visited first), open a schedule. Entity,
+   script and target fields show core's pickers and no "didn't load" line.
+2. Block `*automation*` chunk requests in devtools, reload, open a schedule. Plain inputs show with
+   the one-line notice. Nothing throws.
+3. Add a `light.turn_on` action: brightness and colour show as controls. Type `foo.bar` as the
+   service: the box says it is not loaded and the data stays JSON. Save, reopen: both survive.
+4. Add a script action whose script has fields: they render as controls; an extra key typed in the
+   JSON box survives a change to a field.
+5. Pick *Jewish times*, *Candle lighting*, *before*, step to 45 min: the summary reads "45 min
+   before candle lighting" with a "next:" date, and the stored offset is `-2700`.
+6. Pick *at*: the stepper disappears and the offset stores as `0`.
+7. A schedule with a grace period set opens with Advanced already open; a new one opens shut.
+   Revert the grace period: the section stays open.
+8. No "D" number or section sign appears anywhere on screen.
+9. `ha-selector` must not emit `value-changed` on mount: open a schedule and change nothing, then
+   confirm the editor does not treat the schedule as edited (no unsaved-changes state).
+10. Clear an entity in a picker and save: the cleared value round-trips (a required selector
+    must not refuse to clear).
+11. Check the entity-field layout: label, picker and any remove control line up, narrow and wide.
+12. Mouse-pick a service from the suggestions: it commits, not only on Enter or blur.
+13. Time picker: the stepper steps, the mouse wheel steps, typed digits are clamped, and the
+    "next:" line follows the change after a short pause and never shows a stale answer.
+14. `ha-button` forwards `aria-label` and `aria-pressed`, swallows a click while disabled, and its
+    height is a comfortable 44 px on a phone.
+
+Report any failure by the task that built it; do not patch from the checklist.
 
 ---
 
