@@ -26,12 +26,18 @@
 
 import type { ScheduleCreate, ScheduleUpdate } from "./draft";
 import type { HomeAssistant } from "./ha";
-import type { StoredSchedule } from "./stored";
-import type { WireDryRun, WireResolverCatalogue, WireTimeline } from "./wire";
+import type { StoredAnchor, StoredSchedule } from "./stored";
+import type {
+  WireAnchorPreview,
+  WireDryRun,
+  WireResolverCatalogue,
+  WireTimeline,
+} from "./wire";
 
 export const WS_TIMELINE = "almanac/timeline";
 export const WS_DRY_RUN = "almanac/dry_run";
 export const WS_RESOLVERS = "almanac/resolvers";
+export const WS_ANCHOR_PREVIEW = "almanac/anchor/preview";
 export const WS_SCHEDULE_LIST = "almanac/schedule/list";
 export const WS_SCHEDULE_CREATE = "almanac/schedule/create";
 export const WS_SCHEDULE_UPDATE = "almanac/schedule/update";
@@ -136,6 +142,25 @@ export const fetchResolvers = (
 ): Promise<WireResolverCatalogue> =>
   hass.connection.sendMessagePromise<WireResolverCatalogue>({
     type: WS_RESOLVERS,
+  });
+
+/**
+ * D171's "next: ..." line. `at` is an ISO instant with an offset, supplied by the
+ * caller from the browser's clock for D64's reason (like every other fetcher here,
+ * and required: the backend refuses a missing or naive one), and is echoed back so
+ * the caller can discard an answer for an anchor it has since replaced.
+ */
+export const fetchAnchorPreview = (
+  hass: HomeAssistant,
+  anchor: StoredAnchor,
+  at: string,
+  count = 3,
+): Promise<WireAnchorPreview> =>
+  hass.connection.sendMessagePromise<WireAnchorPreview>({
+    type: WS_ANCHOR_PREVIEW,
+    anchor,
+    at,
+    count,
   });
 
 /**

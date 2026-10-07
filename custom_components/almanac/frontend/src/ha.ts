@@ -38,8 +38,31 @@ export interface HassUser {
   is_admin: boolean;
 }
 
+/** One entry of a service's `fields`. A `fields` sub-object makes it a section. */
+export interface HassServiceField {
+  name?: string;
+  description?: string;
+  required?: boolean;
+  selector?: Record<string, unknown>;
+  example?: unknown;
+  fields?: Record<string, HassServiceField>;
+}
+
+/**
+ * `hass.services[domain][service]`. Absent means unknown *or unloaded* -- D17 says
+ * a schedule may name a service whose integration is not loaded, so absence is
+ * never an error. Script fields live under `services.script[<object_id>]`.
+ */
+export interface HassService {
+  name?: string;
+  description?: string;
+  fields: Record<string, HassServiceField>;
+  target?: unknown;
+}
+
 export interface HomeAssistant {
   states: Record<string, HassEntity | undefined>;
+  services: Record<string, Record<string, HassService>>;
   connection: HassConnection;
   /** IANA name. `config.time_zone` is the instance's zone, not the browser's. */
   config: { time_zone: string };

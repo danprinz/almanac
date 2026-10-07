@@ -71,6 +71,11 @@ WS_DRY_RUN: Final = f"{DOMAIN}/dry_run"
 # the library imported, and a hard-coded list would offer a zman that cannot
 # resolve.
 WS_RESOLVERS: Final = f"{DOMAIN}/resolvers"
+# D171 -- the time picker's "next: ..." line. A command rather than a copy of the
+# resolvers in the bundle, for D145's reason (which resolvers exist is a property
+# of the installation), and it takes `at` from the caller for D64's: the backend
+# has one clock reader and it is the tick.
+WS_ANCHOR_PREVIEW: Final = f"{DOMAIN}/anchor/preview"
 
 # --- the frontend's delivery path (D67-D71, D129-D131) ---------------------
 #

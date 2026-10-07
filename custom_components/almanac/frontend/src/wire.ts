@@ -295,3 +295,18 @@ export interface WireResolverCatalogue {
   offerings: WireOffering[];
   parametric: string[];
 }
+
+// --- anchor preview (D171) -------------------------------------------------
+
+/**
+ * The whole result of `almanac/anchor/preview`.
+ *
+ * `at` is the instant the request asked about, echoed so a caller that has moved
+ * on can drop a slow answer. `unresolved` is non-null only when nothing resolved
+ * (D17): the reason, as `Unresolved.__str__` renders it.
+ */
+export interface WireAnchorPreview {
+  at: Instant;
+  instants: Instant[];
+  unresolved: string | null;
+}

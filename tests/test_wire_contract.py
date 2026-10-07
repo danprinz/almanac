@@ -80,6 +80,7 @@ PAIRS = {
     "websocket_dry_run": "WireDryRun",
     "catalogue_payload": "WireResolverCatalogue",
     "offering_payload": "WireOffering",
+    "anchor_preview_payload": "WireAnchorPreview",
 }
 
 # The nested dicts, which have no class of their own: `(producer, key)` against

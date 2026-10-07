@@ -1,5 +1,5 @@
-"""The three reads the frontend is built on: D63's timeline, D64's dry run, D145's
-catalogue.
+"""The four reads the frontend is built on: D63's timeline, D64's dry run, D145's
+catalogue, D171's anchor preview.
 
 Registered beside the CRUD commands `helpers/collection.py` gives us for free
 (D33). Those are writes over a storage collection and core owns their shape; these
@@ -33,7 +33,7 @@ so an occurrence from ten minutes ago would render in the future half.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Final
 
 import voluptuous as vol
@@ -47,12 +47,15 @@ from .const import (
     ATTR_AT,
     ATTR_SCHEDULE_ID,
     DOMAIN,
+    WS_ANCHOR_PREVIEW,
     WS_DRY_RUN,
     WS_RESOLVERS,
     WS_TIMELINE,
 )
-from .resolver.contract import Offering, Window, absolute
+from .resolver.anchor import async_resolve_anchor_on_date
+from .resolver.contract import Offering, Unresolved, Window, absolute
 from .resolver.registry import ResolverRegistry
+from .schema import ANCHOR_SCHEMA
 from .storage import AlmanacData
 from .timeline import async_timeline
 
@@ -60,6 +63,15 @@ _FIELD_START: Final = "start"
 _FIELD_END: Final = "end"
 _FIELD_SCHEDULE_IDS: Final = "schedule_ids"
 _FIELD_LIVE: Final = "live"
+_FIELD_ANCHOR: Final = "anchor"
+_FIELD_COUNT: Final = "count"
+_PREVIEW_MAX_COUNT: Final = 10
+# One civil day before `at` (an offset may carry yesterday's event past it) and
+# three weeks after: enough to find the next candle lighting across any gap the
+# shipped resolvers have, and a hard stop so a resolver that never answers cannot
+# make a read loop. D125's eight-day bound is the same argument for a span edge.
+_PREVIEW_DAYS_BEFORE: Final = 1
+_PREVIEW_DAYS_AFTER: Final = 21
 
 
 @callback
@@ -68,6 +80,7 @@ def async_register_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_timeline)
     websocket_api.async_register_command(hass, websocket_dry_run)
     websocket_api.async_register_command(hass, websocket_resolvers)
+    websocket_api.async_register_command(hass, websocket_anchor_preview)
 
 
 @websocket_api.websocket_command(
@@ -194,6 +207,72 @@ def websocket_resolvers(
     connection.send_result(msg["id"], catalogue_payload(data.resolvers))
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): WS_ANCHOR_PREVIEW,
+        vol.Required(_FIELD_ANCHOR): ANCHOR_SCHEMA,
+        vol.Required(ATTR_AT): cv.string,
+        vol.Optional(_FIELD_COUNT, default=3): vol.All(
+            int, vol.Range(min=1, max=_PREVIEW_MAX_COUNT)
+        ),
+    }
+)
+@websocket_api.async_response
+async def websocket_anchor_preview(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """D171: the next `count` instants this anchor resolves to after `at`.
+
+    `at` is a field of the message for D64's reason, stated at the top of this
+    module: the backend has one clock reader and it is the tick. It is also echoed
+    in the result, so a frontend that has since moved on to another anchor can
+    recognise and drop a slow answer.
+
+    Built on `async_resolve_anchor_on_date`, one civil day at a time, because that
+    is the shape D122 gives an anchor: the day belongs to the anchor's own event
+    and the offset is arithmetic applied afterwards. Scanning from the day *before*
+    `at` is therefore not slack -- "45 minutes before candle lighting" on a
+    Saturday-morning `at` is Friday's event, shifted.
+
+    `unresolved` is set only when nothing resolved: a resolver that answers for
+    some days and degrades on others is still a useful preview. Not admin-only, for
+    the catalogue's reason: it resolves an anchor the caller hands over and reads
+    no schedule.
+    """
+    data = _async_data(hass, connection, msg)
+    if data is None:
+        return
+    at = _async_instant(connection, msg, data, ATTR_AT)
+    if at is None:
+        return
+
+    anchor = msg[_FIELD_ANCHOR]
+    count = msg[_FIELD_COUNT]
+    instants: list[datetime] = []
+    reason: str | None = None
+    first = at.date()
+    for offset in range(-_PREVIEW_DAYS_BEFORE, _PREVIEW_DAYS_AFTER):
+        resolved = await async_resolve_anchor_on_date(
+            data.resolvers, anchor, first + timedelta(days=offset)
+        )
+        if isinstance(resolved, Unresolved):
+            # Keep scanning: one degraded day must not hide the days that resolve.
+            reason = str(resolved)
+            continue
+        if resolved is not None and absolute(resolved.at) > absolute(at):
+            instants.append(resolved.at)
+        if len(instants) >= count:
+            break
+
+    instants.sort(key=absolute)
+    connection.send_result(
+        msg["id"],
+        anchor_preview_payload(at, instants[:count], None if instants else reason),
+    )
+
+
 def offering_payload(domain: str, offering: Offering) -> dict[str, Any]:
     """One row of the pick-list.
 
@@ -253,6 +332,17 @@ def catalogue_payload(registry: ResolverRegistry) -> dict[str, Any]:
         "parametric": [
             domain for domain in registry.async_domains() if domain not in offerings
         ],
+    }
+
+
+def anchor_preview_payload(
+    at: datetime, instants: list[datetime], unresolved: str | None
+) -> dict[str, Any]:
+    """The whole result of `almanac/anchor/preview`, paired with `WireAnchorPreview`."""
+    return {
+        ATTR_AT: at.isoformat(),
+        "instants": [instant.isoformat() for instant in instants],
+        "unresolved": unresolved,
     }
 
 
@@ -352,9 +442,11 @@ def _async_window(
 
 
 __all__ = [
+    "anchor_preview_payload",
     "async_register_websocket",
     "catalogue_payload",
     "offering_payload",
+    "websocket_anchor_preview",
     "websocket_dry_run",
     "websocket_resolvers",
     "websocket_timeline",
