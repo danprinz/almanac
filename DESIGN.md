@@ -2629,7 +2629,7 @@ anchor and returns its next few instants, built on `async_resolve_anchor_on_date
 *Why:* D64 says nothing below the top-level tick reads a clock, and that is what makes the dry run
 and the timeline the same code as the live engine. A handler that sampled `now` would be the first
 exception, and `tests/test_design_constraints.py`'s sweep would have flagged it. The editor reads
-the clock once, when it opens (`connectedCallback`), the one frontend site that does, and passes
+the clock once, when it opens (`connectedCallback`), the one site on the preview path that does, and passes
 it down. **This corrects the spec's §6.1**, which said `now` would be read at the handler.
 The picker debounces its preview requests (300 ms) and discards any answer that is not the most
 recent request's.

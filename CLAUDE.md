@@ -32,10 +32,11 @@ is `git@github.com:danprinz/almanac.git`.
 
 Decisions now run D1–D171. Each build step closes the gaps it found in its own subsection
 (`DESIGN.md` §5.6, §5.7, §6.2, §7.4, §10.6a, §11.1, §12.1, §12.2, §16.2, §16.3, §16.4, §16.5,
-§16.6, §17.1, §17.2) rather than editing the decision it refines. **D149 is the one exception and it is marked
-as such:** step 9e lifted it, so its entry says so in place rather than being deleted — the
-argument under it is why the payload question had to be answered first, and it is what forbids
-the schema-driven service form that looks attractive every time somebody reads `hass.services`.
+§16.6, §16.7, §17.1, §17.2) rather than editing the decision it refines. **D149 and D152 are the
+exceptions and each is marked as such in place:** step 9e lifted D149, and the editor UX pass
+superseded D152 with D166. The argument under them is why the payload question had to be answered
+first. A schema-driven service form is now built (D166), and it is safe only because keys outside
+the schema, and services that are not loaded, keep the JSON box.
 
 **Step 8 fixed the engine, which is the part worth knowing.** `Plan` was reporting one fact where
 D44 says there are two: `_Horizons` was built over the window *after* the ninety-day clamp, so
@@ -159,7 +160,7 @@ stays open once it has (D170). `almanac/anchor/preview` backs the "next:" lines,
 `at` from the caller instead of reading a clock, because D64 forbids the handler from sampling
 one (D171).
 
-**Step 9e's one idea is the thing to know about the editor, and it is a sentence long: a
+**Step 9e's one idea, now superseded by D166 (above) but still the reason the JSON box exists: a
 payload is JSON text (D152).** `data`, `fields` and `attributes` are edited in a `<textarea>` and
 nothing else, because `_service_data` stops at `vol.Schema(dict)` on purpose — the valid key set
 belongs to the target service and almanac does not have it. A key/value widget would be an editor
