@@ -11,6 +11,7 @@ import {
   describeDateWindow,
   isAdvancedOpen,
   isSectionOpen,
+  stickyToggles,
   sectionOf,
 } from "../src/advanced.ts";
 
@@ -117,6 +118,43 @@ test("a default section follows the user's own toggle, per section", () => {
   const s = fresh();
   assert.equal(isSectionOpen(s, "rule:1", { "rule:1": true }), true);
   assert.equal(isSectionOpen(s, "rule:1", { "rule:0": true }), false);
+});
+
+test("a section that opened because a field was set stays open after it is reverted", () => {
+  const s = fresh();
+  s.rules[0]!["grace"] = 60;
+  const toggles = stickyToggles(s, {});
+  assert.deepEqual(toggles, { "rule:0": true });
+  s.rules[0]!["grace"] = null; // reverted to the default
+  assert.equal(isSectionOpen(s, "rule:0", toggles), true);
+});
+
+test("a rule added after load, then set, becomes sticky too", () => {
+  const s = fresh();
+  const loaded = stickyToggles(s, {});
+  assert.deepEqual(loaded, {});
+  s.rules.push({ kind: "at", grace: 30 });
+  const after = stickyToggles(s, loaded);
+  assert.deepEqual(after, { "rule:2": true });
+  (s.rules[2] as { grace: unknown }).grace = null;
+  assert.equal(isSectionOpen(s, "rule:2", after), true);
+});
+
+test("a re-load starts from empty toggles and seeds from the new schedule", () => {
+  const s = fresh();
+  s.completion = { ...DEFAULT_ADVANCED.completion, count_on: "conditions_passed" };
+  assert.deepEqual(stickyToggles(s, {}), { schedule: true });
+  assert.deepEqual(stickyToggles(fresh(), {}), {});
+});
+
+test("stickiness keeps the user's own choices and returns the same object when nothing changes", () => {
+  const s = fresh();
+  const toggles = { "rule:1": true };
+  assert.equal(stickyToggles(s, toggles), toggles);
+  s.rules[1]!["latch"] = true;
+  assert.equal(stickyToggles(s, toggles), toggles);
+  s.rules[0]!["grace"] = 5;
+  assert.deepEqual(stickyToggles(s, { "rule:1": true }), { "rule:0": true, "rule:1": true });
 });
 
 test("the date window is described in plain words, or not at all", () => {

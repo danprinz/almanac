@@ -44,7 +44,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
 import "./actions";
-import { describeDateWindow, isSectionOpen } from "./advanced";
+import { describeDateWindow, isSectionOpen, stickyToggles } from "./advanced";
 import { ICON_ADD, ICON_REMOVE, haButton } from "./buttons";
 import { ACTIONS_CHANGED } from "./actions";
 import type { ActionsChangedDetail } from "./actions";
@@ -333,6 +333,14 @@ export class AlmanacEditor extends LitElement {
   protected override willUpdate(changed: Map<string, unknown>): void {
     if (changed.has("schedule")) {
       this._load();
+    }
+    // A section that opens because a field is set stays open once it has been
+    // shown, so reverting that field to its default does not collapse it under
+    // the user. Done after `_load`, on every update, so it covers a rule added
+    // after load as well as a freshly loaded schedule.
+    const sticky = stickyToggles(this._advancedView, this._advancedToggles);
+    if (sticky !== this._advancedToggles) {
+      this._advancedToggles = sticky as Record<string, boolean>;
     }
     if (changed.has("hass") && this._catalogue === undefined) {
       void this._catalogues();

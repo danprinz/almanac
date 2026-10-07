@@ -110,7 +110,29 @@ export const isSectionOpen = (
   advancedNonDefault(schedule).some((field) => sectionOf(field) === section) ||
   toggles[section] === true;
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/**
+ * The user's toggles with every section that holds a set field recorded as
+ * open. Applied on load and after every edit, so a section that opened because
+ * a field was set stays open when that field is put back to its default.
+ * Returns the same object when nothing changes.
+ */
+export const stickyToggles = (
+  schedule: AdvancedSchedule,
+  toggles: Readonly<Record<string, boolean>>,
+): Readonly<Record<string, boolean>> => {
+  const next: Record<string, boolean> = { ...toggles };
+  let changed = false;
+  for (const field of advancedNonDefault(schedule)) {
+    const section = sectionOf(field);
+    if (next[section] !== true) {
+      next[section] = true;
+      changed = true;
+    }
+  }
+  return changed ? next : toggles;
+};
+
+const MONTHS =["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const plainDay = (iso: unknown): string => {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof iso === "string" ? iso : "");
