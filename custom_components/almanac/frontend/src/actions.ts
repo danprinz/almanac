@@ -12,12 +12,11 @@
 // list that reordered itself — alphabetically by service, say — would change
 // what the schedule does without the user having asked.
 //
-// **The service name is a text field, not a picker.** `hass.services` is real
-// and would give a two-level dropdown of every service in the instance, and it
-// is deliberately not used: almanac resolves the service at *call* time, so a
-// schedule may legitimately name a service belonging to an integration that is
-// currently unloaded, and a picker built from what is loaded now would have no
-// row to show for it. D17's rule for a missing resolver is the same one — show
+// **The service name is a searchable text field** (`almanac-service-field`):
+// `hass.services` suggests, but almanac resolves the service at *call* time, so
+// a schedule may legitimately name a service belonging to an integration that is
+// currently unloaded, and a strict picker would have no row to show for it.
+// D17's rule for a missing resolver is the same one — show
 // what is stored, do not silently edit it. The entity ids under `target` get a
 // datalist for the same reason in reverse: the list is a suggestion and the
 // field accepts anything.
@@ -38,6 +37,7 @@ import type { HomeAssistant } from "./ha";
 import { MAPPING_CHANGED } from "./mapping";
 import type { MappingChangedDetail } from "./mapping";
 import "./payload-field";
+import "./service-field";
 import { TARGET_KEYS, idsOf, targetValue } from "./pickers";
 import type {
   StoredAction,
@@ -189,18 +189,12 @@ export class AlmanacActions extends LitElement {
   private _service(action: StoredServiceAction, index: number) {
     const target = action.target;
     return html`
-      <label class="field">
-        <span>Service</span>
-        <input
-          type="text"
-          class="mono"
-          placeholder="light.turn_on"
-          .value=${action.service}
-          ?disabled=${this.disabled}
-          @change=${(event: Event) =>
-            this._patch(index, { service: inputValue(event).trim() })}
-        />
-      </label>
+      <almanac-service-field
+        .hass=${this.hass}
+        .value=${action.service}
+        ?disabled=${this.disabled}
+        .onPick=${(service: string) => this._patch(index, { service })}
+      ></almanac-service-field>
       ${this.haReady && this.hass
         ? html`<almanac-entity-field
             label="Target"

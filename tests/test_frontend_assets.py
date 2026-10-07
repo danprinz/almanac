@@ -599,3 +599,19 @@ def test_builders_no_longer_mount_a_bare_mapping_for_payloads() -> None:
         source = (SRC / name).read_text(encoding="utf-8")
         assert "<almanac-mapping" not in source, f"{name} should mount <almanac-payload>"
         assert "<almanac-payload" in source
+
+
+def test_the_service_picker_commits_free_text_and_survives_a_click_on_the_list() -> None:
+    """Two bugs a dropdown over an input has by default, asserted as source.
+
+    1. Clicking a list item blurs the input first; the blur commits the half-typed
+       text and the click then lands on a list that has been re-rendered away.
+       `mousedown` with `preventDefault` on the items stops the blur.
+    2. A service that is not loaded (D17) must still be committable by typing it.
+    """
+    source = (SRC / "service-field.ts").read_text(encoding="utf-8")
+    assert "@mousedown=" in source and "preventDefault" in source
+    assert "@change=" in source
+    assert "@blur=" in source, "the list must close when focus leaves"
+    actions = (SRC / "actions.ts").read_text(encoding="utf-8")
+    assert "<almanac-service-field" in actions
