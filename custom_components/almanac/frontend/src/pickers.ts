@@ -65,6 +65,49 @@ export const targetValue = (
   return out;
 };
 
+const EMPTY_TARGET: Record<string, string[]> = {};
+const targetCache = new WeakMap<object, Record<string, string[]>>();
+
+/**
+ * `targetValue`, cached on the stored target's reference, so a re-render hands
+ * `ha-selector` the same `.value` object until the stored target itself changes.
+ */
+export const stableTargetValue = (
+  target: TargetLike | null | undefined,
+): Record<string, string[]> => {
+  if (target === null || target === undefined) {
+    return EMPTY_TARGET;
+  }
+  let held = targetCache.get(target);
+  if (held === undefined) {
+    held = targetValue(target);
+    targetCache.set(target, held);
+  }
+  return held;
+};
+
+const comparable = (value: unknown): string => {
+  if (value === undefined || value === null || value === "") {
+    return "";
+  }
+  if (typeof value === "object") {
+    return JSON.stringify(targetValue(value as TargetLike));
+  }
+  return String(value);
+};
+
+/**
+ * Whether a picker's `value-changed` differs from the value it holds. A picker
+ * can echo what it was given (on mount, or after normalising); cleared
+ * (`undefined`, `null`, `""`, `{}`) equals empty, targets compare by ids.
+ */
+export const pickIsChange = (current: unknown, next: unknown): boolean => {
+  const a = comparable(current);
+  const b = comparable(next);
+  const empty = JSON.stringify({});
+  return (a === empty ? "" : a) !== (b === empty ? "" : b);
+};
+
 export interface ServiceName {
   id: string;
   domain: string;

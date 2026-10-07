@@ -687,6 +687,23 @@ def test_the_time_picker_never_reads_the_clock() -> None:
         assert "new Date()" not in source and "Date.now" not in source, name
 
 
+def test_the_entity_field_swallows_an_echo_and_the_target_value_is_cached() -> None:
+    """A picker echoing its own value must not reach the host (final review I1)."""
+    field = (SRC / "entity-field.ts").read_text(encoding="utf-8")
+    assert "pickIsChange(this.value, event.detail.value)" in field
+    actions = (SRC / "actions.ts").read_text(encoding="utf-8")
+    assert "stableTargetValue(action.target)" in actions
+    assert "targetValue(action.target)" not in actions.replace("stableTargetValue(", "")
+
+
+def test_the_stepper_and_the_unloaded_notice_respect_their_guards() -> None:
+    """M2: a disabled stepper is a no-op. M4: the notice needs a name entered."""
+    picker = (SRC / "time-picker.ts").read_text(encoding="utf-8")
+    assert 'if (this.disabled || this.anchor.kind === "clock")' in picker
+    payload = (SRC / "payload-field.ts").read_text(encoding="utf-8")
+    assert "named && schema === undefined" in payload
+
+
 def test_the_editor_no_longer_builds_anchors_from_a_select() -> None:
     source = (SRC / "editor.ts").read_text(encoding="utf-8")
     start = source.index("private _anchorFields(")

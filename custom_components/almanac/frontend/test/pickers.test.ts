@@ -12,6 +12,8 @@ import {
   TARGET_KEYS,
   filterServices,
   idsOf,
+  pickIsChange,
+  stableTargetValue,
   selectorFor,
   serviceNames,
   targetValue,
@@ -78,4 +80,38 @@ test("typing a service that is not loaded is not filtered away -- the caller kee
   // suggestion list is the correct answer for an unloaded service (D17).
   const names = serviceNames({ light: { turn_on: {} } });
   assert.deepEqual(filterServices(names, "zwave_js.refresh_value"), []);
+});
+
+test("a picker echo of the value it was given is not a change", () => {
+  assert.equal(pickIsChange("light.a", "light.a"), false);
+  assert.equal(pickIsChange("", undefined), false);
+  assert.equal(pickIsChange(undefined, ""), false);
+  assert.equal(pickIsChange("light.a", "light.b"), true);
+  assert.equal(pickIsChange("light.a", ""), true);
+  assert.equal(pickIsChange("", "light.a"), true);
+});
+
+test("a target echo is compared by its ids, not its key order or empties", () => {
+  const current = { entity_id: ["light.a"], area_id: ["den"] };
+  assert.equal(
+    pickIsChange(current, { area_id: ["den"], entity_id: ["light.a"] }),
+    false,
+  );
+  assert.equal(pickIsChange(current, { ...current, device_id: [] }), false);
+  assert.equal(pickIsChange({}, undefined), false);
+  assert.equal(
+    pickIsChange(current, { entity_id: ["light.b"], area_id: ["den"] }),
+    true,
+  );
+});
+
+test("the target selector's value keeps its identity across renders", () => {
+  const stored = { entity_id: "light.a" };
+  assert.equal(stableTargetValue(stored), stableTargetValue(stored));
+  assert.deepEqual(stableTargetValue(stored), { entity_id: ["light.a"] });
+  assert.equal(stableTargetValue(undefined), stableTargetValue(null));
+  assert.notEqual(
+    stableTargetValue(stored),
+    stableTargetValue({ entity_id: "light.a" }),
+  );
 });

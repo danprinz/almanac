@@ -15,7 +15,7 @@ import { customElement, property } from "lit/decorators.js";
 
 import { inputValue } from "./form";
 import type { HomeAssistant } from "./ha";
-import { selectorFor } from "./pickers";
+import { pickIsChange, selectorFor } from "./pickers";
 import type { PickerKind } from "./pickers";
 import { almanacForm, almanacText, almanacTokens } from "./styles";
 
@@ -61,7 +61,9 @@ export class AlmanacEntityField extends LitElement {
           .disabled=${this.disabled}
           @value-changed=${(event: CustomEvent<{ value: unknown }>) => {
             event.stopPropagation();
-            this.onPick(event.detail.value ?? "");
+            if (pickIsChange(this.value, event.detail.value)) {
+              this.onPick(event.detail.value ?? "");
+            }
           }}
         ></ha-selector>
       `;

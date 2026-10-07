@@ -355,7 +355,7 @@ export class AlmanacTimePicker extends LitElement {
   };
 
   private _step(steps: number): void {
-    if (this.anchor.kind === "clock") {
+    if (this.disabled || this.anchor.kind === "clock") {
       return;
     }
     const next = stepOffset(this.anchor.offset, steps);

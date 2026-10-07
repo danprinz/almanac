@@ -40,7 +40,7 @@ import { MAPPING_CHANGED } from "./mapping";
 import type { MappingChangedDetail } from "./mapping";
 import "./payload-field";
 import "./service-field";
-import { TARGET_KEYS, idsOf, targetValue } from "./pickers";
+import { TARGET_KEYS, idsOf, stableTargetValue } from "./pickers";
 import type {
   StoredAction,
   StoredScriptAction,
@@ -205,7 +205,7 @@ export class AlmanacActions extends LitElement {
             kind="target"
             .hass=${this.hass}
             .haReady=${true}
-            .value=${targetValue(action.target)}
+            .value=${stableTargetValue(action.target)}
             ?disabled=${this.disabled}
             .required=${false}
             .onPick=${(value: unknown) =>

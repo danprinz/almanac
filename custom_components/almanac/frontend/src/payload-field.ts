@@ -142,8 +142,11 @@ export class AlmanacPayload extends LitElement {
     if (Object.keys(other).length > 0) {
       this._opened = true;
     }
+    // A name is "entered" once something follows the domain: `script.` (a script
+    // action with none chosen yet) and `` are both blank.
+    const named = !/^\s*$|^[^.]*\.\s*$/.test(this.serviceName);
     const unloaded =
-      this.haReady && this.hass !== undefined && this.serviceName !== "" && schema === undefined;
+      this.haReady && this.hass !== undefined && named && schema === undefined;
     const box = html`<almanac-mapping
       name="other"
       .label=${fields.length > 0 ? "Other data (JSON)" : this.label}
