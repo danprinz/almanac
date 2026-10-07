@@ -89,6 +89,7 @@ import {
   inputValue,
   secondsFrom,
 } from "./form";
+import "./entity-field";
 import { duration, offsetLabel } from "./format";
 import type { HaElementsState } from "./ha-elements";
 import type { HomeAssistant } from "./ha";
@@ -849,6 +850,8 @@ export class AlmanacEditor extends LitElement {
                 ?disabled=${!this._canWrite}
                 entityList=${ANY_ENTITY_LIST}
                 scriptList=${SCRIPT_LIST}
+                .hass=${this.hass}
+                .haReady=${this.haReady}
               ></almanac-desired>
               ${this._onExit(index, rule.on_exit ?? { kind: "leave" })}
               <label class="check">
@@ -891,6 +894,8 @@ export class AlmanacEditor extends LitElement {
         ?disabled=${!this._canWrite}
         entityList=${ANY_ENTITY_LIST}
         scriptList=${SCRIPT_LIST}
+        .hass=${this.hass}
+        .haReady=${this.haReady}
       ></almanac-actions>
     `;
   }
@@ -908,6 +913,8 @@ export class AlmanacEditor extends LitElement {
         .daySets=${this._daySets}
         ?disabled=${!this._canWrite}
         entityList=${ANY_ENTITY_LIST}
+        .hass=${this.hass}
+        .haReady=${this.haReady}
       ></almanac-conditions>
     `;
   }
@@ -1057,6 +1064,8 @@ export class AlmanacEditor extends LitElement {
             ?disabled=${!this._canWrite}
             entityList=${ANY_ENTITY_LIST}
             scriptList=${SCRIPT_LIST}
+            .hass=${this.hass}
+            .haReady=${this.haReady}
           ></almanac-desired>`
         : nothing}
       <p class="muted">

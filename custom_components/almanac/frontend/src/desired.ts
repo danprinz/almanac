@@ -26,7 +26,9 @@ import "./actions";
 import { ACTIONS_CHANGED } from "./actions";
 import type { ActionsChangedDetail } from "./actions";
 import { newDesiredEntity, newDesiredState } from "./draft";
+import "./entity-field";
 import { inputValue } from "./form";
+import type { HomeAssistant } from "./ha";
 import { MAPPING_CHANGED } from "./mapping";
 import type { MappingChangedDetail } from "./mapping";
 import "./mapping";
@@ -72,6 +74,11 @@ export class AlmanacDesired extends LitElement {
   @property() public name = "";
 
   @property() public entityList = "";
+
+  @property({ attribute: false }) public hass?: HomeAssistant | undefined;
+
+  /** D167: render HA's own pickers rather than the plain inputs. */
+  @property({ type: Boolean }) public haReady = false;
 
   @property() public scriptList = "";
 
@@ -137,20 +144,18 @@ export class AlmanacDesired extends LitElement {
                 Remove
               </button>
             </div>
-            <label class="field">
-              <span>Entity</span>
-              <input
-                type="text"
-                class="mono"
-                list=${this.entityList === "" ? nothing : this.entityList}
-                .value=${entity.entity_id}
-                ?disabled=${this.disabled}
-                @change=${(event: Event) =>
-                  this._patchEntity(index, {
-                    entity_id: inputValue(event).trim(),
-                  })}
-              />
-            </label>
+            <almanac-entity-field
+              label="Entity"
+              kind="entity"
+              .hass=${this.hass}
+              .haReady=${this.haReady}
+              .value=${entity.entity_id}
+              fallbackList=${this.entityList}
+              ?disabled=${this.disabled}
+              .required=${true}
+              .onPick=${(value: unknown) =>
+                this._patchEntity(index, { entity_id: String(value).trim() })}
+            ></almanac-entity-field>
             <label class="field">
               <span>State</span>
               <input
@@ -198,6 +203,8 @@ export class AlmanacDesired extends LitElement {
         ?disabled=${this.disabled}
         entityList=${this.entityList}
         scriptList=${this.scriptList}
+        .hass=${this.hass}
+        .haReady=${this.haReady}
       ></almanac-actions>
       <p class="muted">
         An override replaces the per-entity work above (D28). It is for the

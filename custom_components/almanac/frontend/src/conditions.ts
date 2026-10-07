@@ -38,6 +38,8 @@ import {
 } from "./draft";
 import type { ScalarType } from "./draft";
 import type { DaySetRow } from "./api";
+import "./entity-field";
+import type { HomeAssistant } from "./ha";
 import { countFrom, idList, idText, inputChecked, inputValue } from "./form";
 import type {
   StoredComparisonCondition,
@@ -107,6 +109,11 @@ export class AlmanacConditions extends LitElement {
   @property({ attribute: false }) public daySets: DaySetRow[] = [];
 
   @property() public entityList = "";
+
+  @property({ attribute: false }) public hass?: HomeAssistant | undefined;
+
+  /** D167: render HA's own pickers rather than the plain inputs. */
+  @property({ type: Boolean }) public haReady = false;
 
   protected override render() {
     return html`
@@ -322,18 +329,18 @@ export class AlmanacConditions extends LitElement {
     const wantsList = takesAList(condition.operator);
     const operand = condition.value;
     return html`
-      <label class="field">
-        <span>Entity</span>
-        <input
-          type="text"
-          class="mono"
-          list=${this.entityList === "" ? nothing : this.entityList}
-          .value=${condition.entity_id}
-          ?disabled=${this.disabled}
-          @change=${(event: Event) =>
-            write({ ...condition, entity_id: inputValue(event).trim() })}
-        />
-      </label>
+      <almanac-entity-field
+        label="Entity"
+        kind="entity"
+        .hass=${this.hass}
+        .haReady=${this.haReady}
+        .value=${condition.entity_id}
+        fallbackList=${this.entityList}
+        ?disabled=${this.disabled}
+        .required=${true}
+        .onPick=${(value: unknown) =>
+          write({ ...condition, entity_id: String(value).trim() })}
+      ></almanac-entity-field>
       <label class="field">
         <span>Attribute</span>
         <input
@@ -454,21 +461,21 @@ export class AlmanacConditions extends LitElement {
           `}
       ${operand.kind === "entity"
         ? html`
-            <label class="field">
-              <span>That entity</span>
-              <input
-                type="text"
-                class="mono"
-                list=${this.entityList === "" ? nothing : this.entityList}
-                .value=${operand.entity_id}
-                ?disabled=${this.disabled}
-                @change=${(event: Event) =>
-                  write({
-                    ...condition,
-                    value: { ...operand, entity_id: inputValue(event).trim() },
-                  })}
-              />
-            </label>
+            <almanac-entity-field
+              label="That entity"
+              kind="entity"
+              .hass=${this.hass}
+              .haReady=${this.haReady}
+              .value=${operand.entity_id}
+              fallbackList=${this.entityList}
+              ?disabled=${this.disabled}
+              .required=${true}
+              .onPick=${(value: unknown) =>
+                write({
+                  ...condition,
+                  value: { ...operand, entity_id: String(value).trim() },
+                })}
+            ></almanac-entity-field>
             <label class="field">
               <span>Its attribute</span>
               <input

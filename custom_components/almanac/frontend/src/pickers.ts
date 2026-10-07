@@ -9,7 +9,7 @@
 export type PickerKind = "entity" | "timestamp" | "script" | "target";
 
 /**
- * The selector each picker kind passes to `<ha-selector>`.
+ * The selector each picker kind passes to `ha-selector`.
  *
  * `timestamp` is the entity-time anchor's list (D6): only entities whose
  * `device_class` is `timestamp` can be a time. `script` is the script action's.

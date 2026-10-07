@@ -32,10 +32,13 @@ import {
   withTargetIds,
   withWait,
 } from "./draft";
+import "./entity-field";
 import { countFrom, idList, idText, inputChecked, inputValue } from "./form";
+import type { HomeAssistant } from "./ha";
 import { MAPPING_CHANGED } from "./mapping";
 import type { MappingChangedDetail } from "./mapping";
 import "./mapping";
+import { TARGET_KEYS, idsOf, targetValue } from "./pickers";
 import type {
   StoredAction,
   StoredScriptAction,
@@ -96,6 +99,11 @@ export class AlmanacActions extends LitElement {
 
   /** For the script datalist. */
   @property() public scriptList = "";
+
+  @property({ attribute: false }) public hass?: HomeAssistant | undefined;
+
+  /** D167: render HA's own pickers rather than the plain inputs. */
+  @property({ type: Boolean }) public haReady = false;
 
   public override connectedCallback(): void {
     super.connectedCallback();
@@ -193,28 +201,40 @@ export class AlmanacActions extends LitElement {
             this._patch(index, { service: inputValue(event).trim() })}
         />
       </label>
-      ${SELECTORS.map(
-        ([selector, label]) => html`
-          <label class="field">
-            <span>${label}</span>
-            <input
-              type="text"
-              class="mono"
-              list=${selector === "entity_id" && this.entityList !== ""
-                ? this.entityList
-                : nothing}
-              placeholder="comma separated"
-              .value=${idText(target?.[selector] ?? [])}
-              ?disabled=${this.disabled}
-              @change=${(event: Event) =>
-                this._write(
-                  index,
-                  withTargetIds(action, selector, idList(inputValue(event))),
-                )}
-            />
-          </label>
-        `,
-      )}
+      ${this.haReady && this.hass
+        ? html`<almanac-entity-field
+            label="Target"
+            kind="target"
+            .hass=${this.hass}
+            .haReady=${true}
+            .value=${targetValue(action.target)}
+            ?disabled=${this.disabled}
+            .required=${false}
+            .onPick=${(value: unknown) =>
+              this._write(index, this._withTarget(action, value))}
+          ></almanac-entity-field>`
+        : SELECTORS.map(
+            ([selector, label]) => html`
+              <label class="field">
+                <span>${label}</span>
+                <input
+                  type="text"
+                  class="mono"
+                  list=${selector === "entity_id" && this.entityList !== ""
+                    ? this.entityList
+                    : nothing}
+                  placeholder="comma separated"
+                  .value=${idText(target?.[selector] ?? [])}
+                  ?disabled=${this.disabled}
+                  @change=${(event: Event) =>
+                    this._write(
+                      index,
+                      withTargetIds(action, selector, idList(inputValue(event))),
+                    )}
+                />
+              </label>
+            `,
+          )}
       ${target && !target.entity_id?.length
         ? html`<p class="muted">
             almanac does not expand an area, floor, device or label to entities,
@@ -234,19 +254,18 @@ export class AlmanacActions extends LitElement {
 
   private _script(action: StoredScriptAction, index: number) {
     return html`
-      <label class="field">
-        <span>Script</span>
-        <input
-          type="text"
-          class="mono"
-          list=${this.scriptList === "" ? nothing : this.scriptList}
-          placeholder="script.evening"
-          .value=${action.script}
-          ?disabled=${this.disabled}
-          @change=${(event: Event) =>
-            this._patch(index, { script: inputValue(event).trim() })}
-        />
-      </label>
+      <almanac-entity-field
+        label="Script"
+        kind="script"
+        .hass=${this.hass}
+        .haReady=${this.haReady}
+        .value=${action.script}
+        fallbackList=${this.scriptList}
+        ?disabled=${this.disabled}
+        .required=${true}
+        .onPick=${(value: unknown) =>
+          this._patch(index, { script: String(value).trim() })}
+      ></almanac-entity-field>
       <almanac-mapping
         name=${`fields:${index}`}
         label="Fields"
@@ -333,6 +352,23 @@ export class AlmanacActions extends LitElement {
     }
     this._patch(index, { [key]: event.detail.value });
   };
+
+  /**
+   * The target selector's whole value as five `withTargetIds` calls, so the
+   * stored shape keeps D140's rule that an empty key is absent and an all-empty
+   * target is `null`. Written as five calls rather than a spread so there is one
+   * implementation of that rule.
+   */
+  private _withTarget(
+    action: StoredServiceAction,
+    value: unknown,
+  ): StoredServiceAction {
+    const picked = (value ?? {}) as Record<string, string | string[]>;
+    return TARGET_KEYS.reduce(
+      (next, key) => withTargetIds(next, key, idsOf(picked, key)),
+      action,
+    );
+  }
 
   private _write(index: number, action: StoredAction): void {
     const next = [...this.actions];

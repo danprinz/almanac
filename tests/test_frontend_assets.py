@@ -562,3 +562,21 @@ def test_the_edit_link_and_the_panel_agree_on_the_route() -> None:
 
     assert f'const EDIT_PARAM = "{PANEL_EDIT_PARAM}"' in panel
     assert "window.location.search" in panel
+
+
+def test_every_ha_selector_sets_required_explicitly() -> None:
+    """`ha-selector`'s `required` defaults to **true** (frontend 20260826.7).
+
+    A selector that does not say otherwise refuses to clear, which for an optional
+    field means a value the user can change but never remove. The default is a
+    property default, not a template one, so nothing but a read of the template
+    notices when it is forgotten.
+    """
+    found = 0
+    for path in sorted(SRC.glob("*.ts")):
+        source = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"<ha-selector\b", source):
+            found += 1
+            tag = source[match.start() : source.index(">", match.start())]
+            assert ".required=" in tag, f"{path.name}: <ha-selector> without .required"
+    assert found > 0, "the regex stopped matching, not the rule"
