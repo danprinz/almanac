@@ -35,6 +35,8 @@ import { EDITOR_CLOSED } from "./editor";
 import type { EditorClosedDetail } from "./editor";
 import "./editor";
 import { clockTime, dateLabel, dayAndTime, relative } from "./format";
+import { browserEnv, loadHaElements } from "./ha-elements";
+import type { HaElementsState } from "./ha-elements";
 import type { HomeAssistant } from "./ha";
 import { armedRules, buildTrack } from "./rails";
 import type { StoredSchedule } from "./stored";
@@ -116,6 +118,13 @@ export class AlmanacPanel extends LitElement {
    */
   @state() private _notFound?: string | undefined;
 
+  /**
+   * D167. `loading` until `loadHaElements` settles; the editor treats it like
+   * `failed` for rendering (plain inputs) but does not show the notice, so a
+   * cold load does not flash an apology before the pickers arrive.
+   */
+  @state() private _haElements: HaElementsState = "loading";
+
   private _timer?: number | undefined;
   private _inFlight = false;
 
@@ -141,6 +150,14 @@ export class AlmanacPanel extends LitElement {
       window.clearInterval(this._timer);
       this._timer = undefined;
     }
+  }
+
+  protected override firstUpdated(): void {
+    // Once, at the top: the panel is the one component that is always mounted
+    // before an editor can be, and the answer does not change for the session.
+    void loadHaElements(browserEnv()).then((ready) => {
+      this._haElements = ready ? "ready" : "failed";
+    });
   }
 
   protected override willUpdate(changed: Map<string, unknown>): void {
@@ -305,6 +322,7 @@ export class AlmanacPanel extends LitElement {
         class="editor"
         .hass=${this.hass}
         .schedule=${editing.schedule}
+        .haElements=${this._haElements}
       ></almanac-editor>`;
     }
     if (this._notLoaded) {

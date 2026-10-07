@@ -414,7 +414,7 @@ def test_the_pure_modules_import_nothing_at_run_time() -> None:
     # included, so the non-empty assertion above would fail on them for the
     # opposite reason to the one it guards against. They declare their own
     # structural types instead of importing the stored ones (D132).
-    for name in ("form.ts", "payload.ts", "pickers.ts", "timepick.ts"):
+    for name in ("form.ts", "ha-elements.ts", "payload.ts", "pickers.ts", "timepick.ts"):
         assert not re.findall(
             r"^import\b.*$",
             (SRC / name).read_text(encoding="utf-8"),
@@ -460,12 +460,25 @@ def test_the_unit_tests_are_wired_to_a_script_and_a_directory() -> None:
     assert sorted(path.name for path in tests.glob("*.test.ts")) == [
         "draft.test.ts",
         "form.test.ts",
+        "ha-elements.test.ts",
         "moreinfo.test.ts",
         "payload.test.ts",
         "pickers.test.ts",
         "rails.test.ts",
         "timepick.test.ts",
     ]
+
+
+def test_the_editor_says_so_when_the_pickers_did_not_load() -> None:
+    """D167's fallback is only honest if it is announced.
+
+    A fallback that silently shows plain inputs looks like the editor is broken.
+    The sentence is asserted as source text because the failing path is only
+    reachable in a browser with the loader blocked, which is a manual check.
+    """
+    source = (SRC / "editor.ts").read_text(encoding="utf-8")
+    assert "Home Assistant's pickers didn't load" in source
+    assert '"failed"' in source
 
 
 def test_the_more_info_element_is_the_tag_the_switch_publishes() -> None:

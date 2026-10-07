@@ -90,6 +90,7 @@ import {
   secondsFrom,
 } from "./form";
 import { duration, offsetLabel } from "./format";
+import type { HaElementsState } from "./ha-elements";
 import type { HomeAssistant } from "./ha";
 import { openMoreInfo } from "./moreinfo";
 import { draftTrack } from "./rails";
@@ -252,6 +253,14 @@ const today = (): string => {
 @customElement("almanac-editor")
 export class AlmanacEditor extends LitElement {
   @property({ attribute: false }) public hass?: HomeAssistant | undefined;
+
+  /** D167. Set by the panel; see `panel.ts`. */
+  @property({ attribute: false }) public haElements: HaElementsState = "loading";
+
+  /** Whether a component may render HA's own elements. */
+  protected get haReady(): boolean {
+    return this.haElements === "ready";
+  }
 
   /**
    * The schedule being edited, or null/absent to create one.
@@ -434,6 +443,11 @@ export class AlmanacEditor extends LitElement {
               This account cannot change schedules, so everything below is
               read-only.
             </p>`}
+        ${this.haElements === "failed"
+          ? html`<p class="muted" role="status">
+              Home Assistant's pickers didn't load — basic inputs shown.
+            </p>`
+          : nothing}
         ${this._identity()} ${this._recurrence()} ${this._shape()}
         ${this._rulePanel()}
         ${found.length === 0
