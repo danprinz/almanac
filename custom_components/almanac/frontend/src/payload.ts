@@ -135,3 +135,18 @@ export const withFieldValue = (
   }
   return next;
 };
+
+/**
+ * Whether a selector's `value-changed` would alter the stored payload.
+ *
+ * `ha-selector` can report a value that is the one it was given (on mount, or when
+ * an inner picker normalises). Writing it would dirty the draft for nothing and,
+ * for a cleared field on an absent key, would add a key. Compared as the payload
+ * would be stored: cleared (`undefined` or `""`) equals absent.
+ */
+export const fieldIsChange = (
+  known: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): boolean =>
+  JSON.stringify(withFieldValue(known, key, value)) !== JSON.stringify(known);

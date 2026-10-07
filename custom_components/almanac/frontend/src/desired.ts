@@ -31,7 +31,7 @@ import { inputValue } from "./form";
 import type { HomeAssistant } from "./ha";
 import { MAPPING_CHANGED } from "./mapping";
 import type { MappingChangedDetail } from "./mapping";
-import "./mapping";
+import "./payload-field";
 import type { StoredDesiredEntity, StoredDesiredState } from "./stored";
 import { almanacForm, almanacHitTarget, almanacText, almanacTokens } from "./styles";
 
@@ -172,14 +172,16 @@ export class AlmanacDesired extends LitElement {
                 }}
               />
             </label>
-            <almanac-mapping
+            <almanac-payload
               name=${`attributes:${index}`}
               label="Attributes"
+              .hass=${this.hass}
+              .haReady=${this.haReady}
               .value=${entity.attributes}
               ?disabled=${this.disabled}
               hint="Whatever the entity's own integration accepts, as JSON — a
                     brightness, a temperature, a fan mode."
-            ></almanac-mapping>
+            ></almanac-payload>
           </div>
         `,
       )}

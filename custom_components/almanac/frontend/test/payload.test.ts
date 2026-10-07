@@ -10,6 +10,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  fieldIsChange,
   flattenFields,
   lookupService,
   mergePayload,
@@ -110,4 +111,21 @@ test("setting a field leaves the others alone and does not mutate its input", ()
 test("false and zero are values, not absences", () => {
   assert.deepEqual(withFieldValue({}, "flag", false), { flag: false });
   assert.deepEqual(withFieldValue({}, "level", 0), { level: 0 });
+});
+
+test("a selector echoing the value it was given is not a change", () => {
+  const known = { brightness: 200, flash: false };
+  assert.equal(fieldIsChange(known, "brightness", 200), false);
+  assert.equal(fieldIsChange(known, "flash", false), false);
+  assert.equal(fieldIsChange(known, "color", undefined), false);
+  assert.equal(fieldIsChange(known, "color", ""), false);
+  assert.equal(fieldIsChange({ rgb: [1, 2, 3] }, "rgb", [1, 2, 3]), false);
+});
+
+test("a selector reporting a different value, or a cleared one, is a change", () => {
+  const known = { brightness: 200 };
+  assert.equal(fieldIsChange(known, "brightness", 100), true);
+  assert.equal(fieldIsChange(known, "brightness", undefined), true);
+  assert.equal(fieldIsChange(known, "color", "red"), true);
+  assert.equal(fieldIsChange({ flash: false }, "flash", true), true);
 });

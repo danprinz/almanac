@@ -580,3 +580,22 @@ def test_every_ha_selector_sets_required_explicitly() -> None:
             tag = source[match.start() : source.index(">", match.start())]
             assert ".required=" in tag, f"{path.name}: <ha-selector> without .required"
     assert found > 0, "the regex stopped matching, not the rule"
+
+
+def test_the_payload_form_is_the_only_place_that_renders_service_fields() -> None:
+    """D166: a payload edited without the JSON box would lose unknown keys (D149's bug).
+
+    `almanac-payload` must always render `almanac-mapping` for the keys the schema
+    does not know, whether or not any schema exists, so the line below is the
+    structural guarantee and the node tests of `mergePayload` are the behavioural one.
+    """
+    source = (SRC / "payload-field.ts").read_text(encoding="utf-8")
+    assert "<almanac-mapping" in source
+    assert "partitionPayload" in source and "mergePayload" in source
+
+
+def test_builders_no_longer_mount_a_bare_mapping_for_payloads() -> None:
+    for name in ("actions.ts", "desired.ts"):
+        source = (SRC / name).read_text(encoding="utf-8")
+        assert "<almanac-mapping" not in source, f"{name} should mount <almanac-payload>"
+        assert "<almanac-payload" in source

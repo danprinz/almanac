@@ -37,7 +37,7 @@ import { countFrom, idList, idText, inputChecked, inputValue } from "./form";
 import type { HomeAssistant } from "./ha";
 import { MAPPING_CHANGED } from "./mapping";
 import type { MappingChangedDetail } from "./mapping";
-import "./mapping";
+import "./payload-field";
 import { TARGET_KEYS, idsOf, targetValue } from "./pickers";
 import type {
   StoredAction,
@@ -241,14 +241,17 @@ export class AlmanacActions extends LitElement {
             so this action's reach is not listed under "what this touches".
           </p>`
         : nothing}
-      <almanac-mapping
+      <almanac-payload
         name=${`data:${index}`}
         label="Data"
+        .hass=${this.hass}
+        .haReady=${this.haReady}
         .value=${action.data}
+        serviceName=${action.service}
         ?disabled=${this.disabled}
         hint="Whatever the service takes, as JSON. almanac does not check these
               keys — they belong to the service, not to the schedule."
-      ></almanac-mapping>
+      ></almanac-payload>
     `;
   }
 
@@ -266,14 +269,17 @@ export class AlmanacActions extends LitElement {
         .onPick=${(value: unknown) =>
           this._patch(index, { script: String(value).trim() })}
       ></almanac-entity-field>
-      <almanac-mapping
+      <almanac-payload
         name=${`fields:${index}`}
         label="Fields"
+        .hass=${this.hass}
+        .haReady=${this.haReady}
         .value=${action.fields}
+        serviceName=${`script.${action.script.replace(/^script\./, "")}`}
         ?disabled=${this.disabled}
         hint="The script's own fields, as JSON. Calling a script with fields
               waits for it by design, which is why the choice below exists."
-      ></almanac-mapping>
+      ></almanac-payload>
       <label class="check">
         <input
           type="checkbox"
@@ -336,7 +342,7 @@ export class AlmanacActions extends LitElement {
   }
 
   /**
-   * A payload, back from whichever `<almanac-mapping>` holds it.
+   * A payload, back from whichever `<almanac-payload>` holds it.
    *
    * One listener on the host, keyed by the `name` this component set — see that
    * property's note for why it is not a binding per element. The event is
