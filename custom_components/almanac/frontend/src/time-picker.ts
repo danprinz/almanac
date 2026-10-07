@@ -50,6 +50,9 @@ import type { WireOffering } from "./wire";
 const LONG_PRESS_MS = 400;
 const REPEAT_MS = 120;
 
+/** Quiet time after the last change before the engine is asked. */
+const PREVIEW_DEBOUNCE_MS = 300;
+
 const DEFAULT_CLOCK = "18:00:00";
 
 const DIRECTIONS = [
@@ -74,6 +77,9 @@ export class AlmanacTimePicker extends LitElement {
 
   /** D167. Passed on to the entity field. */
   @property({ type: Boolean }) public haReady = false;
+
+  /** The visible caption: "Time", "Starts", "Until". */
+  @property() public label = "";
 
   @property({ attribute: false }) public anchor!: StoredAnchor;
 
@@ -101,6 +107,7 @@ export class AlmanacTimePicker extends LitElement {
 
   private readonly _guard = latest();
   private _repeat: number | undefined;
+  private _previewTimer: number | undefined;
 
   // --- writing -----------------------------------------------------------
 
@@ -393,6 +400,7 @@ export class AlmanacTimePicker extends LitElement {
                 @pointerdown=${() => this._startStepping(-1)}
                 @pointerup=${this._stopStepping}
                 @pointerleave=${this._stopStepping}
+                @pointercancel=${this._stopStepping}
                 @click=${(event: MouseEvent) => this._stepButton(-1, event)}
                 >−</ha-button
               >
@@ -406,6 +414,7 @@ export class AlmanacTimePicker extends LitElement {
                 @pointerdown=${() => this._startStepping(1)}
                 @pointerup=${this._stopStepping}
                 @pointerleave=${this._stopStepping}
+                @pointercancel=${this._stopStepping}
                 @click=${(event: MouseEvent) => this._stepButton(1, event)}
                 >＋</ha-button
               >
@@ -433,15 +442,31 @@ export class AlmanacTimePicker extends LitElement {
       changed.has("at") ||
       (changed.has("hass") && changed.get("hass") === undefined)
     ) {
-      void this._refresh();
+      this._schedulePreview();
     }
   }
 
-  private async _refresh(): Promise<void> {
-    const token = this._guard.next(); // also retires any answer still in flight
+  /**
+   * The old answer belongs to the old anchor, so it goes at once; the question
+   * waits for a quiet moment, so a held stepper asks once and not every repeat.
+   */
+  private _schedulePreview(): void {
+    window.clearTimeout(this._previewTimer);
+    this._guard.next(); // retires any answer still in flight
+    this._next = undefined;
+    this._unresolved = undefined;
     if (!this.hass || this.at === "" || !this._complete()) {
-      this._next = undefined;
-      this._unresolved = undefined;
+      return;
+    }
+    this._previewTimer = window.setTimeout(
+      () => void this._refresh(),
+      PREVIEW_DEBOUNCE_MS,
+    );
+  }
+
+  private async _refresh(): Promise<void> {
+    const token = this._guard.next();
+    if (!this.hass || this.at === "" || !this._complete()) {
       return;
     }
     try {
@@ -507,6 +532,7 @@ export class AlmanacTimePicker extends LitElement {
 
   override disconnectedCallback(): void {
     this._stopStepping();
+    window.clearTimeout(this._previewTimer);
     super.disconnectedCallback();
   }
 
@@ -516,6 +542,9 @@ export class AlmanacTimePicker extends LitElement {
       return nothing;
     }
     return html`
+      ${this.label === ""
+        ? nothing
+        : html`<span class="caption">${this.label}</span>`}
       <almanac-segmented
         label="Kind of time"
         .options=${tileList(this.offerings)}
@@ -574,6 +603,9 @@ export class AlmanacTimePicker extends LitElement {
         gap: var(--almanac-gap-xs);
         max-height: 12rem;
         overflow-y: auto;
+      }
+      .caption {
+        font-weight: 500;
       }
       .summary {
         margin: 0;

@@ -633,3 +633,13 @@ def test_the_editor_no_longer_builds_anchors_from_a_select() -> None:
     source = (SRC / "editor.ts").read_text(encoding="utf-8")
     start = source.index("private _anchorFields(")
     assert "<almanac-time-picker" in source[start : start + 3000]
+
+
+def test_the_time_picker_shows_the_caption_the_editor_gives_it() -> None:
+    """An `aria-label` on a role-less host names nothing and shows nothing."""
+    editor = (SRC / "editor.ts").read_text(encoding="utf-8")
+    start = editor.index("private _anchorFields(")
+    body = editor[start : start + 1500]
+    assert "label=${label}" in body and "aria-label" not in body
+    picker = (SRC / "time-picker.ts").read_text(encoding="utf-8")
+    assert "public label" in picker and "${this.label}" in picker

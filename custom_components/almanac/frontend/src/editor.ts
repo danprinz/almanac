@@ -1116,7 +1116,7 @@ export class AlmanacEditor extends LitElement {
         entityList=${ENTITY_LIST}
         ?disabled=${!this._canWrite}
         .onChange=${write}
-        aria-label=${label}
+        label=${label}
       ></almanac-time-picker>
     `;
   }
