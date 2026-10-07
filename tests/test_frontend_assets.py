@@ -410,12 +410,16 @@ def test_the_pure_modules_import_nothing_at_run_time() -> None:
         for statement in statements:
             assert statement.startswith("import type "), f"{name}: {statement}"
 
-    # `form.ts` is checked by the stronger rule rather than the same one: it has
-    # no import at all, type-only included, so the non-empty assertion above
-    # would fail on it for the opposite reason to the one it guards against.
-    assert not re.findall(
-        r"^import\b.*$", (SRC / "form.ts").read_text(encoding="utf-8"), re.MULTILINE
-    )
+    # These are checked by the stronger rule: no import at all, type-only
+    # included, so the non-empty assertion above would fail on them for the
+    # opposite reason to the one it guards against. They declare their own
+    # structural types instead of importing the stored ones (D132).
+    for name in ("form.ts", "payload.ts", "pickers.ts"):
+        assert not re.findall(
+            r"^import\b.*$",
+            (SRC / name).read_text(encoding="utf-8"),
+            re.MULTILINE,
+        ), name
 
 
 def test_the_test_tsconfig_carries_the_flag_the_build_cannot() -> None:
@@ -457,6 +461,8 @@ def test_the_unit_tests_are_wired_to_a_script_and_a_directory() -> None:
         "draft.test.ts",
         "form.test.ts",
         "moreinfo.test.ts",
+        "payload.test.ts",
+        "pickers.test.ts",
         "rails.test.ts",
     ]
 
