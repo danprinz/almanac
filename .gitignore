@@ -40,3 +40,5 @@ home-assistant_v2.db*
 .idea/
 *.swp
 .DS_Store
+
+.superpowers/
