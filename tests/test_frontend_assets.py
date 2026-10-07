@@ -414,7 +414,7 @@ def test_the_pure_modules_import_nothing_at_run_time() -> None:
     # included, so the non-empty assertion above would fail on them for the
     # opposite reason to the one it guards against. They declare their own
     # structural types instead of importing the stored ones (D132).
-    for name in ("form.ts", "payload.ts", "pickers.ts"):
+    for name in ("form.ts", "payload.ts", "pickers.ts", "timepick.ts"):
         assert not re.findall(
             r"^import\b.*$",
             (SRC / name).read_text(encoding="utf-8"),
@@ -464,6 +464,7 @@ def test_the_unit_tests_are_wired_to_a_script_and_a_directory() -> None:
         "payload.test.ts",
         "pickers.test.ts",
         "rails.test.ts",
+        "timepick.test.ts",
     ]
 
 
