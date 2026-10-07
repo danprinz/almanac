@@ -44,7 +44,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
 import "./actions";
-import { isAdvancedOpen } from "./advanced";
+import { describeDateWindow, isSectionOpen } from "./advanced";
 import { ICON_ADD, ICON_REMOVE, haButton } from "./buttons";
 import { ACTIONS_CHANGED } from "./actions";
 import type { ActionsChangedDetail } from "./actions";
@@ -289,11 +289,11 @@ export class AlmanacEditor extends LitElement {
   @state() private _previewAt = "";
   @state() private _saving = false;
   /**
-   * Whether the Advanced sections are open (D170). Derived once when a schedule
-   * is loaded, so a hidden setting that is set is never hidden, and after that
-   * owned by the user: editing a field never collapses a section under them.
+   * The user's own open or close of each Advanced section, keyed by section
+   * ("schedule", "rule:<index>"), and cleared when another schedule is loaded.
+   * Whether a section is open is this OR whether it holds a set field.
    */
-  @state() private _advancedOpen = false;
+  @state() private _advancedToggles: Record<string, boolean> = {};
   @state() private _error?: string | undefined;
 
   public override connectedCallback(): void {
@@ -346,19 +346,39 @@ export class AlmanacEditor extends LitElement {
     this._draft = schedule ? draftOf(schedule) : newDraft();
     this._selected = rulesOf(this._draft).length > 0 ? "0" : undefined;
     this._error = undefined;
-    this._advancedOpen = isAdvancedOpen(schedule ?? {});
+    this._advancedToggles = {};
+  }
+
+  /** The draft in the shape `advanced.ts` reads: what is set *now*. */
+  private get _advancedView() {
+    return {
+      completion: this._draft.body.completion,
+      date_window: this._draft.body.date_window,
+      rules: rulesOf(this._draft),
+    };
   }
 
   private _onAdvancedToggle = (event: Event): void => {
-    this._advancedOpen = (event.target as HTMLDetailsElement).open;
+    const details = event.target as HTMLDetailsElement;
+    const section = details.dataset["section"] ?? "schedule";
+    if (!details.open && isSectionOpen(this._advancedView, section, {})) {
+      // A section holding a set field cannot be collapsed into hiding it.
+      details.open = true;
+      return;
+    }
+    this._advancedToggles = { ...this._advancedToggles, [section]: details.open };
   };
 
-  /** One collapsible section, open by the shared flag. */
-  private _advanced(body: unknown) {
+  /**
+   * One collapsible section (D170). Open when a field in *this* section is set,
+   * or when the user opened *this* section; never because of another one.
+   */
+  private _advanced(section: string, body: unknown) {
     return html`
       <details
         class="advanced"
-        ?open=${this._advancedOpen}
+        data-section=${section}
+        ?open=${isSectionOpen(this._advancedView, section, this._advancedToggles)}
         @toggle=${this._onAdvancedToggle}
       >
         <summary>Advanced</summary>
@@ -489,7 +509,18 @@ export class AlmanacEditor extends LitElement {
           : html`<ul class="problems">
               ${found.map((note) => html`<li class="problem">${note}</li>`)}
             </ul>`}
-        ${this._advanced(this._completion())} ${this._footprint()}
+        ${this._advanced(
+          "schedule",
+          html`
+            ${describeDateWindow(this._draft.body.date_window) === ""
+              ? nothing
+              : html`<p class="muted">
+                  ${describeDateWindow(this._draft.body.date_window)}
+                </p>`}
+            ${this._completion()}
+          `,
+        )}
+        ${this._footprint()}
         ${this._error ? html`<p class="problem">${this._error}</p>` : nothing}
         ${this._footer(found)}
       </div>
@@ -865,7 +896,7 @@ export class AlmanacEditor extends LitElement {
               )}
               ${this._conditions("conditions", rule.conditions ?? [])}
               ${this._actions("actions", "What it does", rule.actions ?? [])}
-              ${this._advanced(html`
+              ${this._advanced(`rule:${index}`, html`
                 ${this._policy(index, rule.condition_policy ?? { kind: "skip" })}
                 ${this._grace(index, rule.grace ?? null)}
               `)}
@@ -887,7 +918,7 @@ export class AlmanacEditor extends LitElement {
               ></almanac-desired>
               ${this._actions("enter", "When it starts", rule.enter_actions ?? [])}
               ${this._actions("exit", "When it ends", rule.exit_actions ?? [])}
-              ${this._advanced(html`
+              ${this._advanced(`rule:${index}`, html`
                 ${this._onExit(index, rule.on_exit ?? { kind: "leave" })}
                 <label class="check">
                   <input

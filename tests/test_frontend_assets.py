@@ -481,7 +481,11 @@ def test_advanced_fields_exist_in_the_schema_and_the_stored_types() -> None:
     """If a field named in `advanced.ts` is renamed in `schema.py` or `stored.ts`,
     Advanced would compare a field nothing sends and never open over a set value.
     Read all three as text, and check the defaults the schema states."""
-    advanced = (SRC / "advanced.ts").read_text(encoding="utf-8")
+    raw = (SRC / "advanced.ts").read_text(encoding="utf-8")
+    # Code only: a name that appears in a comment must not satisfy the checks.
+    advanced = re.sub(r"/\*.*?\*/", "", raw, flags=re.DOTALL)
+    advanced = re.sub(r"^\s*//.*$", "", advanced, flags=re.MULTILINE)
+    assert "grace" in advanced and len(advanced) < len(raw)
     schema = (REPO / "custom_components" / DOMAIN / "schema.py").read_text(encoding="utf-8")
     constants = (REPO / "custom_components" / DOMAIN / "const.py").read_text(encoding="utf-8")
     stored = (SRC / "stored.ts").read_text(encoding="utf-8")
@@ -506,11 +510,20 @@ def test_advanced_fields_exist_in_the_schema_and_the_stored_types() -> None:
     assert "{CONF_KIND: FINISHED_NEVER}" in schema
     assert "{CONF_KIND: THEN_KEEP}" in schema
     assert "CONF_COUNT_ON, default=COUNT_ON_SCHEDULED" in schema
-    for literal in ('"never"', '"keep"', '"scheduled"', '"skip"', '"leave"', "grace: null"):
-        assert literal in advanced, literal
-    # And the editor actually asks, rather than the module sitting unused.
+    # The literals in advanced.ts are the constants' values, not just spellings.
+    for name, value in (
+        ("FINISHED_NEVER", "never"),
+        ("THEN_KEEP", "keep"),
+        ("COUNT_ON_SCHEDULED", "scheduled"),
+        ("POLICY_SKIP", "skip"),
+        ("ON_EXIT_LEAVE", "leave"),
+    ):
+        assert f'{name}: Final = "{value}"' in constants, name
+        assert f'"{value}"' in advanced, value
+    assert "grace: null" in advanced
+    # And the editor actually asks, per section, rather than the module sitting unused.
     editor = (SRC / "editor.ts").read_text(encoding="utf-8")
-    assert "isAdvancedOpen(" in editor
+    assert "isSectionOpen(" in editor
     assert "<summary>Advanced</summary>" in editor
 
 

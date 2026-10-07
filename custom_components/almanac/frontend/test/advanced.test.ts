@@ -5,7 +5,14 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { DEFAULT_ADVANCED, advancedNonDefault, isAdvancedOpen } from "../src/advanced.ts";
+import {
+  DEFAULT_ADVANCED,
+  advancedNonDefault,
+  describeDateWindow,
+  isAdvancedOpen,
+  isSectionOpen,
+  sectionOf,
+} from "../src/advanced.ts";
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -88,4 +95,37 @@ test("a rule kind the section does not know is ignored, not flagged", () => {
   const s = fresh();
   s.rules.push({ kind: "future", grace: 5 });
   assert.deepEqual(advancedNonDefault(s), []);
+});
+
+test("each field belongs to one section: the schedule's or one rule's", () => {
+  assert.equal(sectionOf("completion"), "schedule");
+  assert.equal(sectionOf("date_window"), "schedule");
+  assert.equal(sectionOf("rules.1.grace"), "rule:1");
+});
+
+test("a section with a set field is open whatever the user toggled", () => {
+  const s = fresh();
+  s.rules[0]!["grace"] = 60;
+  assert.equal(isSectionOpen(s, "rule:0", { "rule:0": false }), true);
+  // another section's collapse does not touch it, and does not open a default one
+  assert.equal(isSectionOpen(s, "rule:0", { "rule:1": false }), true);
+  assert.equal(isSectionOpen(s, "rule:1", {}), false);
+  assert.equal(isSectionOpen(s, "schedule", {}), false);
+});
+
+test("a default section follows the user's own toggle, per section", () => {
+  const s = fresh();
+  assert.equal(isSectionOpen(s, "rule:1", { "rule:1": true }), true);
+  assert.equal(isSectionOpen(s, "rule:1", { "rule:0": true }), false);
+});
+
+test("the date window is described in plain words, or not at all", () => {
+  assert.equal(describeDateWindow({ from: null, until: null }), "");
+  assert.equal(describeDateWindow(null), "");
+  assert.equal(
+    describeDateWindow({ from: "2026-12-01", until: "2027-01-31" }),
+    "Active only from 1 Dec 2026 until 31 Jan 2027",
+  );
+  assert.equal(describeDateWindow({ from: "2026-12-01", until: null }), "Active only from 1 Dec 2026");
+  assert.equal(describeDateWindow({ from: null, until: "2027-01-31" }), "Active only until 31 Jan 2027");
 });

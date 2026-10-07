@@ -87,3 +87,47 @@ export const advancedNonDefault = (schedule: AdvancedSchedule): string[] => {
 
 export const isAdvancedOpen = (schedule: AdvancedSchedule): boolean =>
   advancedNonDefault(schedule).length > 0;
+
+/**
+ * Which Advanced section a dotted field name belongs to: the schedule's own
+ * (completion, date window) or one rule's, named by position.
+ */
+export const sectionOf = (field: string): string => {
+  const match = /^rules\.(\d+)\./.exec(field);
+  return match ? `rule:${match[1]}` : "schedule";
+};
+
+/**
+ * Whether one section is open. A section holding a set field is always open, so
+ * collapsing it cannot hide the setting; any other follows the user's own toggle
+ * for that section alone, so one collapse never reaches another section.
+ */
+export const isSectionOpen = (
+  schedule: AdvancedSchedule,
+  section: string,
+  toggles: Readonly<Record<string, boolean>>,
+): boolean =>
+  advancedNonDefault(schedule).some((field) => sectionOf(field) === section) ||
+  toggles[section] === true;
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+const plainDay = (iso: unknown): string => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(typeof iso === "string" ? iso : "");
+  const month = match ? MONTHS[Number(match[2]) - 1] : undefined;
+  return match && month ? `${Number(match[3])} ${month} ${match[1]}` : "";
+};
+
+/** The date window as one plain sentence, or "" when there is no window. */
+export const describeDateWindow = (window: unknown): string => {
+  const edges = (window ?? {}) as { from?: unknown; until?: unknown };
+  const from = plainDay(edges.from);
+  const until = plainDay(edges.until);
+  if (from && until) {
+    return `Active only from ${from} until ${until}`;
+  }
+  if (from) {
+    return `Active only from ${from}`;
+  }
+  return until ? `Active only until ${until}` : "";
+};
