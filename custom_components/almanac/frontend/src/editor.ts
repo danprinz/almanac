@@ -44,6 +44,7 @@ import { LitElement, css, html, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
 import "./actions";
+import { isAdvancedOpen } from "./advanced";
 import { ICON_ADD, ICON_REMOVE, haButton } from "./buttons";
 import { ACTIONS_CHANGED } from "./actions";
 import type { ActionsChangedDetail } from "./actions";
@@ -287,6 +288,12 @@ export class AlmanacEditor extends LitElement {
    */
   @state() private _previewAt = "";
   @state() private _saving = false;
+  /**
+   * Whether the Advanced sections are open (D170). Derived once when a schedule
+   * is loaded, so a hidden setting that is set is never hidden, and after that
+   * owned by the user: editing a field never collapses a section under them.
+   */
+  @state() private _advancedOpen = false;
   @state() private _error?: string | undefined;
 
   public override connectedCallback(): void {
@@ -339,6 +346,25 @@ export class AlmanacEditor extends LitElement {
     this._draft = schedule ? draftOf(schedule) : newDraft();
     this._selected = rulesOf(this._draft).length > 0 ? "0" : undefined;
     this._error = undefined;
+    this._advancedOpen = isAdvancedOpen(schedule ?? {});
+  }
+
+  private _onAdvancedToggle = (event: Event): void => {
+    this._advancedOpen = (event.target as HTMLDetailsElement).open;
+  };
+
+  /** One collapsible section, open by the shared flag. */
+  private _advanced(body: unknown) {
+    return html`
+      <details
+        class="advanced"
+        ?open=${this._advancedOpen}
+        @toggle=${this._onAdvancedToggle}
+      >
+        <summary>Advanced</summary>
+        ${body}
+      </details>
+    `;
   }
 
   /**
@@ -463,7 +489,7 @@ export class AlmanacEditor extends LitElement {
           : html`<ul class="problems">
               ${found.map((note) => html`<li class="problem">${note}</li>`)}
             </ul>`}
-        ${this._completion()} ${this._footprint()}
+        ${this._advanced(this._completion())} ${this._footprint()}
         ${this._error ? html`<p class="problem">${this._error}</p>` : nothing}
         ${this._footer(found)}
       </div>
@@ -838,9 +864,11 @@ export class AlmanacEditor extends LitElement {
                 this._patchRule(index, { anchor }),
               )}
               ${this._conditions("conditions", rule.conditions ?? [])}
-              ${this._policy(index, rule.condition_policy ?? { kind: "skip" })}
-              ${this._grace(index, rule.grace ?? null)}
               ${this._actions("actions", "What it does", rule.actions ?? [])}
+              ${this._advanced(html`
+                ${this._policy(index, rule.condition_policy ?? { kind: "skip" })}
+                ${this._grace(index, rule.grace ?? null)}
+              `)}
             `
           : html`
               ${this._anchorFields("Starts", rule.start_anchor, (anchor) =>
@@ -857,25 +885,27 @@ export class AlmanacEditor extends LitElement {
                 .hass=${this.hass}
                 .haReady=${this.haReady}
               ></almanac-desired>
-              ${this._onExit(index, rule.on_exit ?? { kind: "leave" })}
-              <label class="check">
-                <input
-                  type="checkbox"
-                  .checked=${rule.latch ?? false}
-                  ?disabled=${!this._canWrite}
-                  @change=${(event: Event) =>
-                    this._patchRule(index, { latch: inputChecked(event) })}
-                />
-                <span>Keep going even if the conditions stop holding</span>
-              </label>
-              <p class="muted">
-                Unlatched, the conditions govern the exit and the interval ends
-                when they stop holding. Latched, it runs to the end above
-                regardless — "once the lights are on for the evening, leave
-                them on even if the motion sensor gives up".
-              </p>
               ${this._actions("enter", "When it starts", rule.enter_actions ?? [])}
               ${this._actions("exit", "When it ends", rule.exit_actions ?? [])}
+              ${this._advanced(html`
+                ${this._onExit(index, rule.on_exit ?? { kind: "leave" })}
+                <label class="check">
+                  <input
+                    type="checkbox"
+                    .checked=${rule.latch ?? false}
+                    ?disabled=${!this._canWrite}
+                    @change=${(event: Event) =>
+                      this._patchRule(index, { latch: inputChecked(event) })}
+                  />
+                  <span>Keep going even if the conditions stop holding</span>
+                </label>
+                <p class="muted">
+                  Unlatched, the conditions govern the exit and the interval ends
+                  when they stop holding. Latched, it runs to the end above
+                  regardless — "once the lights are on for the evening, leave
+                  them on even if the motion sensor gives up".
+                </p>
+              `)}
             `}
       </section>
     `;
@@ -1693,6 +1723,18 @@ export class AlmanacEditor extends LitElement {
       }
 
 
+
+      .advanced {
+        margin-top: var(--almanac-gap-sm);
+      }
+
+      .advanced > summary {
+        cursor: pointer;
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        font-weight: 500;
+      }
 
       .anchor {
         display: flex;

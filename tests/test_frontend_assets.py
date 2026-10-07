@@ -414,7 +414,14 @@ def test_the_pure_modules_import_nothing_at_run_time() -> None:
     # included, so the non-empty assertion above would fail on them for the
     # opposite reason to the one it guards against. They declare their own
     # structural types instead of importing the stored ones (D132).
-    for name in ("form.ts", "ha-elements.ts", "payload.ts", "pickers.ts", "timepick.ts"):
+    for name in (
+        "advanced.ts",
+        "form.ts",
+        "ha-elements.ts",
+        "payload.ts",
+        "pickers.ts",
+        "timepick.ts",
+    ):
         assert not re.findall(
             r"^import\b.*$",
             (SRC / name).read_text(encoding="utf-8"),
@@ -458,6 +465,7 @@ def test_the_unit_tests_are_wired_to_a_script_and_a_directory() -> None:
     assert "node --test" in package
     assert tests.is_dir()
     assert sorted(path.name for path in tests.glob("*.test.ts")) == [
+        "advanced.test.ts",
         "draft.test.ts",
         "form.test.ts",
         "ha-elements.test.ts",
@@ -467,6 +475,43 @@ def test_the_unit_tests_are_wired_to_a_script_and_a_directory() -> None:
         "rails.test.ts",
         "timepick.test.ts",
     ]
+
+
+def test_advanced_fields_exist_in_the_schema_and_the_stored_types() -> None:
+    """If a field named in `advanced.ts` is renamed in `schema.py` or `stored.ts`,
+    Advanced would compare a field nothing sends and never open over a set value.
+    Read all three as text, and check the defaults the schema states."""
+    advanced = (SRC / "advanced.ts").read_text(encoding="utf-8")
+    schema = (REPO / "custom_components" / DOMAIN / "schema.py").read_text(encoding="utf-8")
+    constants = (REPO / "custom_components" / DOMAIN / "const.py").read_text(encoding="utf-8")
+    stored = (SRC / "stored.ts").read_text(encoding="utf-8")
+    for field in (
+        "condition_policy",
+        "grace",
+        "on_exit",
+        "latch",
+        "completion",
+        "date_window",
+    ):
+        assert field in advanced, field
+        # The schema spells its keys through `CONF_*` constants whose values
+        # live in const.py: `CONF_GRACE: Final = "grace"`.
+        assert f'CONF_{field.upper()}: Final = "{field}"' in constants, field
+        assert field in stored, field
+    # The defaults themselves, as the schema spells them.
+    assert "CONF_GRACE, default=None" in schema
+    assert "CONF_LATCH, default=False" in schema
+    assert "{CONF_KIND: POLICY_SKIP}" in schema
+    assert "{CONF_KIND: ON_EXIT_LEAVE}" in schema
+    assert "{CONF_KIND: FINISHED_NEVER}" in schema
+    assert "{CONF_KIND: THEN_KEEP}" in schema
+    assert "CONF_COUNT_ON, default=COUNT_ON_SCHEDULED" in schema
+    for literal in ('"never"', '"keep"', '"scheduled"', '"skip"', '"leave"', "grace: null"):
+        assert literal in advanced, literal
+    # And the editor actually asks, rather than the module sitting unused.
+    editor = (SRC / "editor.ts").read_text(encoding="utf-8")
+    assert "isAdvancedOpen(" in editor
+    assert "<summary>Advanced</summary>" in editor
 
 
 def test_the_editor_says_so_when_the_pickers_did_not_load() -> None:
