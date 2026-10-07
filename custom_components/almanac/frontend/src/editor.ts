@@ -83,7 +83,6 @@ import {
 } from "./draft";
 import type { Draft, WritableDuringRule, WritableRule } from "./draft";
 import {
-  clockValue,
   countFrom,
   inputChecked,
   inputValue,
@@ -115,6 +114,7 @@ import {
   almanacText,
   almanacTokens,
 } from "./styles";
+import "./time-picker";
 import "./track";
 import { STAGE_SELECTED } from "./track";
 import type { StageSelectedDetail } from "./track";
@@ -164,17 +164,6 @@ const RECUR_DAY_SET = "day_set";
 const DEFAULT_DURATION = 3600;
 
 /**
- * How the anchor `<select>` encodes a resolver offering.
- *
- * Takes the pair rather than a whole offering, because the stored anchor is the
- * other caller: matching a saved anchor to its option means spelling its value
- * the same way, and an anchor whose offering is absent (D17) still has to match
- * nothing rather than fail to be spelled.
- */
-const offeringValue = (offering: { domain: string; key: string }): string =>
-  `resolver:${offering.domain}:${offering.key}`;
-
-/**
  * A never-saved schedule's completion, restated.
  *
  * The one restatement in this file that carries a real risk, and it is written
@@ -222,6 +211,13 @@ const COUNT_ON_KINDS: [StoredCountOn, string][] = [
 
 /** The datalist id the entity anchor's input reads from. */
 const ENTITY_LIST = "almanac-time-entities";
+
+/**
+ * Module constants, because the picker's properties are compared by identity: a
+ * fresh object on every render would look like a change on every render.
+ */
+const CLOCK_ANCHOR: StoredAnchor = { kind: "clock", at: DEFAULT_CLOCK_TIME };
+const NO_OFFERINGS: WireOffering[] = [];
 
 /**
  * The other two datalists: every entity, and every script.
@@ -278,6 +274,16 @@ export class AlmanacEditor extends LitElement {
   @state() private _selected?: string | undefined;
   @state() private _catalogue?: WireResolverCatalogue | undefined;
   @state() private _daySets: DaySetRow[] = [];
+  /**
+   * The instant the anchor previews are asked about, handed to the time picker.
+   *
+   * This is one of the two places the frontend reads the clock, and it is the top
+   * of the call tree -- the same position as the tick on the Python side, which is
+   * what D64 (nothing below the top reads a clock) allows. It is read once, in
+   * `connectedCallback`, so "next:" means "next since the editor was opened" and
+   * does not move under the user while they edit.
+   */
+  @state() private _previewAt = "";
   @state() private _saving = false;
   @state() private _error?: string | undefined;
 
@@ -299,6 +305,7 @@ export class AlmanacEditor extends LitElement {
       this._onConditions as EventListener,
     );
     this.addEventListener(DESIRED_CHANGED, this._onDesired as EventListener);
+    this._previewAt = new Date().toISOString();
     this._load();
     void this._catalogues();
   }
@@ -1089,161 +1096,46 @@ export class AlmanacEditor extends LitElement {
 
 
   /**
-   * One anchor: its kind, and whatever that kind needs.
-   *
-   * The three kinds are D6's, and the editor offers them as one list rather than
-   * as a kind radio plus a value control, because what the user is choosing is
-   * the event — `18:00`, `candle lighting`, `that sensor` — and the fact that
-   * two of those are the same storage kind is not something they are deciding.
+   * One anchor, drawn by `almanac-time-picker`: a tile for the kind of time, one
+   * control for its value, a signed stepper for the offset, and a line that says
+   * it back and asks the engine when it next happens.
    */
   private _anchorFields(
     label: string,
     anchor: StoredAnchor | undefined,
     write: (anchor: StoredAnchor) => void,
   ) {
-    const kinds = new Map<string, WireOffering[]>();
-    for (const offering of this._catalogue?.offerings ?? []) {
-      if (!offering.roles.includes("anchor")) {
-        continue;
-      }
-      const group = kinds.get(offering.domain) ?? [];
-      group.push(offering);
-      kinds.set(offering.domain, group);
-    }
-    const value = anchor
-      ? anchor.kind === "resolver"
-        ? offeringValue(anchor)
-        : anchor.kind
-      : "clock";
     return html`
-      <div class="anchor">
-        <label class="field">
-          <span>${label}</span>
-          <select
-            ?disabled=${!this._canWrite}
-            @change=${(event: Event) =>
-              write(this._anchorFor(inputValue(event), anchor))}
-          >
-            <option value="clock" ?selected=${value === "clock"}>
-              A clock time
-            </option>
-            <option value="entity_time" ?selected=${value === "entity_time"}>
-              An entity's time
-            </option>
-            ${[...kinds.entries()].map(
-              ([domain, offerings]) => html`
-                <optgroup label=${domain}>
-                  ${offerings.map(
-                    (offering) => html`
-                      <option
-                        value=${offeringValue(offering)}
-                        ?selected=${value === offeringValue(offering)}
-                      >
-                        ${offering.display_name}
-                      </option>
-                    `,
-                  )}
-                </optgroup>
-              `,
-            )}
-          </select>
-        </label>
-        ${anchor?.kind === "clock"
-          ? html`
-              <label class="field">
-                <span>At</span>
-                <input
-                  type="time"
-                  step="1"
-                  .value=${anchor.at}
-                  ?disabled=${!this._canWrite}
-                  @change=${(event: Event) =>
-                    write({ kind: "clock", at: clockValue(inputValue(event)) })}
-                />
-              </label>
-              <p class="muted">
-                Wall time, not an instant (D40). It means 18:00 on whatever day
-                the recurrence picks, including the day the clocks change.
-              </p>
-            `
-          : nothing}
-        ${anchor?.kind === "entity_time"
-          ? html`
-              <label class="field">
-                <span>Entity</span>
-                <input
-                  type="text"
-                  list=${ENTITY_LIST}
-                  .value=${anchor.entity_id}
-                  ?disabled=${!this._canWrite}
-                  @change=${(event: Event) =>
-                    write({ ...anchor, entity_id: inputValue(event).trim() })}
-                />
-              </label>
-            `
-          : nothing}
-        ${anchor && anchor.kind !== "clock"
-          ? html`
-              <label class="field">
-                <span>Offset</span>
-                <input
-                  type="number"
-                  step="any"
-                  .value=${String(anchor.offset / 60)}
-                  ?disabled=${!this._canWrite}
-                  @change=${(event: Event) =>
-                    write({ ...anchor, offset: secondsFrom(inputValue(event)) })}
-                />
-                <span class="muted">minutes</span>
-              </label>
-              <p class="muted">
-                Signed, and arithmetic on the event itself (D7): −45 is
-                forty-five minutes before it. The day the rule belongs to is the
-                day of the event, not of the offset result (D122).
-              </p>
-            `
-          : nothing}
-        ${anchor?.kind === "resolver" && this._hasEdges(anchor)
-          ? html`
-              <label class="field">
-                <span>Which edge</span>
-                <select
-                  ?disabled=${!this._canWrite}
-                  @change=${(event: Event) =>
-                    write({
-                      ...anchor,
-                      edge: inputValue(event) === "end" ? "end" : "start",
-                    })}
-                >
-                  <option value="start" ?selected=${anchor.edge === "start"}>
-                    When it begins
-                  </option>
-                  <option value="end" ?selected=${anchor.edge === "end"}>
-                    When it ends
-                  </option>
-                </select>
-              </label>
-            `
-          : nothing}
-      </div>
+      <almanac-time-picker
+        .hass=${this.hass}
+        .haReady=${this.haReady}
+        .anchor=${anchor ?? CLOCK_ANCHOR}
+        .offerings=${this._catalogue?.offerings ?? NO_OFFERINGS}
+        .usedTimes=${this._usedTimes()}
+        .at=${this._previewAt}
+        entityList=${ENTITY_LIST}
+        ?disabled=${!this._canWrite}
+        .onChange=${write}
+        aria-label=${label}
+      ></almanac-time-picker>
     `;
   }
 
-  /**
-   * D124's edge choice, offered exactly when the offering declares it.
-   *
-   * `roles.includes("day_set")` is the test and not a derived flag beside it
-   * (D133): §5.1 defines the day-set role as a predicate over a span's
-   * *interior*, so an offering that has one has two distinct edges and an
-   * offering that does not — a sunset, a zman, a candle lighting — is a single
-   * instant whose "end" would be the same moment under another name.
-   */
-  private _hasEdges(anchor: StoredAnchor & { kind: "resolver" }): boolean {
-    const offering = this._offering(anchor.domain, anchor.key);
-    // An unknown offering keeps whatever edge is stored and offers the choice,
-    // because the alternative is hiding a stored value: D17 says an anchor whose
-    // resolver is absent renders as unresolved rather than as edited.
-    return offering ? offering.roles.includes("day_set") : anchor.edge === "end";
+  /** The clock times already in the draft, in rule order, for the picker's chips. */
+  private _usedTimes(): string[] {
+    const times: string[] = [];
+    for (const rule of this._rules) {
+      const anchors =
+        rule.kind === "at"
+          ? [rule.anchor]
+          : [rule.start_anchor, rule.end?.kind === "anchor" ? rule.end.anchor : undefined];
+      for (const anchor of anchors) {
+        if (anchor?.kind === "clock") {
+          times.push(anchor.at);
+        }
+      }
+    }
+    return times;
   }
 
   private _endFields(index: number, rule: WritableDuringRule) {
@@ -1299,41 +1191,6 @@ export class AlmanacEditor extends LitElement {
           : nothing}
       </div>
     `;
-  }
-
-  /** What picking a kind in the anchor list produces, carrying across what it can. */
-  private _anchorFor(
-    value: string,
-    current: StoredAnchor | undefined,
-  ): StoredAnchor {
-    if (value === "clock") {
-      return {
-        kind: "clock",
-        at: current?.kind === "clock" ? current.at : DEFAULT_CLOCK_TIME,
-      };
-    }
-    // The offset survives a kind change and is dropped by a clock time, which is
-    // not an inconsistency: the offset is arithmetic on an event, and a clock
-    // time has no event to be early or late for — the time *is* the time.
-    const offset = current && current.kind !== "clock" ? current.offset : 0;
-    if (value === "entity_time") {
-      return {
-        kind: "entity_time",
-        entity_id:
-          current?.kind === "entity_time"
-            ? current.entity_id
-            : (this._timeEntities[0] ?? ""),
-        offset,
-      };
-    }
-    const parts = value.split(":");
-    return {
-      kind: "resolver",
-      domain: parts[1] ?? "",
-      key: parts[2] ?? "",
-      offset,
-      edge: current?.kind === "resolver" ? current.edge : "start",
-    };
   }
 
   private _endFor(value: string, current: StoredEnd | undefined): StoredEnd {

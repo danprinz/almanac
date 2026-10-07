@@ -615,3 +615,21 @@ def test_the_service_picker_commits_free_text_and_survives_a_click_on_the_list()
     assert "@blur=" in source, "the list must close when focus leaves"
     actions = (SRC / "actions.ts").read_text(encoding="utf-8")
     assert "<almanac-service-field" in actions
+
+
+def test_the_time_picker_never_reads_the_clock() -> None:
+    """D64 reaches the frontend by convention: `at` is handed in, never sampled.
+
+    The preview is a function of (anchor, at). A picker that took `new Date()` for
+    itself would make the summary line unreproducible and the node tests
+    meaningless, so the host passes `at` and this asserts nothing else does.
+    """
+    for name in ("time-picker.ts", "timepick.ts", "segmented.ts"):
+        source = (SRC / name).read_text(encoding="utf-8")
+        assert "new Date()" not in source and "Date.now" not in source, name
+
+
+def test_the_editor_no_longer_builds_anchors_from_a_select() -> None:
+    source = (SRC / "editor.ts").read_text(encoding="utf-8")
+    start = source.index("private _anchorFields(")
+    assert "<almanac-time-picker" in source[start : start + 3000]
